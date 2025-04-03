@@ -4,14 +4,15 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import Feather from 'react-native-vector-icons/Feather';
 import { Text, View } from 'react-native';
+import { AuthProvider } from './providers/AuthProvider';
 
 // Screens
 import DashboardScreen from './screens/DashboardScreen';
 import HomeScreen from './screens/HomeScreen';
 import SettingsScreen from './screens/SettingsScreen';
 
-// Firebase
-import firebase from '@react-native-firebase/app';
+// ✅ Updated Firebase imports to use modular approach
+import { getApp, getApps } from '@react-native-firebase/app';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -57,19 +58,24 @@ const MainTabs = () => {
 };
 
 const App = () => {
+  // ✅ Replace deprecated Firebase check with modular SDK method
   useEffect(() => {
-    if (firebase?.apps?.length > 0) {
-      console.log('✅ Firebase connected!');
+    if (getApps().length > 0) {
+      const app = getApp();
+      console.log('✅ Firebase initialized with app name:', app.name);
     } else {
-      console.log('❌ Firebase NOT connected');
+      console.log('❌ Firebase NOT initialized');
     }
   }, []);
 
   return (
     <NavigationContainer>
-      <MainTabs />
+      <AuthProvider>
+        <MainTabs />
+      </AuthProvider>
     </NavigationContainer>
   );
+  
 };
 
 export default App;
