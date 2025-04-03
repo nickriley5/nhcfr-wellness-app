@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "825542667540",
+    "project_id": "firefighter-wellness-app",
+    "storage_bucket": "firefighter-wellness-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:825542667540:android:a661181a090a0a0ec5e601",
+        "android_client_info": {
+          "package_name": "com.firefighterwellnessapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDXUvgMMJp7drZFcNQIYpro7oJh3AC24N0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

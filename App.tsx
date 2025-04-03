@@ -1,11 +1,17 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import Feather from 'react-native-vector-icons/Feather';
+import { Text, View } from 'react-native';
+
+// Screens
 import DashboardScreen from './screens/DashboardScreen';
 import HomeScreen from './screens/HomeScreen';
 import SettingsScreen from './screens/SettingsScreen';
+
+// Firebase
+import firebase from '@react-native-firebase/app';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -29,7 +35,7 @@ const MainTabs = () => {
           fontSize: 12,
         },
         tabBarIcon: ({ color }) => {
-          let iconName;
+          let iconName: string = '';
 
           if (route.name === 'Home') {
             iconName = 'home';
@@ -39,7 +45,7 @@ const MainTabs = () => {
             iconName = 'activity';
           }
 
-          return <Feather name={iconName!} size={20} color={color} />;
+          return <Feather name={iconName} size={20} color={color} />;
         },
       })}
     >
@@ -50,13 +56,18 @@ const MainTabs = () => {
   );
 };
 
-
 const App = () => {
+  useEffect(() => {
+    if (firebase?.apps?.length > 0) {
+      console.log('✅ Firebase connected!');
+    } else {
+      console.log('❌ Firebase NOT connected');
+    }
+  }, []);
+
   return (
     <NavigationContainer>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="MainTabs" component={MainTabs} />
-      </Stack.Navigator>
+      <MainTabs />
     </NavigationContainer>
   );
 };
