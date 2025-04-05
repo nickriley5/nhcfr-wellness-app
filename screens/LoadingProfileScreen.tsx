@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, StyleSheet, ScrollView, Pressable } from 'react-native';
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
-import Slider from '@react-native-community/slider';
 
 const fitnessLevels = [
   { label: 'Beginner', description: 'New to working out or inconsistent routine' },
@@ -27,7 +26,6 @@ const dietaryPreferences = [
 ];
 
 const dietaryRestrictions = ['Gluten-Free', 'Dairy-Free', 'Low FODMAP', 'Nut Allergy', 'Soy-Free'];
-const goalTypes = ['Lose Fat', 'Maintain', 'Gain Muscle'];
 
 const ProfileSetupScreen = ({ navigation }: any) => {
   const [fullName, setFullName] = useState('');
@@ -38,8 +36,7 @@ const ProfileSetupScreen = ({ navigation }: any) => {
   const [activityLevel, setActivityLevel] = useState('');
   const [dietPreference, setDietPreference] = useState('');
   const [restrictions, setRestrictions] = useState<string[]>([]);
-  const [goalType, setGoalType] = useState('');
-  const [goalWeight, setGoalWeight] = useState<number>(200); // slider value
+  const [goalWeight, setGoalWeight] = useState('');
   const [timeline, setTimeline] = useState('');
 
   const toggleRestriction = (item: string) => {
@@ -62,7 +59,6 @@ const ProfileSetupScreen = ({ navigation }: any) => {
         activityLevel,
         dietPreference,
         restrictions,
-        goalType,
         goalWeight,
         timeline,
         profileComplete: true,
@@ -76,17 +72,13 @@ const ProfileSetupScreen = ({ navigation }: any) => {
     }
   };
 
-  const numericWeight = parseInt(weight) || 200;
-  const minWeight = numericWeight - 50;
-  const maxWeight = numericWeight + 50;
-
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>Complete Your Profile</Text>
       <TextInput placeholder="Full Name" placeholderTextColor="#aaa" value={fullName} onChangeText={setFullName} style={styles.input} />
       <TextInput placeholder="Date of Birth (MM/DD/YYYY)" placeholderTextColor="#aaa" value={dob} onChangeText={setDob} style={styles.input} />
       <TextInput placeholder="Height (in)" placeholderTextColor="#aaa" value={height} onChangeText={setHeight} style={styles.input} />
-      <TextInput placeholder="Weight (lbs)" placeholderTextColor="#aaa" value={weight} onChangeText={setWeight} style={styles.input} keyboardType="numeric" />
+      <TextInput placeholder="Weight (lbs)" placeholderTextColor="#aaa" value={weight} onChangeText={setWeight} style={styles.input} />
 
       <Text style={styles.sectionTitle}>Fitness Level</Text>
       {fitnessLevels.map(({ label, description }) => (
@@ -123,36 +115,18 @@ const ProfileSetupScreen = ({ navigation }: any) => {
         <Pressable
           key={item}
           onPress={() => toggleRestriction(item)}
-          style={[styles.optionButton, restrictions.includes(item) && styles.selected]}>
+          style={[
+            styles.optionButton,
+            restrictions.includes(item) && styles.selected
+          ]}>
           <Text style={styles.optionText}>{item}</Text>
         </Pressable>
       ))}
 
-      <Text style={styles.sectionTitle}>Your Goal</Text>
-      {goalTypes.map(type => (
-        <Pressable
-          key={type}
-          onPress={() => setGoalType(type)}
-          style={[styles.optionButton, goalType === type && styles.selected]}>
-          <Text style={styles.optionText}>{type}</Text>
-        </Pressable>
-      ))}
-
-      <Text style={styles.sectionTitle}>Target Goal Weight: {goalWeight} lbs</Text>
-      <Slider
-        style={{ width: '100%', height: 40 }}
-        minimumValue={minWeight}
-        maximumValue={maxWeight}
-        step={1}
-        value={numericWeight}
-        onValueChange={setGoalWeight}
-        minimumTrackTintColor="#d32f2f"
-        maximumTrackTintColor="#888"
-        thumbTintColor="#d32f2f"
-      />
-
+      <TextInput placeholder="Goal Weight (lbs)" placeholderTextColor="#aaa" value={goalWeight} onChangeText={setGoalWeight} style={styles.input} />
       <TextInput placeholder="Goal Timeline (e.g., 12 weeks)" placeholderTextColor="#aaa" value={timeline} onChangeText={setTimeline} style={styles.input} />
 
+      {/* 🔥 Styled Submit Button */}
       <Pressable style={styles.button} onPress={handleSubmit}>
         <Text style={styles.buttonText}>Submit Profile</Text>
       </Pressable>
