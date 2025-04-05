@@ -3,7 +3,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import Feather from 'react-native-vector-icons/Feather';
-import { View, ActivityIndicator, Image, StyleSheet } from 'react-native';
+import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 
 // Screens
 import DashboardScreen from './screens/DashboardScreen';
@@ -58,7 +58,6 @@ const MainTabs = () => (
   </Tab.Navigator>
 );
 
-// 📲 App navigation logic with splash logo above login screen
 const AppNavigator = () => {
   const { user, loading } = useAuth();
 
@@ -79,13 +78,14 @@ const AppNavigator = () => {
         </>
       ) : (
         <>
-          {/* 🚀 Splash with centered logo and login screen */}
           <Stack.Screen
             name="Login"
             component={() => (
               <View style={styles.splashWrapper}>
-                <View style={styles.logoContainer}>
-                  <Image source={require('./assets/logo.png')} style={styles.logo} />
+                {/* 🔥 Styled NHCFR title instead of logo */}
+                <View style={styles.titleContainer}>
+                  <Text style={styles.title}>NHCFR</Text>
+                  <Text style={styles.tagline}>TRAIN FOR DUTY. FUEL FOR LIFE.</Text>
                 </View>
                 <View style={styles.loginCardWrapper}>
                   <LoginScreen />
@@ -114,7 +114,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  // 🎯 Splash screen layout styles
   splashWrapper: {
     flex: 1,
     backgroundColor: '#121212',
@@ -122,21 +121,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 20,
   },
-  logoContainer: {
+  titleContainer: {
     flex: 1,
     justifyContent: 'flex-end',
     alignItems: 'center',
-    paddingBottom: 10,
+    marginBottom: 10,
+  },
+  title: {
+    fontSize: 48,
+    fontWeight: '900',
+    color: '#fff',
+    letterSpacing: 4,
+    fontFamily: 'sans-serif-condensed',
+  },
+  tagline: {
+    fontSize: 14,
+    color: '#d32f2f',
+    fontWeight: '600',
+    marginTop: 4,
   },
   loginCardWrapper: {
     flex: 1,
     justifyContent: 'flex-start',
     width: '100%',
-  },
-  logo: {
-    width: 180,
-    height: 180,
-    resizeMode: 'contain',
   },
 });
 
