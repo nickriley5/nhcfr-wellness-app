@@ -11,6 +11,8 @@ import HomeScreen from './screens/HomeScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import LoginScreen from './screens/LoginScreen';
 import ProfileSetupScreen from './screens/ProfileSetupScreen';
+import RegisterScreen from './screens/RegisterScreen'; // ✅ Add this
+
 
 // Auth context
 import { AuthProvider, useAuth } from './providers/AuthProvider';
@@ -18,6 +20,7 @@ import { AuthProvider, useAuth } from './providers/AuthProvider';
 // Navigation types
 export type RootStackParamList = {
   Login: undefined;
+  Register: undefined;
   Main: undefined;
   ProfileSetup: undefined;
   LoadingProfile: undefined;
@@ -78,11 +81,10 @@ const AppNavigator = () => {
         </>
       ) : (
         <>
-          <Stack.Screen
-            name="Login"
-            component={() => (
+          {/* ✅ Login screen wrapped in styled splash layout */}
+          <Stack.Screen name="Login">
+            {() => (
               <View style={styles.splashWrapper}>
-                {/* 🔥 Styled NHCFR title instead of logo */}
                 <View style={styles.titleContainer}>
                   <Text style={styles.title}>NHCFR</Text>
                   <Text style={styles.tagline}>TRAIN FOR DUTY. FUEL FOR LIFE.</Text>
@@ -92,11 +94,15 @@ const AppNavigator = () => {
                 </View>
               </View>
             )}
-          />
+          </Stack.Screen>
+  
+          {/* ✅ Register screen now available for navigation */}
+          <Stack.Screen name="Register" component={RegisterScreen} />
         </>
       )}
     </Stack.Navigator>
   );
+  
 };
 
 const App = () => (

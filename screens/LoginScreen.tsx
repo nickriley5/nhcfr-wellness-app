@@ -1,3 +1,4 @@
+// screens/LoginScreen.tsx
 import React, { useState } from 'react';
 import {
   View,
@@ -10,9 +11,20 @@ import {
 } from 'react-native';
 import auth from '@react-native-firebase/auth';
 
-const LoginScreen = ({ navigation }: any) => {
+// ✅ Import navigation types
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../App'; // ✅ adjust path if your App.tsx is elsewhere
+
+// ✅ Define the navigation type
+type LoginScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Login'>;
+
+const LoginScreen = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+
+  // ✅ Hook into navigation with proper typing
+  const navigation = useNavigation<LoginScreenNavigationProp>();
 
   const handleLogin = async () => {
     try {
@@ -52,6 +64,7 @@ const LoginScreen = ({ navigation }: any) => {
           <Text style={styles.buttonText}>Login</Text>
         </Pressable>
 
+        {/* ✅ Navigation now typed properly */}
         <Pressable onPress={() => navigation.navigate('Register')}>
           <Text style={styles.linkText}>Create an Account</Text>
         </Pressable>
