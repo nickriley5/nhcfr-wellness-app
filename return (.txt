@@ -1,0 +1,37 @@
+return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      {user ? (
+        <>
+          <Stack.Screen name="ProfileSetup" component={ProfileSetupScreen} />
+          <Stack.Screen name="Main" component={MainTabs} />
+        </>
+      ) : (
+        <>
+          {/* ✅ Login screen wrapped in styled splash layout */}
+          <Stack.Screen name="Login">
+            {() => (
+              <View style={styles.splashWrapper}>
+                <View style={styles.titleContainer}>
+                  <Text style={styles.title}>NHCFR</Text>
+                  <Text style={styles.tagline}>TRAIN FOR DUTY. FUEL FOR LIFE.</Text>
+                </View>
+                <View style={styles.loginCardWrapper}>
+                  <LoginScreen />
+                </View>
+              </View>
+            )}
+          </Stack.Screen>
+  
+          {/* ✅ Register screen now available for navigation */}
+          <Stack.Screen name="Register" component={RegisterScreen} />
+        </>
+      )}
+    </Stack.Navigator>
+  );
+
+  return (
+  <Stack.Navigator screenOptions={{ headerShown: false }}>
+    {/* 🔥 TEMP: Show Dashboard directly */}
+    <Stack.Screen name="Main" component={MainTabs} />
+  </Stack.Navigator>
+);

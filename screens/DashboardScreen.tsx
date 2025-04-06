@@ -1,29 +1,24 @@
 import React from 'react';
-import { View, Text, StyleSheet, useColorScheme } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 
 const DashboardScreen = () => {
-  const isDarkMode = useColorScheme() === 'dark';
-
   return (
     <LinearGradient
-      colors={['#0f2027', '#203a43', '#2c5364']}
+      colors={['#0f0f0f', '#1c1c1c', '#121212']} // ✅ Updated gradient
       style={styles.container}
     >
-      <View
-        style={[
-          styles.card,
-          {
-            backgroundColor: isDarkMode ? '#1a1a1aee' : '#ffffff',
-            borderWidth: 1,
-            borderColor: isDarkMode ? '#333' : '#eee',
-          },
-        ]}
-      >
-        <Text style={styles.title}>📊 Dashboard</Text>
-        <Text style={styles.description}>
-          Overview of your fitness and nutrition progress.
-        </Text>
+      <View style={styles.card}>
+        <Text style={styles.header}>🚒 Firefighter Wellness App</Text>
+        <Text style={styles.subtext}>Train for duty. Fuel for life. 🔥</Text>
+
+        <Pressable style={styles.button}>
+          <Text style={styles.buttonText}>Generate Meal Plan</Text>
+        </Pressable>
+
+        <Pressable style={styles.button}>
+          <Text style={styles.buttonText}>Generate Workout</Text>
+        </Pressable>
       </View>
     </LinearGradient>
   );
@@ -32,35 +27,50 @@ const DashboardScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    padding: 24,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingTop: 48,
-    paddingBottom: 24,
+    backgroundColor: '#121212',
   },
   card: {
-    padding: 24,
+    backgroundColor: '#1e1e1e',
     borderRadius: 16,
+    padding: 24,
     width: '100%',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 8,
+    maxWidth: 400,
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 10,
   },
-  title: {
-    fontSize: 26,
+  header: {
+    fontSize: 22,
     fontWeight: 'bold',
-    marginBottom: 10,
     color: '#d32f2f',
-    fontFamily: 'Poppins-Bold',
+    textAlign: 'center',
+    marginBottom: 12,
   },
-  description: {
-    fontSize: 16,
+  subtext: {
+    fontSize: 14,
     color: '#ccc',
     textAlign: 'center',
-    fontFamily: 'Inter-Regular',
+    marginBottom: 24,
+  },
+  button: {
+    backgroundColor: '#d32f2f',
+    paddingVertical: 14,
+    paddingHorizontal: 28,
+    borderRadius: 10,
+    marginTop: 12,
+    width: '100%',
+    alignItems: 'center',
+  },
+  buttonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 
