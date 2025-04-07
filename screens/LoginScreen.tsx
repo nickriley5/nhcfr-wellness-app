@@ -9,7 +9,11 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import auth from '@react-native-firebase/auth'; // ✅ Use RN Firebase Auth
+
+// ✅ Use modular Firebase SDK & shared auth instance
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { auth } from '../firebase'; // uses the initialized Firebase app
+
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
@@ -23,10 +27,12 @@ const LoginScreen = () => {
 
   const handleLogin = async () => {
     try {
-      await auth().signInWithEmailAndPassword(email, password);
+      // ✅ Sign in using the shared modular auth instance
+      await signInWithEmailAndPassword(auth, email, password);
+      // ✅ AuthProvider will now detect the login and redirect
     } catch (error: any) {
-      console.error(error);
-      alert('Login failed. Check your credentials.');
+      console.error('Login error:', error.message);
+      alert('Login failed. Please check your credentials.');
     }
   };
 
@@ -44,6 +50,8 @@ const LoginScreen = () => {
           value={email}
           onChangeText={setEmail}
           style={styles.input}
+          autoCapitalize="none"
+          keyboardType="email-address"
         />
 
         <TextInput

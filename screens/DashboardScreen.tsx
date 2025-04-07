@@ -1,14 +1,19 @@
 import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
-import { getAuth, signOut } from 'firebase/auth';
-import { getApp } from 'firebase/app';
+import { signOut } from 'firebase/auth'; // ✅ just use signOut from Firebase
+import { auth } from '../firebase'; // ✅ import the shared auth instance
+
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../App';
 
 const DashboardScreen = () => {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+
   const handleLogout = async () => {
     try {
-      const auth = getAuth(getApp());
-      await signOut(auth);
+      await signOut(auth); // ✅ now using the shared instance
     } catch (error) {
       console.error('Logout failed:', error);
     }
@@ -23,7 +28,7 @@ const DashboardScreen = () => {
         <Text style={styles.header}>🚒 Firefighter Wellness App</Text>
         <Text style={styles.subtext}>Train for duty. Fuel for life. 🔥</Text>
 
-        <Pressable style={styles.button}>
+        <Pressable style={styles.button} onPress={() => navigation.navigate('MealPlan')}>
           <Text style={styles.buttonText}>Generate Meal Plan</Text>
         </Pressable>
 

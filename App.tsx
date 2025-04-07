@@ -4,11 +4,10 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import Feather from 'react-native-vector-icons/Feather';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
-
 import { doc, getDoc } from 'firebase/firestore';
-import { db } from './firebase'; // ✅ if firebase.ts is in the same folder as App.tsx
-
+import { db } from './firebase';
 
 // Screens
 import DashboardScreen from './screens/DashboardScreen';
@@ -17,10 +16,10 @@ import SettingsScreen from './screens/SettingsScreen';
 import LoginScreen from './screens/LoginScreen';
 import ProfileSetupScreen from './screens/ProfileSetupScreen';
 import RegisterScreen from './screens/RegisterScreen';
+import MealPlanScreen from './screens/MealPlanScreen';
 
 // Auth context
 import { AuthProvider, useAuth } from './providers/AuthProvider';
-
 
 // Navigation types
 export type RootStackParamList = {
@@ -28,7 +27,7 @@ export type RootStackParamList = {
   Register: undefined;
   Main: undefined;
   ProfileSetup: undefined;
-  LoadingProfile: undefined;
+  MealPlan: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -52,16 +51,30 @@ const MainTabs = () => (
         fontSize: 12,
       },
       tabBarIcon: ({ color }) => {
-        let iconName = '';
-        if (route.name === 'Home') iconName = 'home';
-        else if (route.name === 'Settings') iconName = 'settings';
-        else if (route.name === 'Dashboard') iconName = 'activity';
+        if (route.name === 'MealPlan') {
+          return (
+            <MaterialCommunityIcons
+              name="silverware-fork-knife"
+              size={22}
+              color={color}
+            />
+          );
+        }
+
+        const iconMap: { [key: string]: string } = {
+          Home: 'home',
+          Dashboard: 'activity',
+          Settings: 'settings',
+        };
+
+        const iconName = iconMap[route.name] || 'circle';
         return <Feather name={iconName} size={20} color={color} />;
       },
     })}
   >
     <Tab.Screen name="Home" component={HomeScreen} />
     <Tab.Screen name="Dashboard" component={DashboardScreen} />
+    <Tab.Screen name="MealPlan" component={MealPlanScreen} />
     <Tab.Screen name="Settings" component={SettingsScreen} />
   </Tab.Navigator>
 );
@@ -100,7 +113,9 @@ const AppNavigator = () => {
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       {user ? (
         profileComplete ? (
-          <Stack.Screen name="Main" component={MainTabs} />
+          <>
+            <Stack.Screen name="Main" component={MainTabs} />
+          </>
         ) : (
           <Stack.Screen name="ProfileSetup" component={ProfileSetupScreen} />
         )
