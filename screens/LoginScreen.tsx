@@ -11,27 +11,26 @@ import {
 } from 'react-native';
 import auth from '@react-native-firebase/auth';
 
-// ✅ Import navigation types
+// ✅ Typed navigation imports
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../App'; // ✅ adjust path if your App.tsx is elsewhere
+import { RootStackParamList } from '../App'; // Make sure this path is correct
 
-// ✅ Define the navigation type
+// ✅ Strongly typed navigation
 type LoginScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Login'>;
 
 const LoginScreen = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-
-  // ✅ Hook into navigation with proper typing
   const navigation = useNavigation<LoginScreenNavigationProp>();
 
   const handleLogin = async () => {
     try {
       await auth().signInWithEmailAndPassword(email, password);
-    } catch (error) {
-      console.error(error);
-      alert('Login failed. Check your credentials.');
+      // ✅ Navigation is handled by App.tsx after login; nothing to add here
+    } catch (error: any) {
+      console.error('[Login Error]', error);
+      alert(error.message || 'Login failed. Check your credentials.');
     }
   };
 
@@ -48,6 +47,8 @@ const LoginScreen = () => {
           placeholderTextColor="#ccc"
           value={email}
           onChangeText={setEmail}
+          autoCapitalize="none" // ✅ Prevents capitalizing email
+          keyboardType="email-address"
           style={styles.input}
         />
 
@@ -64,7 +65,6 @@ const LoginScreen = () => {
           <Text style={styles.buttonText}>Login</Text>
         </Pressable>
 
-        {/* ✅ Navigation now typed properly */}
         <Pressable onPress={() => navigation.navigate('Register')}>
           <Text style={styles.linkText}>Create an Account</Text>
         </Pressable>
@@ -92,7 +92,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.4,
     shadowRadius: 8,
-    elevation: 10, // for Android
+    elevation: 10,
   },
   title: {
     fontSize: 24,

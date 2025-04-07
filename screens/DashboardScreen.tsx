@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
+import auth from '@react-native-firebase/auth';
 
 const DashboardScreen = () => {
   return (
@@ -18,6 +19,10 @@ const DashboardScreen = () => {
 
         <Pressable style={styles.button}>
           <Text style={styles.buttonText}>Generate Workout</Text>
+        </Pressable>
+
+        <Pressable style={styles.logoutButton} onPress={() => auth().signOut()}>
+          <Text style={styles.logoutText}>Logout</Text>
         </Pressable>
       </View>
     </LinearGradient>
@@ -71,6 +76,19 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+
+  logoutButton: {
+    marginTop: 20,
+    backgroundColor: '#333',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 10,
+  },
+  logoutText: {
+    color: '#fff',
+    fontSize: 16,
+    textAlign: 'center',
   },
 });
 

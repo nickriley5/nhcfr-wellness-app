@@ -1,8 +1,16 @@
+// screens/ProfileSetupScreen.tsx
 import React, { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, ScrollView, Pressable } from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  StyleSheet,
+  ScrollView,
+  Pressable
+} from 'react-native';
+import Slider from '@react-native-community/slider';
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
-import Slider from '@react-native-community/slider';
 
 const fitnessLevels = [
   { label: 'Beginner', description: 'New to working out or inconsistent routine' },
@@ -39,7 +47,7 @@ const ProfileSetupScreen = ({ navigation }: any) => {
   const [dietPreference, setDietPreference] = useState('');
   const [restrictions, setRestrictions] = useState<string[]>([]);
   const [goalType, setGoalType] = useState('');
-  const [goalWeight, setGoalWeight] = useState<number>(200); // slider value
+  const [goalWeight, setGoalWeight] = useState<number>(200);
   const [timeline, setTimeline] = useState('');
 
   const toggleRestriction = (item: string) => {
@@ -86,54 +94,39 @@ const ProfileSetupScreen = ({ navigation }: any) => {
       <TextInput placeholder="Full Name" placeholderTextColor="#aaa" value={fullName} onChangeText={setFullName} style={styles.input} />
       <TextInput placeholder="Date of Birth (MM/DD/YYYY)" placeholderTextColor="#aaa" value={dob} onChangeText={setDob} style={styles.input} />
       <TextInput placeholder="Height (in)" placeholderTextColor="#aaa" value={height} onChangeText={setHeight} style={styles.input} />
-      <TextInput placeholder="Weight (lbs)" placeholderTextColor="#aaa" value={weight} onChangeText={setWeight} style={styles.input} keyboardType="numeric" />
+      <TextInput placeholder="Weight (lbs)" placeholderTextColor="#aaa" value={weight} onChangeText={setWeight} keyboardType="numeric" style={styles.input} />
 
       <Text style={styles.sectionTitle}>Fitness Level</Text>
       {fitnessLevels.map(({ label, description }) => (
-        <Pressable
-          key={label}
-          onPress={() => setFitnessLevel(label)}
-          style={[styles.optionButton, fitnessLevel === label && styles.selected]}>
+        <Pressable key={label} onPress={() => setFitnessLevel(label)} style={[styles.optionButton, fitnessLevel === label && styles.selected]}>
           <Text style={styles.optionText}>{label} - {description}</Text>
         </Pressable>
       ))}
 
       <Text style={styles.sectionTitle}>Activity Level</Text>
       {activityLevels.map(({ label, description }) => (
-        <Pressable
-          key={label}
-          onPress={() => setActivityLevel(label)}
-          style={[styles.optionButton, activityLevel === label && styles.selected]}>
+        <Pressable key={label} onPress={() => setActivityLevel(label)} style={[styles.optionButton, activityLevel === label && styles.selected]}>
           <Text style={styles.optionText}>{label} - {description}</Text>
         </Pressable>
       ))}
 
       <Text style={styles.sectionTitle}>Dietary Preference</Text>
       {dietaryPreferences.map(({ label, description }) => (
-        <Pressable
-          key={label}
-          onPress={() => setDietPreference(label)}
-          style={[styles.optionButton, dietPreference === label && styles.selected]}>
+        <Pressable key={label} onPress={() => setDietPreference(label)} style={[styles.optionButton, dietPreference === label && styles.selected]}>
           <Text style={styles.optionText}>{label} - {description}</Text>
         </Pressable>
       ))}
 
       <Text style={styles.sectionTitle}>Dietary Restrictions</Text>
       {dietaryRestrictions.map(item => (
-        <Pressable
-          key={item}
-          onPress={() => toggleRestriction(item)}
-          style={[styles.optionButton, restrictions.includes(item) && styles.selected]}>
+        <Pressable key={item} onPress={() => toggleRestriction(item)} style={[styles.optionButton, restrictions.includes(item) && styles.selected]}>
           <Text style={styles.optionText}>{item}</Text>
         </Pressable>
       ))}
 
       <Text style={styles.sectionTitle}>Your Goal</Text>
       {goalTypes.map(type => (
-        <Pressable
-          key={type}
-          onPress={() => setGoalType(type)}
-          style={[styles.optionButton, goalType === type && styles.selected]}>
+        <Pressable key={type} onPress={() => setGoalType(type)} style={[styles.optionButton, goalType === type && styles.selected]}>
           <Text style={styles.optionText}>{type}</Text>
         </Pressable>
       ))}

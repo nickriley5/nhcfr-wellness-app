@@ -5,14 +5,18 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import Feather from 'react-native-vector-icons/Feather';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 
+import { initializeApp, getApp } from 'firebase/app';
+import { getFirestore, doc, getDoc } from 'firebase/firestore';
+
+import firebaseConfig from './firebaseConfig'; // Make sure you have this
+
 // Screens
 import DashboardScreen from './screens/DashboardScreen';
 import HomeScreen from './screens/HomeScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import LoginScreen from './screens/LoginScreen';
 import ProfileSetupScreen from './screens/ProfileSetupScreen';
-import RegisterScreen from './screens/RegisterScreen'; // ✅ Add this
-
+import RegisterScreen from './screens/RegisterScreen';
 
 // Auth context
 import { AuthProvider, useAuth } from './providers/AuthProvider';
@@ -25,6 +29,10 @@ export type RootStackParamList = {
   ProfileSetup: undefined;
   LoadingProfile: undefined;
 };
+
+// Initialize Firebase once
+const firebaseApp = getApp.length ? getApp() : initializeApp(firebaseConfig);
+const db = getFirestore(firebaseApp);
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator();
@@ -63,8 +71,27 @@ const MainTabs = () => (
 
 const AppNavigator = () => {
   const { user, loading } = useAuth();
+  const [profileComplete, setProfileComplete] = React.useState<boolean | null>(null);
 
-  if (loading) {
+  React.useEffect(() => {
+    const fetchProfileStatus = async () => {
+      if (user) {
+        try {
+          const userRef = doc(db, 'users', user.uid);
+          const userSnap = await getDoc(userRef);
+          const data = userSnap.data();
+          setProfileComplete(data?.profileComplete === true);
+        } catch (error) {
+          console.error("Error fetching profileComplete:", error);
+          setProfileComplete(false);
+        }
+      }
+    };
+
+    fetchProfileStatus();
+  }, [user]);
+
+  if (loading || (user && profileComplete === null)) {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" color="#d32f2f" />
@@ -75,13 +102,13 @@ const AppNavigator = () => {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       {user ? (
-        <>
-          <Stack.Screen name="ProfileSetup" component={ProfileSetupScreen} />
+        profileComplete ? (
           <Stack.Screen name="Main" component={MainTabs} />
-        </>
+        ) : (
+          <Stack.Screen name="ProfileSetup" component={ProfileSetupScreen} />
+        )
       ) : (
         <>
-          {/* ✅ Login screen wrapped in styled splash layout */}
           <Stack.Screen name="Login">
             {() => (
               <View style={styles.splashWrapper}>
@@ -95,14 +122,11 @@ const AppNavigator = () => {
               </View>
             )}
           </Stack.Screen>
-  
-          {/* ✅ Register screen now available for navigation */}
           <Stack.Screen name="Register" component={RegisterScreen} />
         </>
       )}
     </Stack.Navigator>
   );
-  
 };
 
 const App = () => (
