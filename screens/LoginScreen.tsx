@@ -9,14 +9,11 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import auth from '@react-native-firebase/auth';
-
-// ✅ Typed navigation imports
+import auth from '@react-native-firebase/auth'; // ✅ Use RN Firebase Auth
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../App'; // Make sure this path is correct
+import { RootStackParamList } from '../App';
 
-// ✅ Strongly typed navigation
 type LoginScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Login'>;
 
 const LoginScreen = () => {
@@ -27,10 +24,9 @@ const LoginScreen = () => {
   const handleLogin = async () => {
     try {
       await auth().signInWithEmailAndPassword(email, password);
-      // ✅ Navigation is handled by App.tsx after login; nothing to add here
     } catch (error: any) {
-      console.error('[Login Error]', error);
-      alert(error.message || 'Login failed. Check your credentials.');
+      console.error(error);
+      alert('Login failed. Check your credentials.');
     }
   };
 
@@ -47,8 +43,6 @@ const LoginScreen = () => {
           placeholderTextColor="#ccc"
           value={email}
           onChangeText={setEmail}
-          autoCapitalize="none" // ✅ Prevents capitalizing email
-          keyboardType="email-address"
           style={styles.input}
         />
 

@@ -1,12 +1,22 @@
 import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
-import auth from '@react-native-firebase/auth';
+import { getAuth, signOut } from 'firebase/auth';
+import { getApp } from 'firebase/app';
 
 const DashboardScreen = () => {
+  const handleLogout = async () => {
+    try {
+      const auth = getAuth(getApp());
+      await signOut(auth);
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
+  };
+
   return (
     <LinearGradient
-      colors={['#0f0f0f', '#1c1c1c', '#121212']} // ✅ Updated gradient
+      colors={['#0f0f0f', '#1c1c1c', '#121212']}
       style={styles.container}
     >
       <View style={styles.card}>
@@ -21,7 +31,7 @@ const DashboardScreen = () => {
           <Text style={styles.buttonText}>Generate Workout</Text>
         </Pressable>
 
-        <Pressable style={styles.logoutButton} onPress={() => auth().signOut()}>
+        <Pressable style={styles.logoutButton} onPress={handleLogout}>
           <Text style={styles.logoutText}>Logout</Text>
         </Pressable>
       </View>
@@ -32,9 +42,9 @@ const DashboardScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 24,
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 24,
     backgroundColor: '#121212',
   },
   card: {
@@ -42,7 +52,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 24,
     width: '100%',
-    maxWidth: 400,
+    maxWidth: 420,
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
@@ -77,7 +87,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-
   logoutButton: {
     marginTop: 20,
     backgroundColor: '#333',

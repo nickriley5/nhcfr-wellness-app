@@ -1,3 +1,4 @@
+// App.tsx
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -5,10 +6,9 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import Feather from 'react-native-vector-icons/Feather';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 
-import { initializeApp, getApp } from 'firebase/app';
-import { getFirestore, doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from './firebase'; // ✅ if firebase.ts is in the same folder as App.tsx
 
-import firebaseConfig from './firebaseConfig'; // Make sure you have this
 
 // Screens
 import DashboardScreen from './screens/DashboardScreen';
@@ -21,6 +21,7 @@ import RegisterScreen from './screens/RegisterScreen';
 // Auth context
 import { AuthProvider, useAuth } from './providers/AuthProvider';
 
+
 // Navigation types
 export type RootStackParamList = {
   Login: undefined;
@@ -29,10 +30,6 @@ export type RootStackParamList = {
   ProfileSetup: undefined;
   LoadingProfile: undefined;
 };
-
-// Initialize Firebase once
-const firebaseApp = getApp.length ? getApp() : initializeApp(firebaseConfig);
-const db = getFirestore(firebaseApp);
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator();
@@ -82,7 +79,7 @@ const AppNavigator = () => {
           const data = userSnap.data();
           setProfileComplete(data?.profileComplete === true);
         } catch (error) {
-          console.error("Error fetching profileComplete:", error);
+          console.error('Error fetching profileComplete:', error);
           setProfileComplete(false);
         }
       }

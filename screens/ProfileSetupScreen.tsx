@@ -1,4 +1,3 @@
-// screens/ProfileSetupScreen.tsx
 import React, { useState } from 'react';
 import {
   View,
@@ -6,11 +5,13 @@ import {
   TextInput,
   StyleSheet,
   ScrollView,
-  Pressable
+  Pressable,
 } from 'react-native';
 import Slider from '@react-native-community/slider';
-import firestore from '@react-native-firebase/firestore';
-import auth from '@react-native-firebase/auth';
+
+import { getFirestore, doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
+import { getApp } from 'firebase/app';
 
 const fitnessLevels = [
   { label: 'Beginner', description: 'New to working out or inconsistent routine' },
@@ -57,11 +58,13 @@ const ProfileSetupScreen = ({ navigation }: any) => {
   };
 
   const handleSubmit = async () => {
-    const uid = auth().currentUser?.uid;
+    const auth = getAuth(getApp());
+    const db = getFirestore(getApp());
+    const uid = auth.currentUser?.uid;
     if (!uid) return;
 
     try {
-      await firestore().collection('users').doc(uid).set({
+      await setDoc(doc(db, 'users', uid), {
         fullName,
         dob,
         height,
@@ -74,7 +77,7 @@ const ProfileSetupScreen = ({ navigation }: any) => {
         goalWeight,
         timeline,
         profileComplete: true,
-        createdAt: firestore.FieldValue.serverTimestamp(),
+        createdAt: serverTimestamp(),
       });
 
       navigation.replace('Main');
