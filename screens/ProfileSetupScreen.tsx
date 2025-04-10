@@ -80,7 +80,7 @@ const ProfileSetupScreen = ({ navigation }: any) => {
         createdAt: serverTimestamp(),
       });
 
-      navigation.replace('Main');
+      await getAuth(getApp()).signOut();
     } catch (error) {
       console.error(error);
       alert('Failed to save profile');
