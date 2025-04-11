@@ -25,7 +25,7 @@ const DashboardScreen = () => {
       style={styles.container}
     >
       <View style={styles.card}>
-        <Text style={styles.header}>🚒 Firefighter Wellness App</Text>
+        <Text style={styles.header}>Firefighter Wellness App</Text>
         <Text style={styles.subtext}>Train for duty. Fuel for life. 🔥</Text>
 
         <Pressable style={styles.button} onPress={() => navigation.navigate('MealPlan')}>

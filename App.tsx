@@ -1,6 +1,8 @@
 // App.tsx
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
+import { NavigatorScreenParams } from '@react-navigation/native';
+
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import Feather from 'react-native-vector-icons/Feather';
@@ -17,6 +19,8 @@ import LoginScreen from './screens/LoginScreen';
 import ProfileSetupScreen from './screens/ProfileSetupScreen';
 import RegisterScreen from './screens/RegisterScreen';
 import MealPlanScreen from './screens/MealPlanScreen';
+import CheckInScreen from './screens/CheckInScreen'; // ✅ Add this
+
 
 // Auth context
 import { AuthProvider, useAuth } from './providers/AuthProvider';
@@ -25,9 +29,17 @@ import { AuthProvider, useAuth } from './providers/AuthProvider';
 export type RootStackParamList = {
   Login: undefined;
   Register: undefined;
-  Main: undefined;
+  Main: NavigatorScreenParams<TabParamList> | undefined;
   ProfileSetup: undefined;
   MealPlan: undefined;
+  CheckIn: undefined;
+};
+
+export type TabParamList = {
+  Home: undefined;
+  Dashboard: undefined;
+  MealPlan: undefined;
+  Settings: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -115,6 +127,7 @@ const AppNavigator = () => {
         profileComplete ? (
           <>
             <Stack.Screen name="Main" component={MainTabs} />
+            <Stack.Screen name="CheckIn" component={CheckInScreen} />
           </>
         ) : (
           <Stack.Screen name="ProfileSetup" component={ProfileSetupScreen} />
