@@ -11,6 +11,7 @@ import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from './firebase';
 
+
 // Screens
 import DashboardScreen from './screens/DashboardScreen';
 import HomeScreen from './screens/HomeScreen';

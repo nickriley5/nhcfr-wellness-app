@@ -3,15 +3,24 @@ import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { signOut } from 'firebase/auth';
 import { auth, firestore } from '../firebase';
-import { collection, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
-
+import { collection, getDocs, query, where, orderBy, limit, DocumentData } from 'firebase/firestore';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
+import MoodEnergyChart from '../components/MoodEnergyChart';
+
+// ✅ Define the proper type for each check-in entry
+interface CheckInEntry extends DocumentData {
+  id: string;
+  mood: number;
+  energy: number;
+}
 
 const DashboardScreen = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const [recentCheckIns, setRecentCheckIns] = useState<any[]>([]);
+  const [recentCheckIns, setRecentCheckIns] = useState<CheckInEntry[]>([]);
+  const [moodData, setMoodData] = useState<number[]>([]);
+  const [energyData, setEnergyData] = useState<number[]>([]);
 
   useEffect(() => {
     const fetchRecentCheckIns = async () => {
@@ -24,12 +33,20 @@ const DashboardScreen = () => {
           checkInRef,
           where('uid', '==', user.uid),
           orderBy('timestamp', 'desc'),
-          limit(3)
+          limit(10)
         );
 
         const snapshot = await getDocs(q);
-        const checkIns = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setRecentCheckIns(checkIns);
+        const checkIns: CheckInEntry[] = snapshot.docs.map(doc => {
+          const data = doc.data();
+          const mood = data.mood ?? 0;
+          const energy = data.energy ?? 0;
+          return { id: doc.id, mood, energy };
+        });
+
+        setRecentCheckIns(checkIns.slice(0, 3));
+        setMoodData(checkIns.map(entry => entry.mood).reverse());
+        setEnergyData(checkIns.map(entry => entry.energy).reverse());
       } catch (error) {
         console.error('Error fetching check-ins:', error);
       }
@@ -54,6 +71,9 @@ const DashboardScreen = () => {
       <ScrollView contentContainerStyle={styles.card}>
         <Text style={styles.header}>Firefighter Wellness App</Text>
         <Text style={styles.subtext}>Train for duty. Fuel for life. 🔥</Text>
+
+        {/* ✅ Chart component */}
+        <MoodEnergyChart moodData={moodData} energyData={energyData} />
 
         {recentCheckIns.length > 0 && (
           <View style={styles.checkInCard}>
@@ -125,6 +145,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#2a2a2a',
     borderRadius: 12,
     padding: 16,
+    marginTop: 20,
     marginBottom: 20,
     width: '100%',
   },
