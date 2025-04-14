@@ -19,3 +19,6 @@ const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 // ✅ Export initialized Firestore and Auth (modular API)
 export const db = getFirestore(app);
 export const auth = getAuth(app);
+const firestore = getFirestore(app);
+
+export { firestore };
