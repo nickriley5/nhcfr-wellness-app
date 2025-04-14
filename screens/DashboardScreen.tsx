@@ -21,6 +21,8 @@ const DashboardScreen = () => {
   const [view, setView] = useState<'week' | 'month' | 'all'>('week');
   const [moodData, setMoodData] = useState<number[]>([]);
   const [energyData, setEnergyData] = useState<number[]>([]);
+  const [userName, setUserName] = useState<string>('');
+  const [hasCheckedInToday, setHasCheckedInToday] = useState<boolean>(true);
 
   useEffect(() => {
     const fetchCheckIns = async () => {
@@ -46,9 +48,14 @@ const DashboardScreen = () => {
           };
         });
 
+        const today = new Date();
+        const latestCheckIn = checkIns[0]?.timestamp;
+        if (!latestCheckIn || latestCheckIn.toDateString() !== today.toDateString()) {
+          setHasCheckedInToday(false);
+        }
+
         if (view === 'week') checkIns = checkIns.slice(0, 7);
         else if (view === 'month') checkIns = checkIns.slice(0, 30);
-        // else 'all' shows everything
 
         checkIns.reverse();
         setMoodData(checkIns.map(entry => entry.mood));
@@ -72,10 +79,18 @@ const DashboardScreen = () => {
   return (
     <LinearGradient colors={['#0f0f0f', '#1c1c1c', '#121212']} style={styles.container}>
       <ScrollView contentContainerStyle={styles.card}>
-        <Text style={styles.header}>Firefighter Wellness App</Text>
+        <Text style={styles.header}>Your Dashboard</Text>
         <Text style={styles.subtext}>Train for duty. Fuel for life. 🔥</Text>
 
-        {/* Toggle buttons */}
+        {!hasCheckedInToday && (
+          <View style={styles.reminderCard}>
+            <Text style={styles.reminderText}>Don't forget to check in today!</Text>
+          </View>
+        )}
+
+        {/* Toggle buttons now below the section title */}
+        <Text style={styles.sectionHeader}>Mood & Energy Trends</Text>
+
         <View style={styles.toggleContainer}>
           <Pressable
             style={[styles.toggleButton, view === 'week' && styles.toggleActive]}
@@ -98,6 +113,12 @@ const DashboardScreen = () => {
         </View>
 
         <MoodEnergyChart moodData={moodData} energyData={energyData} />
+
+        {/* Coming soon card */}
+        <View style={styles.comingSoonCard}>
+          <Text style={styles.sectionHeader}>💡 AI Coach</Text>
+          <Text style={styles.sectionText}>Personalized fitness & recovery tips coming soon.</Text>
+        </View>
 
         <Pressable style={styles.button} onPress={() => navigation.navigate('MealPlan')}>
           <Text style={styles.buttonText}>Generate Meal Plan</Text>
@@ -140,18 +161,29 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#d32f2f',
     textAlign: 'center',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   subtext: {
     fontSize: 14,
     color: '#ccc',
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: 16,
+  },
+  reminderCard: {
+    backgroundColor: '#2a2a2a',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+  },
+  reminderText: {
+    color: '#ffd54f',
+    fontSize: 14,
+    textAlign: 'center',
   },
   toggleContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: -20,
   },
   toggleButton: {
     backgroundColor: '#333',
@@ -192,6 +224,24 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     textAlign: 'center',
+  },
+  comingSoonCard: {
+    backgroundColor: '#292929',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 20,
+    width: '100%',
+  },
+  sectionHeader: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#d32f2f',
+    marginBottom: 8,
+    textAlign: 'center'
+  },
+  sectionText: {
+    fontSize: 14,
+    color: '#ccc',
   },
 });
 

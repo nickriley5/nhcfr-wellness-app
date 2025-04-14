@@ -19,7 +19,6 @@ const MoodEnergyChart = ({ moodData, energyData }: {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Mood & Energy Trends</Text>
       <LineChart
         data={{
           labels: moodData.map((_, index) => `D${index + 1}`),
