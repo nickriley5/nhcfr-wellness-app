@@ -3,27 +3,27 @@ import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { signOut } from 'firebase/auth';
 import { auth, firestore } from '../firebase';
-import { collection, getDocs, query, where, orderBy, limit, DocumentData } from 'firebase/firestore';
+import { collection, getDocs, query, where, orderBy, DocumentData } from 'firebase/firestore';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
 import MoodEnergyChart from '../components/MoodEnergyChart';
 
-// ✅ Define the proper type for each check-in entry
 interface CheckInEntry extends DocumentData {
   id: string;
   mood: number;
   energy: number;
+  timestamp: any;
 }
 
 const DashboardScreen = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const [recentCheckIns, setRecentCheckIns] = useState<CheckInEntry[]>([]);
+  const [view, setView] = useState<'week' | 'month' | 'all'>('week');
   const [moodData, setMoodData] = useState<number[]>([]);
   const [energyData, setEnergyData] = useState<number[]>([]);
 
   useEffect(() => {
-    const fetchRecentCheckIns = async () => {
+    const fetchCheckIns = async () => {
       try {
         const user = auth.currentUser;
         if (!user) return;
@@ -32,28 +32,34 @@ const DashboardScreen = () => {
         const q = query(
           checkInRef,
           where('uid', '==', user.uid),
-          orderBy('timestamp', 'desc'),
-          limit(10)
+          orderBy('timestamp', 'desc')
         );
 
         const snapshot = await getDocs(q);
-        const checkIns: CheckInEntry[] = snapshot.docs.map(doc => {
+        let checkIns: CheckInEntry[] = snapshot.docs.map(doc => {
           const data = doc.data();
-          const mood = data.mood ?? 0;
-          const energy = data.energy ?? 0;
-          return { id: doc.id, mood, energy };
+          return {
+            id: doc.id,
+            mood: data.mood ?? 0,
+            energy: data.energy ?? 0,
+            timestamp: data.timestamp?.toDate() || new Date(0)
+          };
         });
 
-        setRecentCheckIns(checkIns.slice(0, 3));
-        setMoodData(checkIns.map(entry => entry.mood).reverse());
-        setEnergyData(checkIns.map(entry => entry.energy).reverse());
+        if (view === 'week') checkIns = checkIns.slice(0, 7);
+        else if (view === 'month') checkIns = checkIns.slice(0, 30);
+        // else 'all' shows everything
+
+        checkIns.reverse();
+        setMoodData(checkIns.map(entry => entry.mood));
+        setEnergyData(checkIns.map(entry => entry.energy));
       } catch (error) {
         console.error('Error fetching check-ins:', error);
       }
     };
 
-    fetchRecentCheckIns();
-  }, []);
+    fetchCheckIns();
+  }, [view]);
 
   const handleLogout = async () => {
     try {
@@ -64,27 +70,34 @@ const DashboardScreen = () => {
   };
 
   return (
-    <LinearGradient
-      colors={['#0f0f0f', '#1c1c1c', '#121212']}
-      style={styles.container}
-    >
+    <LinearGradient colors={['#0f0f0f', '#1c1c1c', '#121212']} style={styles.container}>
       <ScrollView contentContainerStyle={styles.card}>
         <Text style={styles.header}>Firefighter Wellness App</Text>
         <Text style={styles.subtext}>Train for duty. Fuel for life. 🔥</Text>
 
-        {/* ✅ Chart component */}
-        <MoodEnergyChart moodData={moodData} energyData={energyData} />
+        {/* Toggle buttons */}
+        <View style={styles.toggleContainer}>
+          <Pressable
+            style={[styles.toggleButton, view === 'week' && styles.toggleActive]}
+            onPress={() => setView('week')}
+          >
+            <Text style={styles.toggleText}>Week</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.toggleButton, view === 'month' && styles.toggleActive]}
+            onPress={() => setView('month')}
+          >
+            <Text style={styles.toggleText}>Month</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.toggleButton, view === 'all' && styles.toggleActive]}
+            onPress={() => setView('all')}
+          >
+            <Text style={styles.toggleText}>All</Text>
+          </Pressable>
+        </View>
 
-        {recentCheckIns.length > 0 && (
-          <View style={styles.checkInCard}>
-            <Text style={styles.sectionTitle}>Recent Check-ins</Text>
-            {recentCheckIns.map((checkIn, index) => (
-              <Text key={index} style={styles.checkInText}>
-                • Mood: {checkIn.mood} | Energy: {checkIn.energy}
-              </Text>
-            ))}
-          </View>
-        )}
+        <MoodEnergyChart moodData={moodData} energyData={energyData} />
 
         <Pressable style={styles.button} onPress={() => navigation.navigate('MealPlan')}>
           <Text style={styles.buttonText}>Generate Meal Plan</Text>
@@ -135,24 +148,24 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 24,
   },
-  sectionTitle: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 8,
+  toggleContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginBottom: 16,
   },
-  checkInCard: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: 12,
-    padding: 16,
-    marginTop: 20,
-    marginBottom: 20,
-    width: '100%',
+  toggleButton: {
+    backgroundColor: '#333',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginHorizontal: 6,
   },
-  checkInText: {
+  toggleActive: {
+    backgroundColor: '#d32f2f',
+  },
+  toggleText: {
     color: '#fff',
     fontSize: 14,
-    marginBottom: 6,
   },
   button: {
     backgroundColor: '#d32f2f',
