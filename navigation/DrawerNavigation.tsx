@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { createDrawerNavigator, DrawerContentScrollView, DrawerItem } from '@react-navigation/drawer';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { NavigationContainer } from '@react-navigation/native';
@@ -12,10 +12,43 @@ import SettingsScreen from '../screens/SettingsScreen';
 import MealPlanScreen from '../screens/MealPlanScreen';
 import WorkoutScreen from '../screens/WorkoutScreen';
 
+import { getAuth } from 'firebase/auth';
+import { getFirestore, doc, getDoc } from 'firebase/firestore';
+
 const Drawer = createDrawerNavigator();
 const Tab = createBottomTabNavigator();
 
 const CustomDrawerContent = (props: any) => {
+  const [userName, setUserName] = useState('Firefighter');
+
+  useEffect(() => {
+    const fetchName = async () => {
+      try {
+        const auth = getAuth();
+        const firestore = getFirestore();
+        const uid = auth.currentUser?.uid;
+        if (!uid) return;
+        const userDoc = await getDoc(doc(firestore, 'users', uid));
+        const data = userDoc.data();
+        if (data?.fullName) {
+          const firstName = data.fullName.split(' ')[0];
+          setUserName(firstName);
+        }
+      } catch (err) {
+        console.error('Failed to load name:', err);
+      }
+    };
+
+    fetchName();
+  }, []);
+
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning';
+    if (hour < 18) return 'Good afternoon';
+    return 'Good evening';
+  };
+
   return (
     <DrawerContentScrollView {...props} contentContainerStyle={styles.drawerContainer}>
       <View style={styles.profileSection}>
@@ -23,7 +56,7 @@ const CustomDrawerContent = (props: any) => {
           source={require('../assets/profile-placeholder.png')}
           style={styles.profileImage}
         />
-        <Text style={styles.profileName}>Welcome, Firefighter</Text>
+        <Text style={styles.profileName}>{`${getGreeting()}, ${userName}!`}</Text>
       </View>
       <DrawerItem
         label="Profile"
@@ -92,12 +125,14 @@ const DrawerNavigation = () => {
               Profile: 'user',
               Settings: 'settings',
             };
-            return <Feather name={iconMap[route.name] || 'circle'} size={size} color={color} />;
+            return iconMap[route.name] ? (
+              <Feather name={iconMap[route.name]} size={size} color={color} />
+            ) : null;
           },
         })}
         drawerContent={(props) => <CustomDrawerContent {...props} />}
       >
-        <Drawer.Screen name="MainTabs" component={TabNavigator} options={{ title: 'Home' }} />
+        <Drawer.Screen name="MainTabs" component={TabNavigator} options={{ drawerItemStyle: { height: 0 } }} />
         <Drawer.Screen name="Profile" component={ProfileScreen} />
         <Drawer.Screen name="Settings" component={SettingsScreen} />
       </Drawer.Navigator>
