@@ -11,7 +11,6 @@ import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from './firebase';
 
-
 // Screens
 import DashboardScreen from './screens/DashboardScreen';
 import HomeScreen from './screens/HomeScreen';
@@ -20,8 +19,8 @@ import LoginScreen from './screens/LoginScreen';
 import ProfileSetupScreen from './screens/ProfileSetupScreen';
 import RegisterScreen from './screens/RegisterScreen';
 import MealPlanScreen from './screens/MealPlanScreen';
-import CheckInScreen from './screens/CheckInScreen'; // ✅ Add this
-
+import CheckInScreen from './screens/CheckInScreen';
+import DrawerNavigation from './navigation/DrawerNavigation';
 
 // Auth context
 import { AuthProvider, useAuth } from './providers/AuthProvider';
@@ -127,7 +126,7 @@ const AppNavigator = () => {
       {user ? (
         profileComplete ? (
           <>
-            <Stack.Screen name="Main" component={MainTabs} />
+            <Stack.Screen name="Main" component={DrawerNavigation} />
             <Stack.Screen name="CheckIn" component={CheckInScreen} />
           </>
         ) : (
