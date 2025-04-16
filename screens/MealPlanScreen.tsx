@@ -1,78 +1,131 @@
 // screens/MealPlanScreen.tsx
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Alert,
+} from 'react-native';
+import LinearGradient from 'react-native-linear-gradient';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { auth, firestore } from '../firebase';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { TabParamList, RootStackParamList } from '../App';
 
-const mealPlan = {
-  Breakfast: [
-    '2 eggs scrambled with spinach (1 cup)',
-    '½ avocado',
-    '1 cup black coffee',
-  ],
-  Lunch: [
-    '6 oz grilled chicken',
-    '1 medium sweet potato',
-    '1 cup steamed broccoli',
-  ],
-  Snack: [
-    '1 scoop protein shake',
-    'Handful of almonds (¼ cup)',
-  ],
-  Dinner: [
-    '6 oz salmon',
-    '¾ cup quinoa',
-    '1 cup roasted asparagus',
-  ],
-};
+// Navigation prop type (if you navigate back or elsewhere)
+type MealPlanNavProp = NativeStackNavigationProp<RootStackParamList>;
 
-const MealPlanScreen = () => {
+interface Meal {
+  name: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+}
+
+const MealPlanScreen: React.FC = () => {
+  const navigation = useNavigation<MealPlanNavProp>();
+  const [meals, setMeals] = useState<Meal[] | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+
+  // Fetch existing plan or generate placeholder
+  useEffect(() => {
+    const fetchPlan = async () => {
+      try {
+        const uid = auth.currentUser?.uid;
+        if (!uid) return;
+
+        const today = new Date().toISOString().split('T')[0];
+        const ref = doc(firestore, 'mealPlans', `${uid}_${today}`);
+        const snap = await getDoc(ref);
+
+        if (snap.exists()) {
+          setMeals(snap.data().meals as Meal[]);
+        } else {
+          await generatePlan();
+        }
+      } catch (err) {
+        console.error('Error loading meal plan:', err);
+        Alert.alert('Error', 'Could not load meal plan.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchPlan();
+  }, []);
+
+  // Generate or regenerate plan
+  const generatePlan = async () => {
+    setLoading(true);
+    try {
+      // TODO: replace with AI or backend call
+      const placeholder: Meal[] = [
+        { name: 'Grilled Chicken & Veggies', calories: 450, protein: 40, carbs: 30, fat: 15 },
+        { name: 'Salmon Salad', calories: 500, protein: 35, carbs: 20, fat: 25 },
+        { name: 'Beef Stir Fry', calories: 550, protein: 45, carbs: 35, fat: 20 },
+      ];
+
+      const uid = auth.currentUser?.uid;
+      if (!uid) throw new Error('Not signed in');
+
+      const today = new Date().toISOString().split('T')[0];
+      const ref = doc(firestore, 'mealPlans', `${uid}_${today}`);
+      await setDoc(
+        ref,
+        { meals: placeholder, generatedAt: serverTimestamp() },
+        { merge: true }
+      );
+      setMeals(placeholder);
+    } catch (err) {
+      console.error('Error generating meal plan:', err);
+      Alert.alert('Error', 'Could not generate meal plan.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.loader}>
+        <ActivityIndicator size="large" color="#d32f2f" />
+      </View>
+    );
+  }
+
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Your Meal Plan 🍽️</Text>
-      {Object.entries(mealPlan).map(([meal, items]) => (
-        <View key={meal} style={styles.card}>
-          <Text style={styles.mealTitle}>{meal}</Text>
-          {items.map((item, index) => (
-            <Text key={index} style={styles.itemText}>• {item}</Text>
-          ))}
-        </View>
-      ))}
-    </ScrollView>
+    <LinearGradient colors={['#0f0f0f', '#1c1c1c', '#121212']} style={styles.container}>
+      <ScrollView contentContainerStyle={styles.content}>
+        <Text style={styles.title}>Today's Meal Plan</Text>
+        {meals?.map((meal, idx) => (
+          <View key={idx} style={styles.card}>
+            <Text style={styles.mealName}>{meal.name}</Text>
+            <Text style={styles.nutrients}>
+              {meal.calories} kcal | P: {meal.protein}g | C: {meal.carbs}g | F: {meal.fat}g
+            </Text>
+          </View>
+        ))}
+        <Pressable style={styles.button} onPress={generatePlan}>
+          <Text style={styles.buttonText}>Regenerate Plan</Text>
+        </Pressable>
+      </ScrollView>
+    </LinearGradient>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    padding: 16,
-    backgroundColor: '#121212',
-    flexGrow: 1,
-    paddingBottom: 80, // space for navbar
-  },
-  title: {
-    fontSize: 24,
-    color: '#fff',
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  card: {
-    backgroundColor: '#1e1e1e',
-    borderColor: '#d32f2f',
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 20,
-  },
-  mealTitle: {
-    fontSize: 20,
-    color: '#d32f2f',
-    fontWeight: 'bold',
-    marginBottom: 8,
-  },
-  itemText: {
-    color: '#fff',
-    fontSize: 16,
-    marginBottom: 4,
-  },
+  container: { flex: 1 },
+  loader: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#121212' },
+  content: { padding: 24, alignItems: 'center' },
+  title: { fontSize: 24, fontWeight: '700', color: '#d32f2f', marginBottom: 16 },
+  card: { width: '100%', backgroundColor: '#2a2a2a', borderRadius: 12, padding: 16, marginBottom: 12 },
+  mealName: { fontSize: 18, fontWeight: '600', color: '#fff', marginBottom: 8 },
+  nutrients: { fontSize: 14, color: '#ccc' },
+  button: { marginTop: 20, backgroundColor: '#d32f2f', paddingVertical: 12, paddingHorizontal: 24, borderRadius: 8 },
+  buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
 });
 
 export default MealPlanScreen;
