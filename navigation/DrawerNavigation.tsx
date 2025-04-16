@@ -12,7 +12,7 @@ import SettingsScreen from '../screens/SettingsScreen';
 import MealPlanScreen from '../screens/MealPlanScreen';
 import WorkoutScreen from '../screens/WorkoutScreen';
 
-import { getAuth } from 'firebase/auth';
+import { getAuth, signOut } from 'firebase/auth';
 import { getFirestore, doc, getDoc } from 'firebase/firestore';
 
 const Drawer = createDrawerNavigator();
@@ -49,30 +49,53 @@ const CustomDrawerContent = (props: any) => {
     return 'Good evening';
   };
 
+  const handleLogout = async () => {
+    try {
+      const auth = getAuth();
+      await signOut(auth);
+    } catch (err) {
+      console.error('Logout failed:', err);
+    }
+  };
+
   return (
-    <DrawerContentScrollView {...props} contentContainerStyle={styles.drawerContainer}>
-      <View style={styles.profileSection}>
-        <Image
-          source={require('../assets/profile-placeholder.png')}
-          style={styles.profileImage}
+    <View style={{ flex: 1, justifyContent: 'space-between' }}>
+      <DrawerContentScrollView {...props} contentContainerStyle={styles.drawerContainer}>
+        <View style={styles.profileSection}>
+          <Image
+            source={require('../assets/profile-placeholder.png')}
+            style={styles.profileImage}
+          />
+          <Text style={styles.profileName}>{`${getGreeting()}, ${userName}!`}</Text>
+        </View>
+
+        <DrawerItem
+          label="Profile"
+          labelStyle={{ color: '#fff' }}
+          icon={({ color, size }) => <Feather name="user" color={color} size={size} />}
+          onPress={() => props.navigation.navigate('Profile')}
         />
-        <Text style={styles.profileName}>{`${getGreeting()}, ${userName}!`}</Text>
+        <DrawerItem
+          label="Settings"
+          labelStyle={{ color: '#fff' }}
+          icon={({ color, size }) => <Feather name="settings" color={color} size={size} />}
+          onPress={() => props.navigation.navigate('Settings')}
+        />
+      </DrawerContentScrollView>
+
+      {/* 👇 Logout section pinned to the bottom */}
+      <View style={styles.logoutSection}>
+        <DrawerItem
+          label="Logout"
+          labelStyle={{ color: '#fff' }}
+          icon={({ color, size }) => <Feather name="log-out" color={color} size={size} />}
+          onPress={handleLogout}
+        />
       </View>
-      <DrawerItem
-        label="Profile"
-        labelStyle={{ color: '#fff' }}
-        icon={({ color, size }) => <Feather name="user" color={color} size={size} />}
-        onPress={() => props.navigation.navigate('Profile')}
-      />
-      <DrawerItem
-        label="Settings"
-        labelStyle={{ color: '#fff' }}
-        icon={({ color, size }) => <Feather name="settings" color={color} size={size} />}
-        onPress={() => props.navigation.navigate('Settings')}
-      />
-    </DrawerContentScrollView>
+    </View>
   );
 };
+
 
 const TabNavigator = () => (
   <Tab.Navigator
@@ -160,6 +183,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  logoutSection: {
+    borderTopWidth: 1,
+    borderTopColor: '#333',
+    paddingVertical: 10,
+    backgroundColor: '#1c1c1c',
+  },  
 });
 
 export default DrawerNavigation;

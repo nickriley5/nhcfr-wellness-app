@@ -127,10 +127,6 @@ const DashboardScreen = () => {
         <Pressable style={styles.button}>
           <Text style={styles.buttonText}>Generate Workout</Text>
         </Pressable>
-
-        <Pressable style={styles.logoutButton} onPress={handleLogout}>
-          <Text style={styles.logoutText}>Logout</Text>
-        </Pressable>
       </ScrollView>
     </LinearGradient>
   );
