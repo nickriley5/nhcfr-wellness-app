@@ -114,6 +114,15 @@ const DashboardScreen = () => {
 
         <MoodEnergyChart moodData={moodData} energyData={energyData} />
 
+        {!hasCheckedInToday && (
+  <Pressable
+    style={[styles.button, { marginTop: 8, backgroundColor: '#388e3c' }]}
+    onPress={() => navigation.navigate('CheckIn')}
+  >
+    <Text style={styles.buttonText}>Check In Now</Text>
+  </Pressable>
+)}
+
         {/* Coming soon card */}
         <View style={styles.comingSoonCard}>
           <Text style={styles.sectionHeader}>💡 AI Coach</Text>
