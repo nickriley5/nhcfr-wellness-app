@@ -1,45 +1,45 @@
+// screens/DashboardScreen.tsx
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
+import {
+  useNavigation,
+  CompositeNavigationProp,
+} from '@react-navigation/native';
+import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { signOut } from 'firebase/auth';
 import { auth, firestore } from '../firebase';
-import { collection, getDocs, query, where, orderBy, DocumentData } from 'firebase/firestore';
-import { useNavigation } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../App';
+import {
+  collection,
+  getDocs,
+  query,
+  where,
+  orderBy,
+  DocumentData,
+} from 'firebase/firestore';
+import { TabParamList, RootStackParamList } from '../App';
 import MoodEnergyChart from '../components/MoodEnergyChart';
 
 interface CheckInEntry extends DocumentData {
   id: string;
   mood: number;
   energy: number;
-  timestamp: any;
+  timestamp: Date;
 }
 
-const DashboardScreen = () => {
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+// Composite prop to navigate tabs and stack
+type DashboardNavProp = CompositeNavigationProp<
+  BottomTabNavigationProp<TabParamList, 'Dashboard'>,
+  NativeStackNavigationProp<RootStackParamList>
+>;
+
+const DashboardScreen: React.FC = () => {
+  const navigation = useNavigation<DashboardNavProp>();
   const [view, setView] = useState<'week' | 'month' | 'all'>('week');
   const [moodData, setMoodData] = useState<number[]>([]);
   const [energyData, setEnergyData] = useState<number[]>([]);
-  const [userName, setUserName] = useState<string>('');
   const [hasCheckedInToday, setHasCheckedInToday] = useState<boolean>(true);
-
-  const QuickViews = () => (
-    <View style={styles.quickViewContainer}>
-      <View style={styles.quickCard}>
-        <Text style={styles.quickTitle}>🍽️ Next Meal</Text>
-        <Text style={styles.quickDetail}>Grilled chicken, rice, steamed broccoli</Text>
-      </View>
-      <Pressable
-        style={styles.quickCard}
-        onPress={() => navigation.navigate('WorkoutDetail' as keyof RootStackParamList)}
-      >
-        <Text style={styles.quickTitle}>🏋️ Today's Workout</Text>
-        <Text style={styles.quickDetail}>Full-body kettlebell circuit & mobility</Text>
-        <Text style={styles.quickHint}>Tap to view full workout</Text>
-      </Pressable>
-    </View>
-  );
 
   useEffect(() => {
     const fetchCheckIns = async () => {
@@ -47,111 +47,130 @@ const DashboardScreen = () => {
         const user = auth.currentUser;
         if (!user) return;
 
-        const checkInRef = collection(firestore, 'checkins');
         const q = query(
-          checkInRef,
+          collection(firestore, 'checkins'),
           where('uid', '==', user.uid),
           orderBy('timestamp', 'desc')
         );
-
         const snapshot = await getDocs(q);
-        let checkIns: CheckInEntry[] = snapshot.docs.map(doc => {
+
+        let entries: CheckInEntry[] = snapshot.docs.map(doc => {
           const data = doc.data();
           return {
             id: doc.id,
             mood: data.mood ?? 0,
             energy: data.energy ?? 0,
-            timestamp: data.timestamp?.toDate() || new Date(0)
+            timestamp: data.timestamp?.toDate() || new Date(0),
           };
         });
 
         const today = new Date();
-        const latestCheckIn = checkIns[0]?.timestamp;
-        if (!latestCheckIn || latestCheckIn.toDateString() !== today.toDateString()) {
+        if (
+          !entries[0] ||
+          entries[0].timestamp.toDateString() !== today.toDateString()
+        ) {
           setHasCheckedInToday(false);
         }
 
-        if (view === 'week') checkIns = checkIns.slice(0, 7);
-        else if (view === 'month') checkIns = checkIns.slice(0, 30);
+        if (view === 'week') entries = entries.slice(0, 7);
+        else if (view === 'month') entries = entries.slice(0, 30);
 
-        checkIns.reverse();
-        setMoodData(checkIns.map(entry => entry.mood));
-        setEnergyData(checkIns.map(entry => entry.energy));
-      } catch (error) {
-        console.error('Error fetching check-ins:', error);
+        entries.reverse();
+        setMoodData(entries.map(e => e.mood));
+        setEnergyData(entries.map(e => e.energy));
+      } catch (err) {
+        console.error(err);
       }
     };
 
     fetchCheckIns();
   }, [view]);
 
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-    } catch (error) {
-      console.error('Logout failed:', error);
-    }
-  };
+  const QuickViews = () => (
+    <View style={styles.quickContainer}>
+      <View style={styles.quickCard}>
+        <Text style={styles.quickTitle}>🍽️ Next Meal</Text>
+        <Text style={styles.quickDetail}>Grilled chicken, rice, broccoli</Text>
+      </View>
+      <Pressable
+        style={styles.quickCard}
+        onPress={() => navigation.navigate('WorkoutDetail')}
+      >
+        <Text style={styles.quickTitle}>🏋️ Today's Workout</Text>
+        <Text style={styles.quickDetail}>Kettlebell circuit & mobility</Text>
+        <Text style={styles.quickHint}>Tap to view full workout</Text>
+      </Pressable>
+    </View>
+  );
 
   return (
-    <LinearGradient colors={['#0f0f0f', '#1c1c1c', '#121212']} style={styles.container}>
-      <ScrollView contentContainerStyle={styles.card}>
+    <LinearGradient
+      colors={['#0f0f0f', '#1c1c1c', '#121212']}
+      style={styles.screen}
+    >
+      <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.header}>Your Dashboard</Text>
-        <Text style={styles.subtext}>Train for duty. Fuel for life. 🔥</Text>
+        <Text style={styles.subheader}>Train for duty. Fuel for life. 🔥</Text>
 
         {!hasCheckedInToday && (
           <View style={styles.reminderCard}>
-            <Text style={styles.reminderText}>Don't forget to check in today!</Text>
+            <Text style={styles.reminderText}>
+              Don't forget to check in today!
+            </Text>
           </View>
         )}
 
-        <Text style={styles.sectionHeader}>Mood & Energy Trends</Text>
-
-        <View style={styles.toggleContainer}>
-          <Pressable
-            style={[styles.toggleButton, view === 'week' && styles.toggleActive]}
-            onPress={() => setView('week')}
-          >
-            <Text style={styles.toggleText}>Week</Text>
-          </Pressable>
-          <Pressable
-            style={[styles.toggleButton, view === 'month' && styles.toggleActive]}
-            onPress={() => setView('month')}
-          >
-            <Text style={styles.toggleText}>Month</Text>
-          </Pressable>
-          <Pressable
-            style={[styles.toggleButton, view === 'all' && styles.toggleActive]}
-            onPress={() => setView('all')}
-          >
-            <Text style={styles.toggleText}>All</Text>
-          </Pressable>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Mood & Energy Trends</Text>
+          <View style={styles.toggleGroup}>
+            {(['week', 'month', 'all'] as const).map(key => (
+              <Pressable
+                key={key}
+                style={[
+                  styles.toggleButton,
+                  view === key && styles.toggleActive,
+                ]}
+                onPress={() => setView(key)}
+              >
+                <Text style={styles.toggleText}>
+                  {key.charAt(0).toUpperCase() + key.slice(1)}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          <MoodEnergyChart moodData={moodData} energyData={energyData} />
         </View>
-
-        <MoodEnergyChart moodData={moodData} energyData={energyData} />
 
         {!hasCheckedInToday && (
           <Pressable
-            style={[styles.button, { marginTop: 8, backgroundColor: '#388e3c' }]}
+            style={[styles.actionButton, styles.checkInButton]}
             onPress={() => navigation.navigate('CheckIn')}
           >
-            <Text style={styles.buttonText}>Check In Now</Text>
+            <Text style={styles.actionText}>Check In Now</Text>
           </Pressable>
         )}
 
         <QuickViews />
 
-        <View style={styles.comingSoonCard}>
-          <Text style={styles.sectionHeader}>💡 AI Coach</Text>
-          <Text style={styles.sectionText}>Personalized fitness & recovery tips coming soon.</Text>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>💡 AI Coach</Text>
+          <Text style={styles.sectionText}>
+            Personalized fitness & recovery tips coming soon.
+          </Text>
         </View>
 
-        <Pressable style={styles.button} onPress={() => navigation.navigate('MealPlan')}>
-          <Text style={styles.buttonText}>Generate Meal Plan</Text>
+        <Pressable
+          style={styles.actionButton}
+          onPress={() => navigation.navigate('MealPlan')}
+        >
+          <Text style={styles.actionText}>Generate Meal Plan</Text>
         </Pressable>
 
-        <Pressable style={styles.button}>
-          <Text style={styles.buttonText}>Generate Workout</Text>
+        <Pressable
+          style={styles.actionButton}
+          onPress={() => navigation.navigate('WorkoutDetail')}
+        >
+          <Text style={styles.actionText}>Generate Workout</Text>
         </Pressable>
       </ScrollView>
     </LinearGradient>
@@ -159,53 +178,39 @@ const DashboardScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 24,
-    backgroundColor: '#121212',
-  },
-  card: {
-    alignItems: 'center',
-    backgroundColor: '#1e1e1e',
-    borderRadius: 16,
-    padding: 24,
-    width: '100%',
-    maxWidth: 420,
-    alignSelf: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 10,
-  },
-  header: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#d32f2f',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  subtext: {
-    fontSize: 14,
-    color: '#ccc',
-    textAlign: 'center',
-    marginBottom: 16,
-  },
+  // Container styles
+  screen: { flex: 1 },
+  content: { padding: 24, alignItems: 'center' },
+
+  // Header styles
+  header: { fontSize: 26, fontWeight: '700', color: '#d32f2f', marginBottom: 4 },
+  subheader: { fontSize: 16, color: '#ccc', marginBottom: 16 },
+
+  // Reminder card
   reminderCard: {
     backgroundColor: '#2a2a2a',
     borderRadius: 12,
     padding: 12,
-    marginBottom: 16,
+    width: '100%',
+    marginBottom: 20,
   },
-  reminderText: {
-    color: '#ffd54f',
-    fontSize: 14,
-    textAlign: 'center',
+  reminderText: { color: '#ffd54f', textAlign: 'center' },
+
+  // Section styles
+  section: { width: '100%', marginBottom: 24 },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#d32f2f',
+    marginBottom: 12,
   },
-  toggleContainer: {
+  sectionText: { fontSize: 14, color: '#ccc' },
+
+  // Toggle buttons
+  toggleGroup: {
     flexDirection: 'row',
     justifyContent: 'center',
-    marginBottom: -20,
+    marginBottom: 12,
   },
   toggleButton: {
     backgroundColor: '#333',
@@ -214,83 +219,43 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginHorizontal: 6,
   },
-  toggleActive: {
-    backgroundColor: '#d32f2f',
-  },
-  toggleText: {
-    color: '#fff',
-    fontSize: 14,
-  },
-  quickViewContainer: {
+  toggleActive: { backgroundColor: '#d32f2f' },
+  toggleText: { color: '#fff', fontSize: 14 },
+
+  // Quick views
+  quickContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     width: '100%',
-    marginTop: 24,
-    marginBottom: 12,
+    marginBottom: 24,
   },
   quickCard: {
+    flex: 1,
     backgroundColor: '#2a2a2a',
+    borderRadius: 8,
     padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
+    marginHorizontal: 4,
   },
   quickTitle: {
-    color: '#d32f2f',
-    fontWeight: 'bold',
-    fontSize: 16,
-    marginBottom: 4,
-  },
-  quickDetail: {
-    color: '#ccc',
-    fontSize: 14,
-  },
-  quickHint: {
-    color: '#aaa',
-    fontSize: 12,
-    marginTop: 6,
-  },
-  button: {
-    backgroundColor: '#d32f2f',
-    paddingVertical: 14,
-    paddingHorizontal: 28,
-    borderRadius: 10,
-    marginTop: 12,
-    width: '100%',
-    alignItems: 'center',
-  },
-  buttonText: {
-    color: '#fff',
     fontSize: 16,
     fontWeight: '600',
-  },
-  logoutButton: {
-    marginTop: 20,
-    backgroundColor: '#333',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 10,
-  },
-  logoutText: {
-    color: '#fff',
-    fontSize: 16,
-    textAlign: 'center',
-  },
-  comingSoonCard: {
-    backgroundColor: '#292929',
-    borderRadius: 12,
-    padding: 16,
-    marginTop: 20,
-    width: '100%',
-  },
-  sectionHeader: {
-    fontSize: 16,
-    fontWeight: 'bold',
     color: '#d32f2f',
-    marginBottom: 8,
-    textAlign: 'center'
+    marginBottom: 4,
   },
-  sectionText: {
-    fontSize: 14,
-    color: '#ccc',
+  quickDetail: { fontSize: 14, color: '#ccc' },
+  quickHint: { fontSize: 12, color: '#aaa', marginTop: 6 },
+
+  // Action buttons
+  actionButton: {
+    width: '100%',
+    backgroundColor: '#d32f2f',
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginBottom: 16,
   },
+  actionText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  checkInButton: { backgroundColor: '#388e3c' },
 });
 
 export default DashboardScreen;

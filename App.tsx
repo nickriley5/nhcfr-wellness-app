@@ -1,8 +1,5 @@
-// App.tsx
 import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
-import { NavigatorScreenParams } from '@react-navigation/native';
-
+import { NavigationContainer, NavigatorScreenParams } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import Feather from 'react-native-vector-icons/Feather';
@@ -23,31 +20,40 @@ import CheckInScreen from './screens/CheckInScreen';
 import DrawerNavigation from './navigation/DrawerNavigation';
 import WorkoutDetailScreen from './screens/WorkoutDetailScreen';
 
-
 // Auth context
 import { AuthProvider, useAuth } from './providers/AuthProvider';
 
-// Navigation types
-export type RootStackParamList = {
-  Login: undefined;
-  Register: undefined;
-  Main: NavigatorScreenParams<TabParamList> | undefined;
-  ProfileSetup: undefined;
-  MealPlan: undefined;
-  CheckIn: undefined;
-  WorkoutDetail: undefined;
-};
-
+// ----- Navigation Types -----
+// Tab navigator (inside MainTabs)
 export type TabParamList = {
   Home: undefined;
   Dashboard: undefined;
   MealPlan: undefined;
+  Workout: undefined;
   Settings: undefined;
 };
 
-const Stack = createNativeStackNavigator<RootStackParamList>();
-const Tab = createBottomTabNavigator();
+// Drawer navigator (inside Main stack)
+export type RootDrawerParamList = {
+  MainTabs: NavigatorScreenParams<TabParamList>; // 🚀 allows nesting bottom tabs
+  Profile: undefined;
+  Settings: undefined;
+};
 
+// Root stack navigator
+export type RootStackParamList = {
+  Login: undefined;
+  Register: undefined;
+  Main: NavigatorScreenParams<RootDrawerParamList>; // 🔄 changed to Drawer params
+  ProfileSetup: undefined;
+  CheckIn: undefined;
+  WorkoutDetail: undefined;
+};
+
+const Stack = createNativeStackNavigator<RootStackParamList>();
+const Tab = createBottomTabNavigator<TabParamList>();
+
+// ----- Bottom Tab Navigator -----
 const MainTabs = () => (
   <Tab.Navigator
     screenOptions={({ route }) => ({
@@ -67,21 +73,13 @@ const MainTabs = () => (
       },
       tabBarIcon: ({ color }) => {
         if (route.name === 'MealPlan') {
-          return (
-            <MaterialCommunityIcons
-              name="silverware-fork-knife"
-              size={22}
-              color={color}
-            />
-          );
+          return <MaterialCommunityIcons name="silverware-fork-knife" size={22} color={color} />;
         }
-
         const iconMap: { [key: string]: string } = {
           Home: 'home',
           Dashboard: 'activity',
           Settings: 'settings',
         };
-
         const iconName = iconMap[route.name] || 'circle';
         return <Feather name={iconName} size={20} color={color} />;
       },
@@ -94,6 +92,7 @@ const MainTabs = () => (
   </Tab.Navigator>
 );
 
+// ----- App Navigator (Handles Auth & Flow) -----
 const AppNavigator = () => {
   const { user, loading } = useAuth();
   const [profileComplete, setProfileComplete] = React.useState<boolean | null>(null);
@@ -104,15 +103,12 @@ const AppNavigator = () => {
         try {
           const userRef = doc(db, 'users', user.uid);
           const userSnap = await getDoc(userRef);
-          const data = userSnap.data();
-          setProfileComplete(data?.profileComplete === true);
-        } catch (error) {
-          console.error('Error fetching profileComplete:', error);
+          setProfileComplete(userSnap.data()?.profileComplete === true);
+        } catch {
           setProfileComplete(false);
         }
       }
     };
-
     fetchProfileStatus();
   }, [user]);
 
@@ -129,6 +125,7 @@ const AppNavigator = () => {
       {user ? (
         profileComplete ? (
           <>
+            {/* Main drawer with nested tabs */}
             <Stack.Screen name="Main" component={DrawerNavigation} />
             <Stack.Screen name="CheckIn" component={CheckInScreen} />
             <Stack.Screen name="WorkoutDetail" component={WorkoutDetailScreen} />
@@ -158,6 +155,7 @@ const AppNavigator = () => {
   );
 };
 
+// ----- App Entry Point -----
 const App = () => (
   <AuthProvider>
     <NavigationContainer>
