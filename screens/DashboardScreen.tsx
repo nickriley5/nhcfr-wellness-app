@@ -9,6 +9,20 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
 import MoodEnergyChart from '../components/MoodEnergyChart';
 
+// ✅ New: Component for Quick Views
+const QuickViews = () => (
+  <View style={styles.quickViewContainer}>
+    <View style={styles.quickCard}>
+      <Text style={styles.quickTitle}>🍽️ Next Meal</Text>
+      <Text style={styles.quickDetail}>Grilled chicken, rice, steamed broccoli</Text>
+    </View>
+    <View style={styles.quickCard}>
+      <Text style={styles.quickTitle}>🏋️ Today's Workout</Text>
+      <Text style={styles.quickDetail}>Full-body kettlebell circuit & mobility</Text>
+    </View>
+  </View>
+);
+
 interface CheckInEntry extends DocumentData {
   id: string;
   mood: number;
@@ -88,7 +102,6 @@ const DashboardScreen = () => {
           </View>
         )}
 
-        {/* Toggle buttons now below the section title */}
         <Text style={styles.sectionHeader}>Mood & Energy Trends</Text>
 
         <View style={styles.toggleContainer}>
@@ -114,7 +127,7 @@ const DashboardScreen = () => {
 
         <MoodEnergyChart moodData={moodData} energyData={energyData} />
 
-        {!hasCheckedInToday && (
+{!hasCheckedInToday && (
   <Pressable
     style={[styles.button, { marginTop: 8, backgroundColor: '#388e3c' }]}
     onPress={() => navigation.navigate('CheckIn')}
@@ -123,7 +136,10 @@ const DashboardScreen = () => {
   </Pressable>
 )}
 
-        {/* Coming soon card */}
+{/* ✅ Quick Views now after Check-In */}
+<QuickViews />
+
+
         <View style={styles.comingSoonCard}>
           <Text style={styles.sectionHeader}>💡 AI Coach</Text>
           <Text style={styles.sectionText}>Personalized fitness & recovery tips coming soon.</Text>
@@ -202,6 +218,27 @@ const styles = StyleSheet.create({
   },
   toggleText: {
     color: '#fff',
+    fontSize: 14,
+  },
+  quickViewContainer: {
+    width: '100%',
+    marginTop: 24,
+    marginBottom: 12,
+  },
+  quickCard: {
+    backgroundColor: '#2a2a2a',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  quickTitle: {
+    color: '#d32f2f',
+    fontWeight: 'bold',
+    fontSize: 16,
+    marginBottom: 4,
+  },
+  quickDetail: {
+    color: '#ccc',
     fontSize: 14,
   },
   button: {
