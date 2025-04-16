@@ -21,6 +21,8 @@ import RegisterScreen from './screens/RegisterScreen';
 import MealPlanScreen from './screens/MealPlanScreen';
 import CheckInScreen from './screens/CheckInScreen';
 import DrawerNavigation from './navigation/DrawerNavigation';
+import WorkoutDetailScreen from './screens/WorkoutDetailScreen';
+
 
 // Auth context
 import { AuthProvider, useAuth } from './providers/AuthProvider';
@@ -33,6 +35,7 @@ export type RootStackParamList = {
   ProfileSetup: undefined;
   MealPlan: undefined;
   CheckIn: undefined;
+  WorkoutDetail: undefined;
 };
 
 export type TabParamList = {
@@ -128,6 +131,7 @@ const AppNavigator = () => {
           <>
             <Stack.Screen name="Main" component={DrawerNavigation} />
             <Stack.Screen name="CheckIn" component={CheckInScreen} />
+            <Stack.Screen name="WorkoutDetail" component={WorkoutDetailScreen} />
           </>
         ) : (
           <Stack.Screen name="ProfileSetup" component={ProfileSetupScreen} />

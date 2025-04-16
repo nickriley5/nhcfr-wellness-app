@@ -9,20 +9,6 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
 import MoodEnergyChart from '../components/MoodEnergyChart';
 
-// ✅ New: Component for Quick Views
-const QuickViews = () => (
-  <View style={styles.quickViewContainer}>
-    <View style={styles.quickCard}>
-      <Text style={styles.quickTitle}>🍽️ Next Meal</Text>
-      <Text style={styles.quickDetail}>Grilled chicken, rice, steamed broccoli</Text>
-    </View>
-    <View style={styles.quickCard}>
-      <Text style={styles.quickTitle}>🏋️ Today's Workout</Text>
-      <Text style={styles.quickDetail}>Full-body kettlebell circuit & mobility</Text>
-    </View>
-  </View>
-);
-
 interface CheckInEntry extends DocumentData {
   id: string;
   mood: number;
@@ -37,6 +23,23 @@ const DashboardScreen = () => {
   const [energyData, setEnergyData] = useState<number[]>([]);
   const [userName, setUserName] = useState<string>('');
   const [hasCheckedInToday, setHasCheckedInToday] = useState<boolean>(true);
+
+  const QuickViews = () => (
+    <View style={styles.quickViewContainer}>
+      <View style={styles.quickCard}>
+        <Text style={styles.quickTitle}>🍽️ Next Meal</Text>
+        <Text style={styles.quickDetail}>Grilled chicken, rice, steamed broccoli</Text>
+      </View>
+      <Pressable
+        style={styles.quickCard}
+        onPress={() => navigation.navigate('WorkoutDetail' as keyof RootStackParamList)}
+      >
+        <Text style={styles.quickTitle}>🏋️ Today's Workout</Text>
+        <Text style={styles.quickDetail}>Full-body kettlebell circuit & mobility</Text>
+        <Text style={styles.quickHint}>Tap to view full workout</Text>
+      </Pressable>
+    </View>
+  );
 
   useEffect(() => {
     const fetchCheckIns = async () => {
@@ -127,18 +130,16 @@ const DashboardScreen = () => {
 
         <MoodEnergyChart moodData={moodData} energyData={energyData} />
 
-{!hasCheckedInToday && (
-  <Pressable
-    style={[styles.button, { marginTop: 8, backgroundColor: '#388e3c' }]}
-    onPress={() => navigation.navigate('CheckIn')}
-  >
-    <Text style={styles.buttonText}>Check In Now</Text>
-  </Pressable>
-)}
+        {!hasCheckedInToday && (
+          <Pressable
+            style={[styles.button, { marginTop: 8, backgroundColor: '#388e3c' }]}
+            onPress={() => navigation.navigate('CheckIn')}
+          >
+            <Text style={styles.buttonText}>Check In Now</Text>
+          </Pressable>
+        )}
 
-{/* ✅ Quick Views now after Check-In */}
-<QuickViews />
-
+        <QuickViews />
 
         <View style={styles.comingSoonCard}>
           <Text style={styles.sectionHeader}>💡 AI Coach</Text>
@@ -240,6 +241,11 @@ const styles = StyleSheet.create({
   quickDetail: {
     color: '#ccc',
     fontSize: 14,
+  },
+  quickHint: {
+    color: '#aaa',
+    fontSize: 12,
+    marginTop: 6,
   },
   button: {
     backgroundColor: '#d32f2f',
