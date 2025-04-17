@@ -1,5 +1,4 @@
-// screens/ExerciseLibraryScreen.tsx
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,6 +8,7 @@ import {
   TouchableOpacity,
   Image,
   Pressable,
+  Animated,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
@@ -65,6 +65,8 @@ const groupByCategory = (data: Exercise[]) => {
 const ExerciseLibraryScreen: React.FC = () => {
   const navigation = useNavigation<NavProp>();
   const [search, setSearch] = useState('');
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  const listRef = useRef<SectionList<any>>(null);
 
   const filtered = useMemo(() => {
     const term = search.toLowerCase();
@@ -76,6 +78,15 @@ const ExerciseLibraryScreen: React.FC = () => {
   }, [search]);
 
   const sections = useMemo(() => groupByCategory(filtered), [filtered]);
+
+  const handleScroll = (event: any) => {
+    const offsetY = event.nativeEvent.contentOffset.y;
+    setShowScrollTop(offsetY > 150); // show after scrolling 150px
+  };
+
+  const scrollToTop = () => {
+    listRef.current?.scrollToLocation({ sectionIndex: 0, itemIndex: 0, animated: true });
+  };
 
   return (
     <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
@@ -90,15 +101,17 @@ const ExerciseLibraryScreen: React.FC = () => {
         />
       </View>
 
-      {/* Top Back Button */}
       <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
         <Ionicons name="arrow-back" size={24} color="#fff" />
         <Text style={styles.backText}>Back</Text>
       </Pressable>
 
       <SectionList
+        ref={listRef}
         sections={sections}
         keyExtractor={(item) => item.id}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
         renderSectionHeader={({ section: { title } }) => (
           <Text style={styles.sectionHeader}>{title}</Text>
         )}
@@ -129,6 +142,13 @@ const ExerciseLibraryScreen: React.FC = () => {
         <Ionicons name="arrow-back" size={24} color="#fff" />
         <Text style={styles.backText}>Back</Text>
       </Pressable>
+
+      {/* 🔝 Scroll to Top Button */}
+      {showScrollTop && (
+        <Pressable style={styles.scrollTopBtn} onPress={scrollToTop}>
+          <Ionicons name="arrow-up" size={24} color="#fff" />
+        </Pressable>
+      )}
     </LinearGradient>
   );
 };
@@ -174,6 +194,16 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     marginLeft: 6,
+  },
+  scrollTopBtn: {
+    position: 'absolute',
+    bottom: 30,
+    right: 20,
+    backgroundColor: '#d32f2f',
+    padding: 14,
+    borderRadius: 50,
+    elevation: 5,
+    zIndex: 10,
   },
 });
 
