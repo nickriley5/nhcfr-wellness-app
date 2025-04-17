@@ -147,6 +147,7 @@ const WorkoutDetailScreen: React.FC = () => {
           const sets = progress[exIndex];
           const complete = isExerciseComplete(sets);
           const isPlaying = playingIndex === exIndex;
+          const last = lastSession?.[ex.name];
 
           return (
             <View
@@ -211,6 +212,19 @@ const WorkoutDetailScreen: React.FC = () => {
                   />
                 </View>
               ))}
+
+              {last && (
+                <View style={{ marginTop: 6 }}>
+                  <Text style={{ fontSize: 12, color: '#aaa', fontStyle: 'italic' }}>
+                    Last workout:
+                  </Text>
+                  {last.map((set, idx) => (
+                    <Text key={idx} style={{ fontSize: 12, color: '#888' }}>
+                      Set {idx + 1}: {set.reps} reps @ {set.weight} lbs
+                    </Text>
+                  ))}
+                </View>
+              )}
             </View>
           );
         })}
