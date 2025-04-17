@@ -7,11 +7,13 @@ import {
   ActivityIndicator,
   Pressable,
   TextInput,
+  TouchableOpacity,
 } from 'react-native';
 import { auth, firestore } from '../firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import LinearGradient from 'react-native-linear-gradient';
+import Video from 'react-native-video';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
@@ -22,6 +24,7 @@ interface Exercise {
   name: string;
   sets: number;
   reps: string | number;
+  videoUri: string;
 }
 
 interface SetData {
@@ -35,6 +38,7 @@ const WorkoutDetailScreen: React.FC = () => {
   const [dayTitle, setDayTitle] = useState('');
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [progress, setProgress] = useState<SetData[][]>([]);
+  const [playingIndex, setPlayingIndex] = useState<number | null>(null);
 
   useEffect(() => {
     const fetchWorkout = async () => {
@@ -48,12 +52,18 @@ const WorkoutDetailScreen: React.FC = () => {
         if (docSnap.exists()) {
           const data = docSnap.data();
           const today = data.currentDay - 1;
-          const workoutDay = data.days[today];
+          const raw = data.days[today].exercises;
 
-          setDayTitle(workoutDay.title);
-          setExercises(workoutDay.exercises);
+          // Add placeholder videos for demo purposes
+          const enriched = raw.map((ex: any) => ({
+            ...ex,
+            videoUri: 'https://www.w3schools.com/html/mov_bbb.mp4', // swap this later
+          }));
 
-          const initialProgress = workoutDay.exercises.map((ex: Exercise) =>
+          setDayTitle(data.days[today].title);
+          setExercises(enriched);
+
+          const initialProgress = enriched.map((ex: Exercise) =>
             Array.from({ length: ex.sets }, () => ({ reps: '', weight: '' }))
           );
           setProgress(initialProgress);
@@ -84,6 +94,10 @@ const WorkoutDetailScreen: React.FC = () => {
   const isExerciseComplete = (sets: SetData[]) =>
     sets.every(set => set.reps && set.weight);
 
+  const togglePlay = (index: number) => {
+    setPlayingIndex(prev => (prev === index ? null : index));
+  };
+
   if (loading) {
     return (
       <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
@@ -100,6 +114,7 @@ const WorkoutDetailScreen: React.FC = () => {
         {exercises.map((ex, exIndex) => {
           const sets = progress[exIndex];
           const complete = isExerciseComplete(sets);
+          const isPlaying = playingIndex === exIndex;
 
           return (
             <View
@@ -123,10 +138,27 @@ const WorkoutDetailScreen: React.FC = () => {
                 )}
               </View>
 
-              {/* Recommended line */}
               <Text style={styles.recommendation}>
                 Recommended: {ex.sets} sets × {ex.reps} reps
               </Text>
+
+              <TouchableOpacity onPress={() => togglePlay(exIndex)} style={styles.videoBox}>
+                {isPlaying ? (
+                  <Video
+                    source={{ uri: ex.videoUri }}
+                    style={styles.video}
+                    resizeMode="cover"
+                    controls
+                    paused={false}
+                    onEnd={() => setPlayingIndex(null)}
+                  />
+                ) : (
+                  <View style={styles.playOverlay}>
+                    <Ionicons name="play-circle-outline" size={42} color="#fff" />
+                    <Text style={styles.playText}>Play Video</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
 
               {sets.map((set, setIndex) => (
                 <View key={setIndex} style={styles.setRow}>
@@ -231,6 +263,29 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     borderWidth: 1,
     borderColor: '#333',
+  },
+  videoBox: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    backgroundColor: '#000',
+    marginBottom: 12,
+    borderRadius: 8,
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  video: {
+    width: '100%',
+    height: '100%',
+  },
+  playOverlay: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  playText: {
+    color: '#fff',
+    fontSize: 14,
+    marginTop: 4,
   },
   button: {
     backgroundColor: '#d32f2f',
