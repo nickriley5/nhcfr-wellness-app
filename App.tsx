@@ -19,6 +19,8 @@ import MealPlanScreen from './screens/MealPlanScreen';
 import CheckInScreen from './screens/CheckInScreen';
 import DrawerNavigation from './navigation/DrawerNavigation';
 import WorkoutDetailScreen from './screens/WorkoutDetailScreen';
+import WorkoutHistoryScreen from './screens/WorkoutHistoryScreen';
+
 
 // Auth context
 import { AuthProvider, useAuth } from './providers/AuthProvider';
@@ -50,6 +52,7 @@ export type RootStackParamList = {
   WorkoutDetail: undefined;
   ExerciseLibrary: undefined;
   ExerciseDetail: { exerciseId: string };
+  WorkoutHistory: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -132,6 +135,7 @@ const AppNavigator = () => {
             <Stack.Screen name="WorkoutDetail" component={WorkoutDetailScreen} />
             <Stack.Screen name="ExerciseLibrary" component={require('./screens/ExerciseLibraryScreen').default} />
             <Stack.Screen name="ExerciseDetail" component={require('./screens/ExerciseDetailScreen').default} />
+            <Stack.Screen name="WorkoutHistory" component={WorkoutHistoryScreen} />
           </>
         ) : (
           <Stack.Screen name="ProfileSetup" component={ProfileSetupScreen} />

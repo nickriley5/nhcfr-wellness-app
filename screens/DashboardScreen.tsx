@@ -173,6 +173,13 @@ const DashboardScreen: React.FC = () => {
         >
           <Text style={styles.actionText}>Generate Workout</Text>
         </Pressable>
+        <Pressable
+  style={styles.actionButton}
+  onPress={() => navigation.navigate('WorkoutHistory')}
+>
+  <Text style={styles.actionText}>📚 View Workout History</Text>
+</Pressable>
+
       </ScrollView>
     </LinearGradient>
   );
