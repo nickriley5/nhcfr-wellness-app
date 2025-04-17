@@ -207,6 +207,7 @@ const styles = StyleSheet.create({
   toggleGroup: {
     flexDirection: 'row',
     justifyContent: 'center',
+    alignItems: 'center',
     marginBottom: 12,
   },
   toggleButton: {
