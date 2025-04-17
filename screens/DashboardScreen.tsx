@@ -200,6 +200,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#d32f2f',
     marginBottom: 12,
+    textAlign: 'center',
   },
   sectionText: { fontSize: 14, color: '#ccc' },
 
