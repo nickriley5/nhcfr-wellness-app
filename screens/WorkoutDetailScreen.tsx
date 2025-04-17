@@ -1,29 +1,29 @@
-// screens/WorkoutDetailScreen.tsx
 import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  Pressable,
   ScrollView,
   ActivityIndicator,
-  Alert,
+  Pressable,
 } from 'react-native';
+import { auth, firestore } from '../firebase';
+import { doc, getDoc } from 'firebase/firestore';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import LinearGradient from 'react-native-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { TabParamList, RootStackParamList } from '../App';
-import { auth, firestore } from '../firebase';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../App';
 
-// Navigation prop type
-type WorkoutDetailNavProp = NativeStackNavigationProp<RootStackParamList>;
+type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
 const WorkoutDetailScreen: React.FC = () => {
-  const navigation = useNavigation<WorkoutDetailNavProp>();
-  const [workout, setWorkout] = useState<any[]>([]);
+  const navigation = useNavigation<NavProp>();
   const [loading, setLoading] = useState(true);
-  const [completedMsg, setCompletedMsg] = useState<string | null>(null); // ✅ state for inline feedback
+  const [dayTitle, setDayTitle] = useState('');
+  const [exercises, setExercises] = useState<
+    { name: string; sets: number; reps: string | number }[]
+  >([]);
 
   useEffect(() => {
     const fetchWorkout = async () => {
@@ -31,111 +31,56 @@ const WorkoutDetailScreen: React.FC = () => {
         const uid = auth.currentUser?.uid;
         if (!uid) return;
 
-        const today = new Date().toISOString().split('T')[0];
-        const ref = doc(firestore, 'workouts', `${uid}_${today}`);
-        const snap = await getDoc(ref);
+        const docRef = doc(firestore, 'programs', uid);
+        const docSnap = await getDoc(docRef);
 
-        if (snap.exists()) {
-          setWorkout(snap.data().exercises || []);
-        } else {
-          setWorkout([
-            { name: 'Pushups', sets: 3, reps: 20 },
-            { name: 'Air Squats', sets: 3, reps: 25 },
-            { name: 'Plank', sets: 3, reps: '1 min' },
-          ]);
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          const today = data.currentDay - 1; // 0-based index
+          const workoutDay = data.days[today];
+
+          setDayTitle(workoutDay.title);
+          setExercises(workoutDay.exercises);
         }
       } catch (err) {
-        console.error('Error loading workout:', err);
+        console.error(err);
       } finally {
         setLoading(false);
       }
     };
+
     fetchWorkout();
   }, []);
 
-  // 💾 Handle workout completion
-  const handleComplete = async () => {
-    // ✅ provide immediate inline feedback
-    setCompletedMsg('Great job! Workout marked complete.');
-
-    try {
-      const uid = auth.currentUser?.uid;
-      if (!uid) throw new Error('No user');
-
-      const today = new Date().toISOString().split('T')[0];
-      const ref = doc(firestore, 'workouts', `${uid}_${today}`);
-
-      await setDoc(
-        ref,
-        {
-          exercises: workout,
-          completed: true,
-          completedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-    } catch (err) {
-      console.error('Error marking complete:', err);
-      // ❌ fallback alert on error
-      Alert.alert('Error', "Couldn't save your workout. Please try again.");
-    }
-  };
+  if (loading) {
+    return (
+      <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
+        <ActivityIndicator size="large" color="#d32f2f" />
+      </LinearGradient>
+    );
+  }
 
   return (
-    <LinearGradient
-      colors={['#0f0f0f', '#1c1c1c', '#121212']}
-      style={styles.container}
-    >
-      <ScrollView contentContainerStyle={styles.inner}>
-        <Text style={styles.header}>Today's Workout</Text>
+    <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
+      <ScrollView contentContainerStyle={styles.content}>
+        <Text style={styles.title}>{dayTitle}</Text>
 
-        {/* 📣 Inline feedback message */}
-        {completedMsg && (
-          <Text style={styles.completedMessage}>{completedMsg}</Text>
-        )}
+        {exercises.map((ex, index) => (
+          <View key={index} style={styles.exerciseCard}>
+            <Text style={styles.exerciseName}>{ex.name}</Text>
+            <Text style={styles.exerciseDetail}>
+              {ex.sets} sets x {ex.reps} reps
+            </Text>
+          </View>
+        ))}
 
-        {loading ? (
-          <ActivityIndicator size="large" color="#d32f2f" />
-        ) : (
-          workout.map((ex, idx) => (
-            <View key={idx} style={styles.exerciseCard}>
-              <Text style={styles.exerciseName}>{ex.name}</Text>
-              <Text style={styles.exerciseDetail}>
-                {ex.sets} sets × {ex.reps} reps
-              </Text>
-            </View>
-          ))
-        )}
-
-        <Pressable style={styles.completeButton} onPress={handleComplete}>
-          <Text style={styles.completeText}>Mark Workout Complete ✅</Text>
+        <Pressable
+          style={[styles.button, styles.secondaryButton]}
+          onPress={() => navigation.goBack()}
+        >
+          <Ionicons name="arrow-back" size={20} color="#fff" style={styles.icon} />
+          <Text style={styles.buttonText}>Back to Workout Hub</Text>
         </Pressable>
-
-        <View style={styles.footerButtons}>
-          <Pressable
-            style={[styles.smallButton, { backgroundColor: '#555' }]}
-            onPress={() =>
-              navigation.navigate('Main', {
-                screen: 'MainTabs',
-                params: { screen: 'Dashboard' },
-              })
-            }
-          >
-            <Text style={styles.smallText}>← Dashboard</Text>
-          </Pressable>
-
-          <Pressable
-            style={[styles.smallButton, { backgroundColor: '#777' }]}
-            onPress={() =>
-              navigation.navigate('Main', {
-                screen: 'MainTabs',
-                params: { screen: 'Workout' },
-              })
-            }
-          >
-            <Text style={styles.smallText}>More Workouts →</Text>
-          </Pressable>
-        </View>
       </ScrollView>
     </LinearGradient>
   );
@@ -143,53 +88,53 @@ const WorkoutDetailScreen: React.FC = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  inner: { padding: 24, alignItems: 'center' },
-  header: {
+  content: { padding: 24, alignItems: 'center' },
+  title: {
     fontSize: 22,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: '#d32f2f',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  completedMessage: {
-    fontSize: 16,
-    color: '#4caf50',
-    marginBottom: 12,
+    marginBottom: 20,
     textAlign: 'center',
   },
   exerciseCard: {
     backgroundColor: '#2a2a2a',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    width: '100%',
-  },
-  exerciseName: { fontSize: 16, fontWeight: '600', color: '#fff' },
-  exerciseDetail: { fontSize: 14, color: '#ccc', marginTop: 4 },
-  completeButton: {
-    backgroundColor: '#388e3c',
-    paddingVertical: 14,
-    paddingHorizontal: 28,
     borderRadius: 10,
-    marginTop: 20,
+    padding: 16,
     width: '100%',
-    alignItems: 'center',
+    marginBottom: 12,
   },
-  completeText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  footerButtons: {
+  exerciseName: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  exerciseDetail: {
+    color: '#ccc',
+    fontSize: 14,
+    marginTop: 4,
+  },
+  button: {
+    backgroundColor: '#d32f2f',
     flexDirection: 'row',
-    justifyContent: 'space-evenly',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 10,
     marginTop: 24,
     width: '100%',
+    justifyContent: 'center',
   },
-  smallButton: {
-    flex: 1,
-    marginHorizontal: 6,
-    paddingVertical: 10,
-    borderRadius: 8,
-    alignItems: 'center',
+  secondaryButton: {
+    backgroundColor: '#444',
   },
-  smallText: { color: '#fff', fontSize: 13, fontWeight: '500' },
+  buttonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  icon: {
+    marginRight: 8,
+  },
 });
 
 export default WorkoutDetailScreen;

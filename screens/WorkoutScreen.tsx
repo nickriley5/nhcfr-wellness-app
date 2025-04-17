@@ -104,6 +104,13 @@ const WorkoutScreen: React.FC = () => {
             { name: 'Hamstring Stretch', sets: 2, reps: '1 min/side' },
           ],
         },
+        {
+          day: 7,
+          title: 'Rest Day',
+          exercises: [
+            { name: 'Full Rest', sets: 1, reps: 'Enjoy it' },
+          ],
+        },
       ];
 
       await setDoc(doc(firestore, 'programs', uid), {
@@ -231,6 +238,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: '#d32f2f',
     fontWeight: '600',
+    textAlign: 'center',
     marginBottom: 6,
   },
   cardText: {
