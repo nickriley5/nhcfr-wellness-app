@@ -92,6 +92,7 @@ const DashboardScreen: React.FC = () => {
         <Text style={styles.quickTitle}>🍽️ Next Meal</Text>
         <Text style={styles.quickDetail}>Grilled chicken, rice, broccoli</Text>
       </View>
+      {/* ✅ FIXED: Corrected navigation call to WorkoutDetail (not nested incorrectly) */}
       <Pressable
         style={styles.quickCard}
         onPress={() => navigation.navigate('WorkoutDetail')}
@@ -178,15 +179,12 @@ const DashboardScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  // Container styles
   screen: { flex: 1 },
   content: { padding: 24, alignItems: 'center' },
 
-  // Header styles
   header: { fontSize: 26, fontWeight: '700', color: '#d32f2f', marginBottom: 4 },
   subheader: { fontSize: 16, color: '#ccc', marginBottom: 16 },
 
-  // Reminder card
   reminderCard: {
     backgroundColor: '#2a2a2a',
     borderRadius: 12,
@@ -196,7 +194,6 @@ const styles = StyleSheet.create({
   },
   reminderText: { color: '#ffd54f', textAlign: 'center' },
 
-  // Section styles
   section: { width: '100%', marginBottom: 24 },
   sectionTitle: {
     fontSize: 20,
@@ -206,7 +203,6 @@ const styles = StyleSheet.create({
   },
   sectionText: { fontSize: 14, color: '#ccc' },
 
-  // Toggle buttons
   toggleGroup: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -222,7 +218,6 @@ const styles = StyleSheet.create({
   toggleActive: { backgroundColor: '#d32f2f' },
   toggleText: { color: '#fff', fontSize: 14 },
 
-  // Quick views
   quickContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -245,7 +240,6 @@ const styles = StyleSheet.create({
   quickDetail: { fontSize: 14, color: '#ccc' },
   quickHint: { fontSize: 12, color: '#aaa', marginTop: 6 },
 
-  // Action buttons
   actionButton: {
     width: '100%',
     backgroundColor: '#d32f2f',

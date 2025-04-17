@@ -48,6 +48,8 @@ export type RootStackParamList = {
   ProfileSetup: undefined;
   CheckIn: undefined;
   WorkoutDetail: undefined;
+  ExerciseLibrary: undefined;
+  ExerciseDetail: { exerciseId: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -125,10 +127,11 @@ const AppNavigator = () => {
       {user ? (
         profileComplete ? (
           <>
-            {/* Main drawer with nested tabs */}
             <Stack.Screen name="Main" component={DrawerNavigation} />
             <Stack.Screen name="CheckIn" component={CheckInScreen} />
             <Stack.Screen name="WorkoutDetail" component={WorkoutDetailScreen} />
+            <Stack.Screen name="ExerciseLibrary" component={require('./screens/ExerciseLibraryScreen').default} />
+            <Stack.Screen name="ExerciseDetail" component={require('./screens/ExerciseDetailScreen').default} />
           </>
         ) : (
           <Stack.Screen name="ProfileSetup" component={ProfileSetupScreen} />
@@ -154,6 +157,7 @@ const AppNavigator = () => {
     </Stack.Navigator>
   );
 };
+
 
 // ----- App Entry Point -----
 const App = () => (
