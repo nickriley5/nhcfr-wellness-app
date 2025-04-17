@@ -10,7 +10,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { auth, firestore } from '../firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import LinearGradient from 'react-native-linear-gradient';
 import Video from 'react-native-video';
@@ -106,6 +106,31 @@ const WorkoutDetailScreen: React.FC = () => {
     );
   }
 
+  const saveWorkoutProgress = async () => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+  
+    const logData = {
+      dayTitle,
+      completedAt: new Date(),
+      exercises: exercises.map((ex, exIndex) => ({
+        name: ex.name,
+        sets: progress[exIndex],
+      })),
+    };
+  
+    const todayId = new Date().toISOString().split('T')[0]; // e.g. 2025-04-17
+  
+    try {
+      await setDoc(doc(firestore, 'users', uid, 'workoutLogs', todayId), logData);
+      alert('Workout saved successfully!');
+    } catch (error) {
+      console.error('Error saving workout:', error);
+      alert('Failed to save workout.');
+    }
+  };
+  
+
   return (
     <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
@@ -189,12 +214,21 @@ const WorkoutDetailScreen: React.FC = () => {
           );
         })}
 
+<Pressable
+  style={styles.button}
+  onPress={saveWorkoutProgress}
+>
+  <Ionicons name="save" size={20} color="#fff" style={styles.icon} />
+  <Text style={styles.buttonText}>Save Workout</Text>
+</Pressable>
+
+
         <Pressable
           style={[styles.button, styles.secondaryButton]}
           onPress={() => navigation.goBack()}
         >
           <Ionicons name="arrow-back" size={20} color="#fff" style={styles.icon} />
-          <Text style={styles.buttonText}>Back to Workout Hub</Text>
+          <Text style={styles.buttonText}>Back</Text>
         </Pressable>
       </ScrollView>
     </LinearGradient>
