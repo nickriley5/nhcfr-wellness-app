@@ -10,10 +10,14 @@ import {
   TextInput,
 } from 'react-native';
 import { auth, firestore } from '../firebase';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, where } from 'firebase/firestore';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import LinearGradient from 'react-native-linear-gradient';
-import { useNavigation } from '@react-navigation/native';
+import {
+  useNavigation,
+  NavigationProp,
+} from '@react-navigation/native';
+import { RootStackParamList } from '../App';
 
 interface WorkoutLog {
   dayTitle: string;
@@ -28,11 +32,12 @@ interface WorkoutLog {
 }
 
 const WorkoutHistoryScreen: React.FC = () => {
-  const navigation = useNavigation();
+  const navigation = useNavigation<NavigationProp<RootStackParamList>>();
   const [loading, setLoading] = useState(true);
   const [logs, setLogs] = useState<Record<string, WorkoutLog>>({});
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState<string>(''); // 🔍 search input state
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [lastThree, setLastThree] = useState<Record<string, WorkoutLog[]>>({});
 
   useEffect(() => {
     const fetchLogs = async () => {
@@ -70,6 +75,18 @@ const WorkoutHistoryScreen: React.FC = () => {
     );
   };
 
+  const getLastThreeSessions = (exerciseName: string) => {
+    const entries = Object.entries(logs)
+      .sort(([a], [b]) => b.localeCompare(a))
+      .map(([id, log]) => ({ id, ...log }))
+      .filter(log =>
+        log.exercises.some(ex =>
+          ex.name.toLowerCase() === exerciseName.toLowerCase()
+        )
+      );
+    return entries.slice(0, 3);
+  };
+
   if (loading) {
     return (
       <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
@@ -83,13 +100,11 @@ const WorkoutHistoryScreen: React.FC = () => {
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>Workout History</Text>
 
-        {/* 🔙 Back button */}
         <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={20} color="#fff" />
           <Text style={styles.backText}>Back</Text>
         </Pressable>
 
-        {/* 🔍 Search bar */}
         <TextInput
           style={styles.searchInput}
           placeholder="Search by exercise name..."
@@ -98,7 +113,6 @@ const WorkoutHistoryScreen: React.FC = () => {
           onChangeText={setSearchQuery}
         />
 
-        {/* 📋 Filtered log display */}
         {Object.entries(logs)
           .sort(([a], [b]) => b.localeCompare(a))
           .filter(([_, log]) => matchesSearch(log))
@@ -124,12 +138,38 @@ const WorkoutHistoryScreen: React.FC = () => {
                     )
                     .map((ex, exIndex) => (
                       <View key={exIndex} style={styles.exerciseBlock}>
-                        <Text style={styles.exerciseName}>{ex.name}</Text>
+                        <View style={styles.progressRow}>
+                          <Text style={styles.exerciseName}>{ex.name}</Text>
+                          <Pressable
+                            onPress={() =>
+                              navigation.navigate('ProgressChart', {
+                                exerciseName: ex.name,
+                              })
+                            }
+                          >
+                            <Text style={styles.progressMini}>📈</Text>
+                          </Pressable>
+                        </View>
                         {ex.sets.map((set, setIndex) => (
                           <Text key={setIndex} style={styles.setText}>
                             Set {setIndex + 1}: {set.reps} reps @ {set.weight} lbs
                           </Text>
                         ))}
+
+                        {/* 🆕 Last 3 Sessions */}
+                        <Text style={styles.recentLabel}>Last 3 Sessions:</Text>
+                        {getLastThreeSessions(ex.name).map((entry, index) => {
+                          const match = entry.exercises.find(e => e.name === ex.name);
+                          return (
+                            <View key={index}>
+                              {match?.sets.map((set, sIdx) => (
+                                <Text key={sIdx} style={styles.recentSet}>
+                                  {entry.id}: {set.reps} reps @ {set.weight} lbs
+                                </Text>
+                              ))}
+                            </View>
+                          );
+                        })}
                       </View>
                     ))}
                 </View>
@@ -179,7 +219,6 @@ const styles = StyleSheet.create({
     color: '#d32f2f',
     fontSize: 15,
     fontWeight: '600',
-    marginBottom: 4,
   },
   setText: {
     color: '#eee',
@@ -206,6 +245,27 @@ const styles = StyleSheet.create({
     borderColor: '#333',
     borderWidth: 1,
     marginBottom: 20,
+  },
+  progressRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  progressMini: {
+    color: '#4fc3f7',
+    fontSize: 16,
+  },
+  recentLabel: {
+    color: '#aaa',
+    fontSize: 12,
+    marginTop: 6,
+    fontStyle: 'italic',
+  },
+  recentSet: {
+    color: '#bbb',
+    fontSize: 12,
+    marginLeft: 8,
   },
 });
 

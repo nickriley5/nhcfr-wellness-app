@@ -1,3 +1,4 @@
+// Reverted WorkoutDetailScreen to show default grey placeholders for 'reps' and 'weight' while still pulling last values
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -10,7 +11,15 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { auth, firestore } from '../firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import {
+  doc,
+  getDoc,
+  setDoc,
+  collection,
+  getDocs,
+  orderBy,
+  query,
+} from 'firebase/firestore';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import LinearGradient from 'react-native-linear-gradient';
 import Video from 'react-native-video';
@@ -18,26 +27,13 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
 
-type NavProp = NativeStackNavigationProp<RootStackParamList>;
-
-interface Exercise {
-  name: string;
-  sets: number;
-  reps: string | number;
-  videoUri: string;
-}
-
-interface SetData {
-  reps: string;
-  weight: string;
-}
-
 const WorkoutDetailScreen: React.FC = () => {
-  const navigation = useNavigation<NavProp>();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [loading, setLoading] = useState(true);
   const [dayTitle, setDayTitle] = useState('');
-  const [exercises, setExercises] = useState<Exercise[]>([]);
-  const [progress, setProgress] = useState<SetData[][]>([]);
+  const [exercises, setExercises] = useState<any[]>([]);
+  const [progress, setProgress] = useState<any[][]>([]);
+  const [lastSession, setLastSession] = useState<Record<string, any[]> | null>(null);
   const [playingIndex, setPlayingIndex] = useState<number | null>(null);
 
   useEffect(() => {
@@ -54,19 +50,31 @@ const WorkoutDetailScreen: React.FC = () => {
           const today = data.currentDay - 1;
           const raw = data.days[today].exercises;
 
-          // Add placeholder videos for demo purposes
           const enriched = raw.map((ex: any) => ({
             ...ex,
-            videoUri: 'https://www.w3schools.com/html/mov_bbb.mp4', // swap this later
+            videoUri: 'https://www.w3schools.com/html/mov_bbb.mp4',
           }));
 
           setDayTitle(data.days[today].title);
           setExercises(enriched);
 
-          const initialProgress = enriched.map((ex: Exercise) =>
+          const initialProgress = enriched.map((ex: any) =>
             Array.from({ length: ex.sets }, () => ({ reps: '', weight: '' }))
           );
           setProgress(initialProgress);
+
+          const logRef = collection(firestore, 'users', uid, 'workoutLogs');
+          const q = query(logRef, orderBy('completedAt', 'desc'));
+          const logsSnap = await getDocs(q);
+
+          const latest = logsSnap.docs[0]?.data();
+          if (latest) {
+            const lastData: Record<string, any[]> = {};
+            latest.exercises.forEach((ex: any) => {
+              lastData[ex.name] = ex.sets;
+            });
+            setLastSession(lastData);
+          }
         }
       } catch (err) {
         console.error(err);
@@ -91,11 +99,35 @@ const WorkoutDetailScreen: React.FC = () => {
     });
   };
 
-  const isExerciseComplete = (sets: SetData[]) =>
+  const isExerciseComplete = (sets: any[]) =>
     sets.every(set => set.reps && set.weight);
 
   const togglePlay = (index: number) => {
     setPlayingIndex(prev => (prev === index ? null : index));
+  };
+
+  const saveWorkoutProgress = async () => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+
+    const logData = {
+      dayTitle,
+      completedAt: new Date(),
+      exercises: exercises.map((ex, exIndex) => ({
+        name: ex.name,
+        sets: progress[exIndex],
+      })),
+    };
+
+    const todayId = new Date().toISOString().split('T')[0];
+
+    try {
+      await setDoc(doc(firestore, 'users', uid, 'workoutLogs', todayId), logData);
+      alert('Workout saved successfully!');
+    } catch (error) {
+      console.error('Error saving workout:', error);
+      alert('Failed to save workout.');
+    }
   };
 
   if (loading) {
@@ -105,31 +137,6 @@ const WorkoutDetailScreen: React.FC = () => {
       </LinearGradient>
     );
   }
-
-  const saveWorkoutProgress = async () => {
-    const uid = auth.currentUser?.uid;
-    if (!uid) return;
-  
-    const logData = {
-      dayTitle,
-      completedAt: new Date(),
-      exercises: exercises.map((ex, exIndex) => ({
-        name: ex.name,
-        sets: progress[exIndex],
-      })),
-    };
-  
-    const todayId = new Date().toISOString().split('T')[0]; // e.g. 2025-04-17
-  
-    try {
-      await setDoc(doc(firestore, 'users', uid, 'workoutLogs', todayId), logData);
-      alert('Workout saved successfully!');
-    } catch (error) {
-      console.error('Error saving workout:', error);
-      alert('Failed to save workout.');
-    }
-  };
-  
 
   return (
     <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
@@ -144,17 +151,11 @@ const WorkoutDetailScreen: React.FC = () => {
           return (
             <View
               key={exIndex}
-              style={[
-                styles.exerciseCard,
-                complete && styles.exerciseCardCompleted,
-              ]}
+              style={[styles.exerciseCard, complete && styles.exerciseCardCompleted]}
             >
               <View style={styles.exerciseHeader}>
                 <Text
-                  style={[
-                    styles.exerciseName,
-                    complete && styles.exerciseNameCompleted,
-                  ]}
+                  style={[styles.exerciseName, complete && styles.exerciseNameCompleted]}
                 >
                   {ex.name}
                 </Text>
@@ -190,23 +191,23 @@ const WorkoutDetailScreen: React.FC = () => {
                   <Text style={styles.setLabel}>Set {setIndex + 1}:</Text>
                   <TextInput
                     style={styles.input}
-                    placeholder="Reps"
+                    placeholder="reps"
+                    placeholderTextColor="#777"
                     keyboardType="numeric"
                     value={set.reps}
                     onChangeText={text =>
                       handleInputChange(exIndex, setIndex, 'reps', text)
                     }
-                    placeholderTextColor="#999"
                   />
                   <TextInput
                     style={styles.input}
-                    placeholder="Weight"
+                    placeholder="weight (lbs)"
+                    placeholderTextColor="#777"
                     keyboardType="numeric"
                     value={set.weight}
                     onChangeText={text =>
                       handleInputChange(exIndex, setIndex, 'weight', text)
                     }
-                    placeholderTextColor="#999"
                   />
                 </View>
               ))}
@@ -214,14 +215,10 @@ const WorkoutDetailScreen: React.FC = () => {
           );
         })}
 
-<Pressable
-  style={styles.button}
-  onPress={saveWorkoutProgress}
->
-  <Ionicons name="save" size={20} color="#fff" style={styles.icon} />
-  <Text style={styles.buttonText}>Save Workout</Text>
-</Pressable>
-
+        <Pressable style={styles.button} onPress={saveWorkoutProgress}>
+          <Ionicons name="save" size={20} color="#fff" style={styles.icon} />
+          <Text style={styles.buttonText}>Save Workout</Text>
+        </Pressable>
 
         <Pressable
           style={[styles.button, styles.secondaryButton]}

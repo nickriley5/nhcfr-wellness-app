@@ -8,11 +8,17 @@ import {
   Pressable,
   ActivityIndicator,
 } from 'react-native';
-import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
+import {
+  useRoute,
+  RouteProp,
+  useNavigation,
+} from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack'; // ✅ NEW
 import { RootStackParamList } from '../App';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
 type ExerciseDetailRouteProp = RouteProp<RootStackParamList, 'ExerciseDetail'>;
+type NavProp = NativeStackNavigationProp<RootStackParamList>; // ✅ NEW
 
 interface Exercise {
   id: string;
@@ -51,7 +57,7 @@ const EXERCISES: Exercise[] = [
 ];
 
 const ExerciseDetailScreen: React.FC = () => {
-  const navigation = useNavigation();
+  const navigation = useNavigation<NavProp>(); // ✅ TYPED
   const { params } = useRoute<ExerciseDetailRouteProp>();
   const { exerciseId } = params;
 
@@ -59,9 +65,8 @@ const ExerciseDetailScreen: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Simulate loading delay or fetch logic
     const loadExercise = () => {
-      const found = EXERCISES.find((e) => e.id === exerciseId);
+      const found = EXERCISES.find(e => e.id === exerciseId);
       setExercise(found ?? null);
       setLoading(false);
     };
@@ -95,8 +100,21 @@ const ExerciseDetailScreen: React.FC = () => {
       <Image source={exercise.thumbnail} style={styles.image} />
       <Text style={styles.name}>{exercise.name}</Text>
       <Text style={styles.category}>{exercise.category}</Text>
-      <Text style={styles.equipment}>Equipment: {exercise.equipment.join(', ')}</Text>
+      <Text style={styles.equipment}>
+        Equipment: {exercise.equipment.join(', ')}
+      </Text>
       <Text style={styles.desc}>{exercise.description}</Text>
+
+      {/* ✅ View Progress Button */}
+      <Pressable
+        onPress={() =>
+          navigation.navigate('ProgressChart', {
+            exerciseName: exercise.name,
+          })
+        }
+      >
+        <Text style={styles.progressLink}>📈 View Progress</Text>
+      </Pressable>
     </ScrollView>
   );
 };
@@ -155,6 +173,12 @@ const styles = StyleSheet.create({
   error: {
     fontSize: 18,
     color: '#f00',
+  },
+  progressLink: {
+    color: '#4fc3f7',
+    fontSize: 13,
+    marginTop: 16,
+    fontStyle: 'italic',
   },
 });
 
