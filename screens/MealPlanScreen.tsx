@@ -14,9 +14,9 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { auth, firestore } from '../firebase';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { TabParamList, RootStackParamList } from '../App';
+import { RootStackParamList } from '../App';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 
-// Navigation prop type (if you navigate back or elsewhere)
 type MealPlanNavProp = NativeStackNavigationProp<RootStackParamList>;
 
 interface Meal {
@@ -32,7 +32,6 @@ const MealPlanScreen: React.FC = () => {
   const [meals, setMeals] = useState<Meal[] | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
-  // Fetch existing plan or generate placeholder
   useEffect(() => {
     const fetchPlan = async () => {
       try {
@@ -58,11 +57,9 @@ const MealPlanScreen: React.FC = () => {
     fetchPlan();
   }, []);
 
-  // Generate or regenerate plan
   const generatePlan = async () => {
     setLoading(true);
     try {
-      // TODO: replace with AI or backend call
       const placeholder: Meal[] = [
         { name: 'Grilled Chicken & Veggies', calories: 450, protein: 40, carbs: 30, fat: 15 },
         { name: 'Salmon Salad', calories: 500, protein: 35, carbs: 20, fat: 25 },
@@ -74,11 +71,7 @@ const MealPlanScreen: React.FC = () => {
 
       const today = new Date().toISOString().split('T')[0];
       const ref = doc(firestore, 'mealPlans', `${uid}_${today}`);
-      await setDoc(
-        ref,
-        { meals: placeholder, generatedAt: serverTimestamp() },
-        { merge: true }
-      );
+      await setDoc(ref, { meals: placeholder, generatedAt: serverTimestamp() }, { merge: true });
       setMeals(placeholder);
     } catch (err) {
       console.error('Error generating meal plan:', err);
@@ -109,6 +102,7 @@ const MealPlanScreen: React.FC = () => {
           </View>
         ))}
         <Pressable style={styles.button} onPress={generatePlan}>
+          <Ionicons name="refresh" size={18} color="#fff" style={styles.icon} />
           <Text style={styles.buttonText}>Regenerate Plan</Text>
         </Pressable>
       </ScrollView>
@@ -118,14 +112,64 @@ const MealPlanScreen: React.FC = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  loader: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#121212' },
-  content: { padding: 24, alignItems: 'center' },
-  title: { fontSize: 24, fontWeight: '700', color: '#d32f2f', marginBottom: 16 },
-  card: { width: '100%', backgroundColor: '#2a2a2a', borderRadius: 12, padding: 16, marginBottom: 12 },
-  mealName: { fontSize: 18, fontWeight: '600', color: '#fff', marginBottom: 8 },
-  nutrients: { fontSize: 14, color: '#ccc' },
-  button: { marginTop: 20, backgroundColor: '#d32f2f', paddingVertical: 12, paddingHorizontal: 24, borderRadius: 8 },
-  buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  loader: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#121212',
+  },
+  content: {
+    padding: 24,
+    alignItems: 'center',
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#d32f2f',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  card: {
+    width: '100%',
+    backgroundColor: '#2a2a2a',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.25,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  mealName: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#fff',
+    marginBottom: 8,
+  },
+  nutrients: {
+    fontSize: 14,
+    color: '#ccc',
+  },
+  button: {
+    marginTop: 24,
+    borderWidth: 1,
+    borderColor: '#d32f2f',
+    backgroundColor: '#1a1a1a',
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  buttonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  icon: {
+    marginRight: 8,
+  },
 });
 
 export default MealPlanScreen;

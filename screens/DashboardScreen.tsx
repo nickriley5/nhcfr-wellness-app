@@ -1,4 +1,3 @@
-// screens/DashboardScreen.tsx
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
@@ -8,7 +7,6 @@ import {
 } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { signOut } from 'firebase/auth';
 import { auth, firestore } from '../firebase';
 import {
   collection,
@@ -28,7 +26,6 @@ interface CheckInEntry extends DocumentData {
   timestamp: Date;
 }
 
-// Composite prop to navigate tabs and stack
 type DashboardNavProp = CompositeNavigationProp<
   BottomTabNavigationProp<TabParamList, 'Dashboard'>,
   NativeStackNavigationProp<RootStackParamList>
@@ -65,10 +62,7 @@ const DashboardScreen: React.FC = () => {
         });
 
         const today = new Date();
-        if (
-          !entries[0] ||
-          entries[0].timestamp.toDateString() !== today.toDateString()
-        ) {
+        if (!entries[0] || entries[0].timestamp.toDateString() !== today.toDateString()) {
           setHasCheckedInToday(false);
         }
 
@@ -92,7 +86,6 @@ const DashboardScreen: React.FC = () => {
         <Text style={styles.quickTitle}>🍽️ Next Meal</Text>
         <Text style={styles.quickDetail}>Grilled chicken, rice, broccoli</Text>
       </View>
-      {/* ✅ FIXED: Corrected navigation call to WorkoutDetail (not nested incorrectly) */}
       <Pressable
         style={styles.quickCard}
         onPress={() => navigation.navigate('WorkoutDetail')}
@@ -105,19 +98,14 @@ const DashboardScreen: React.FC = () => {
   );
 
   return (
-    <LinearGradient
-      colors={['#0f0f0f', '#1c1c1c', '#121212']}
-      style={styles.screen}
-    >
+    <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.header}>Your Dashboard</Text>
         <Text style={styles.subheader}>Train for duty. Fuel for life. 🔥</Text>
 
         {!hasCheckedInToday && (
           <View style={styles.reminderCard}>
-            <Text style={styles.reminderText}>
-              Don't forget to check in today!
-            </Text>
+            <Text style={styles.reminderText}>Don't forget to check in today!</Text>
           </View>
         )}
 
@@ -127,15 +115,10 @@ const DashboardScreen: React.FC = () => {
             {(['week', 'month', 'all'] as const).map(key => (
               <Pressable
                 key={key}
-                style={[
-                  styles.toggleButton,
-                  view === key && styles.toggleActive,
-                ]}
+                style={[styles.toggleButton, view === key && styles.toggleActive]}
                 onPress={() => setView(key)}
               >
-                <Text style={styles.toggleText}>
-                  {key.charAt(0).toUpperCase() + key.slice(1)}
-                </Text>
+                <Text style={styles.toggleText}>{key.charAt(0).toUpperCase() + key.slice(1)}</Text>
               </Pressable>
             ))}
           </View>
@@ -144,10 +127,10 @@ const DashboardScreen: React.FC = () => {
 
         {!hasCheckedInToday && (
           <Pressable
-            style={[styles.actionButton, styles.checkInButton]}
+            style={[styles.outlinedButton, styles.checkInButton]}
             onPress={() => navigation.navigate('CheckIn')}
           >
-            <Text style={styles.actionText}>Check In Now</Text>
+            <Text style={styles.buttonText}>Check In Now</Text>
           </Pressable>
         )}
 
@@ -155,31 +138,29 @@ const DashboardScreen: React.FC = () => {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>💡 AI Coach</Text>
-          <Text style={styles.sectionText}>
-            Personalized fitness & recovery tips coming soon.
-          </Text>
+          <Text style={styles.sectionText}>Personalized fitness & recovery tips coming soon.</Text>
         </View>
 
         <Pressable
-          style={styles.actionButton}
+          style={styles.outlinedButton}
           onPress={() => navigation.navigate('MealPlan')}
         >
-          <Text style={styles.actionText}>Generate Meal Plan</Text>
+          <Text style={styles.buttonText}>Generate Meal Plan</Text>
         </Pressable>
 
         <Pressable
-          style={styles.actionButton}
+          style={styles.outlinedButton}
           onPress={() => navigation.navigate('WorkoutDetail')}
         >
-          <Text style={styles.actionText}>Generate Workout</Text>
+          <Text style={styles.buttonText}>Generate Workout</Text>
         </Pressable>
-        <Pressable
-  style={styles.actionButton}
-  onPress={() => navigation.navigate('WorkoutHistory')}
->
-  <Text style={styles.actionText}>📚 View Workout History</Text>
-</Pressable>
 
+        <Pressable
+          style={styles.outlinedButton}
+          onPress={() => navigation.navigate('WorkoutHistory')}
+        >
+          <Text style={styles.buttonText}>📚 View Workout History</Text>
+        </Pressable>
       </ScrollView>
     </LinearGradient>
   );
@@ -188,10 +169,8 @@ const DashboardScreen: React.FC = () => {
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   content: { padding: 24, alignItems: 'center' },
-
   header: { fontSize: 26, fontWeight: '700', color: '#d32f2f', marginBottom: 4 },
   subheader: { fontSize: 16, color: '#ccc', marginBottom: 16 },
-
   reminderCard: {
     backgroundColor: '#2a2a2a',
     borderRadius: 12,
@@ -200,7 +179,6 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   reminderText: { color: '#ffd54f', textAlign: 'center' },
-
   section: { width: '100%', marginBottom: 24 },
   sectionTitle: {
     fontSize: 20,
@@ -209,8 +187,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     textAlign: 'center',
   },
-  sectionText: { fontSize: 14, color: '#ccc' },
-
+  sectionText: { fontSize: 14, color: '#ccc', textAlign: 'center' },
   toggleGroup: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -226,7 +203,6 @@ const styles = StyleSheet.create({
   },
   toggleActive: { backgroundColor: '#d32f2f' },
   toggleText: { color: '#fff', fontSize: 14 },
-
   quickContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -248,17 +224,32 @@ const styles = StyleSheet.create({
   },
   quickDetail: { fontSize: 14, color: '#ccc' },
   quickHint: { fontSize: 12, color: '#aaa', marginTop: 6 },
-
-  actionButton: {
+  outlinedButton: {
     width: '100%',
-    backgroundColor: '#d32f2f',
-    borderRadius: 10,
     paddingVertical: 14,
     alignItems: 'center',
     marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#d32f2f',
+    borderRadius: 10,
+    backgroundColor: '#2a2a2a',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  actionText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  checkInButton: { backgroundColor: '#388e3c' },
+  buttonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  checkInButton: {
+    backgroundColor: '#388e3c',
+    borderColor: '#388e3c',
+  },
 });
 
 export default DashboardScreen;

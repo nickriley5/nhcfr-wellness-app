@@ -48,10 +48,10 @@ export type RootDrawerParamList = {
 export type RootStackParamList = {
   Login: undefined;
   Register: undefined;
-  Main: NavigatorScreenParams<RootDrawerParamList>; // 🔄 changed to Drawer params
+  Main: NavigatorScreenParams<RootDrawerParamList>;
   ProfileSetup: undefined;
   CheckIn: undefined;
-  WorkoutDetail: undefined;
+  WorkoutDetail: { adapt?: boolean } | undefined;
   ExerciseLibrary: undefined;
   ExerciseDetail: { exerciseId: string };
   WorkoutHistory: undefined;

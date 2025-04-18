@@ -1,4 +1,4 @@
-// WorkoutDetailScreen with previous workout summary, PR celebration overlay, and grey placeholders
+// WorkoutDetailScreen with upgraded outlined buttons
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -29,7 +29,6 @@ import { RootStackParamList } from '../App';
 import PRCelebration from '../components/PRCelebration';
 import Toast from '../components/Toast';
 
-
 const WorkoutDetailScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [loading, setLoading] = useState(true);
@@ -41,7 +40,6 @@ const WorkoutDetailScreen: React.FC = () => {
   const [showPR, setShowPR] = useState(false);
   const [prMessages, setPRMessages] = useState<string[]>([]);
   const [showToast, setShowToast] = useState(false);
-
 
   useEffect(() => {
     const fetchWorkout = async () => {
@@ -116,7 +114,7 @@ const WorkoutDetailScreen: React.FC = () => {
   const saveWorkoutProgress = async () => {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
-  
+
     const todayId = new Date().toISOString().split('T')[0];
     const logData = {
       dayTitle,
@@ -126,14 +124,13 @@ const WorkoutDetailScreen: React.FC = () => {
         sets: progress[exIndex],
       })),
     };
-  
+
     try {
-      // 🔍 Load existing PRs BEFORE saving
       const prRef = collection(firestore, 'users', uid, 'workoutLogs');
       const snapshot = await getDocs(prRef);
-  
+
       const currentPRs: Record<string, number> = {};
-  
+
       snapshot.forEach(doc => {
         const data = doc.data();
         data.exercises.forEach((ex: any) => {
@@ -147,14 +144,12 @@ const WorkoutDetailScreen: React.FC = () => {
           });
         });
       });
-  
-      // ✅ Save workout
+
       await setDoc(doc(firestore, 'users', uid, 'workoutLogs', todayId), logData);
       setShowToast(true);
-  
-      // 🏅 Compare new log to previous PRs
+
       const newPRs: string[] = [];
-  
+
       logData.exercises.forEach((ex: any) => {
         ex.sets.forEach((set: any) => {
           const weight = parseFloat(set.weight);
@@ -163,9 +158,7 @@ const WorkoutDetailScreen: React.FC = () => {
           }
         });
       });
-      
-  
-      // 🎉 Trigger PR Celebration if any
+
       if (newPRs.length > 0) {
         setPRMessages(newPRs);
         setShowPR(true);
@@ -175,7 +168,6 @@ const WorkoutDetailScreen: React.FC = () => {
       alert('Failed to save workout.');
     }
   };
-  
 
   if (loading) {
     return (
@@ -278,13 +270,13 @@ const WorkoutDetailScreen: React.FC = () => {
           );
         })}
 
-        <Pressable style={styles.button} onPress={saveWorkoutProgress}>
+        <Pressable style={styles.outlinedButton} onPress={saveWorkoutProgress}>
           <Ionicons name="save" size={20} color="#fff" style={styles.icon} />
           <Text style={styles.buttonText}>Save Workout</Text>
         </Pressable>
 
         <Pressable
-          style={[styles.button, styles.secondaryButton]}
+          style={[styles.outlinedButton, styles.secondaryButton]}
           onPress={() => navigation.goBack()}
         >
           <Ionicons name="arrow-back" size={20} color="#fff" style={styles.icon} />
@@ -292,13 +284,12 @@ const WorkoutDetailScreen: React.FC = () => {
         </Pressable>
 
         {showPR && (
-  <PRCelebration visible={showPR} messages={prMessages} onClose={() => setShowPR(false)} />
-)}
-
+          <PRCelebration visible={showPR} messages={prMessages} onClose={() => setShowPR(false)} />
+        )}
       </ScrollView>
       {showToast && (
-  <Toast message="Workout saved successfully!" onClose={() => setShowToast(false)} />
-)}
+        <Toast message="Workout saved successfully!" onClose={() => setShowToast(false)} />
+      )}
     </LinearGradient>
   );
 };
@@ -401,8 +392,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 4,
   },
-  button: {
-    backgroundColor: '#d32f2f',
+  outlinedButton: {
+    backgroundColor: '#2a2a2a',
+    borderWidth: 1.5,
+    borderColor: '#d32f2f',
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 14,
@@ -413,7 +406,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   secondaryButton: {
-    backgroundColor: '#444',
+    marginTop: 12,
+    borderColor: '#888',
   },
   buttonText: {
     color: '#fff',

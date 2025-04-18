@@ -1,210 +1,205 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  SectionList,
-  TextInput,
-  TouchableOpacity,
-  Image,
   Pressable,
-  Animated,
+  Alert,
+  TextInput,
+  ScrollView,
 } from 'react-native';
-import LinearGradient from 'react-native-linear-gradient';
+import { getAuth } from 'firebase/auth';
+import {
+  getFirestore,
+  collection,
+  addDoc,
+  serverTimestamp,
+} from 'firebase/firestore';
+import { getApp } from 'firebase/app';
 import { useNavigation } from '@react-navigation/native';
-import Ionicons from 'react-native-vector-icons/Ionicons';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
+import Toast from '../components/Toast';
 
-type NavProp = NativeStackNavigationProp<RootStackParamList>;
+const moodOptions = ['😩', '😕', '😐', '🙂', '😄'];
+const energyOptions = ['😴', '😓', '😐', '💪', '⚡'];
 
-interface Exercise {
-  id: string;
-  name: string;
-  category: string;
-  equipment: string[];
-  description: string;
-  thumbnailUri: string;
-}
+const CheckInScreen = () => {
+  const [mood, setMood] = useState<number | null>(null);
+  const [energy, setEnergy] = useState<number | null>(null);
+  const [notes, setNotes] = useState('');
+  const [showToast, setShowToast] = useState(false);
 
-const EXERCISES: Exercise[] = [
-  {
-    id: 'push_up',
-    name: 'Push‑Up',
-    category: 'Upper Body',
-    equipment: ['Bodyweight'],
-    description: 'Standard push‑up focusing on chest and triceps.',
-    thumbnailUri: 'https://via.placeholder.com/64',
-  },
-  {
-    id: 'goblet_squat',
-    name: 'Goblet Squat',
-    category: 'Lower Body',
-    equipment: ['Dumbbell'],
-    description: 'Hold a dumbbell at chest level and squat.',
-    thumbnailUri: 'https://via.placeholder.com/64',
-  },
-  {
-    id: 'plank',
-    name: 'Plank',
-    category: 'Core',
-    equipment: ['None'],
-    description: 'Maintain a straight body line on elbows or hands.',
-    thumbnailUri: 'https://via.placeholder.com/64',
-  },
-];
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
-const groupByCategory = (data: Exercise[]) => {
-  const groups: Record<string, Exercise[]> = {};
-  data.forEach((e) => {
-    (groups[e.category] ||= []).push(e);
-  });
-  return Object.entries(groups).map(([title, data]) => ({ title, data }));
-};
+  const handleSubmit = async () => {
+    const auth = getAuth(getApp());
+    const db = getFirestore(getApp());
+    const uid = auth.currentUser?.uid;
 
-const ExerciseLibraryScreen: React.FC = () => {
-  const navigation = useNavigation<NavProp>();
-  const [search, setSearch] = useState('');
-  const [showScrollTop, setShowScrollTop] = useState(false);
-  const listRef = useRef<SectionList<any>>(null);
+    if (!uid || mood === null || energy === null) {
+      Alert.alert('Please select both mood and energy.');
+      return;
+    }
 
-  const filtered = useMemo(() => {
-    const term = search.toLowerCase();
-    return EXERCISES.filter(
-      (e) =>
-        e.name.toLowerCase().includes(term) ||
-        e.description.toLowerCase().includes(term)
-    );
-  }, [search]);
+    try {
+      await addDoc(collection(db, 'checkins'), {
+        uid,
+        mood,
+        energy,
+        notes,
+        timestamp: serverTimestamp(),
+      });
 
-  const sections = useMemo(() => groupByCategory(filtered), [filtered]);
+      setMood(null);
+      setEnergy(null);
+      setNotes('');
+      setShowToast(true);
 
-  const handleScroll = (event: any) => {
-    const offsetY = event.nativeEvent.contentOffset.y;
-    setShowScrollTop(offsetY > 150); // show after scrolling 150px
-  };
+      setTimeout(() => {
+        setShowToast(false);
+        navigation.navigate('Main', {
+            screen: 'MainTabs',
+            params: { screen: 'Home' },
+          });
+          
+      }, 2000);
 
-  const scrollToTop = () => {
-    listRef.current?.scrollToLocation({ sectionIndex: 0, itemIndex: 0, animated: true });
+    } catch (err) {
+      console.error('Check-In Error:', err);
+      Alert.alert('Error', 'Something went wrong while saving your check-in.');
+    }
   };
 
   return (
-    <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Exercise Library</Text>
-        <TextInput
-          style={styles.searchBar}
-          placeholder="Search exercises..."
-          placeholderTextColor="#888"
-          value={search}
-          onChangeText={setSearch}
-        />
+    <ScrollView contentContainerStyle={styles.container}>
+      <Text style={styles.title}>Daily Check-In</Text>
+
+      <Text style={styles.sectionTitle}>How’s your mood today?</Text>
+      <View style={styles.buttonRow}>
+        {moodOptions.map((emoji, index) => (
+          <Pressable
+            key={index}
+            style={[styles.emojiButton, mood === index + 1 && styles.selectedButton]}
+            onPress={() => setMood(index + 1)}
+          >
+            <Text style={styles.emoji}>{emoji}</Text>
+          </Pressable>
+        ))}
       </View>
 
-      <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
-        <Ionicons name="arrow-back" size={24} color="#fff" />
-        <Text style={styles.backText}>Back</Text>
-      </Pressable>
-
-      <SectionList
-        ref={listRef}
-        sections={sections}
-        keyExtractor={(item) => item.id}
-        onScroll={handleScroll}
-        scrollEventThrottle={16}
-        renderSectionHeader={({ section: { title } }) => (
-          <Text style={styles.sectionHeader}>{title}</Text>
-        )}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={styles.card}
-            onPress={() =>
-              navigation.navigate('ExerciseDetail', { exerciseId: item.id })
-            }
+      <Text style={styles.sectionTitle}>How’s your energy level?</Text>
+      <View style={styles.buttonRow}>
+        {energyOptions.map((emoji, index) => (
+          <Pressable
+            key={index}
+            style={[styles.emojiButton, energy === index + 1 && styles.selectedButton]}
+            onPress={() => setEnergy(index + 1)}
           >
-            <Image source={{ uri: item.thumbnailUri }} style={styles.thumbnail} />
-            <View style={styles.info}>
-              <Text style={styles.name}>{item.name}</Text>
-              <Text style={styles.desc} numberOfLines={2}>
-                {item.description}
-              </Text>
-            </View>
-          </TouchableOpacity>
-        )}
-        contentContainerStyle={styles.listContent}
+            <Text style={styles.emoji}>{emoji}</Text>
+          </Pressable>
+        ))}
+      </View>
+
+      <Text style={styles.sectionTitle}>Anything on your mind?</Text>
+      <TextInput
+        value={notes}
+        onChangeText={setNotes}
+        placeholder="Optional note (sore, bad sleep, stress, etc.)"
+        placeholderTextColor="#888"
+        multiline
+        style={styles.input}
       />
 
-      {/* Bottom Back Button */}
-      <Pressable
-        style={[styles.backButton, { marginTop: 12, marginBottom: 24 }]}
-        onPress={() => navigation.goBack()}
-      >
-        <Ionicons name="arrow-back" size={24} color="#fff" />
-        <Text style={styles.backText}>Back</Text>
+      <Pressable style={styles.submitButton} onPress={handleSubmit}>
+        <Text style={styles.submitText}>Submit Check-In</Text>
       </Pressable>
 
-      {/* 🔝 Scroll to Top Button */}
-      {showScrollTop && (
-        <Pressable style={styles.scrollTopBtn} onPress={scrollToTop}>
-          <Ionicons name="arrow-up" size={24} color="#fff" />
-        </Pressable>
+      {showToast && (
+        <Toast message="Check-in saved successfully!" onClose={() => setShowToast(false)} />
       )}
-    </LinearGradient>
+    </ScrollView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  header: { padding: 16 },
-  title: { fontSize: 24, fontWeight: '700', color: '#d32f2f', marginBottom: 8 },
-  searchBar: {
-    backgroundColor: '#1e1e1e',
-    borderRadius: 8,
-    padding: 10,
-    color: '#fff',
-    fontSize: 16,
+  container: {
+    flexGrow: 1,
+    padding: 24,
+    backgroundColor: '#121212',
+    alignItems: 'center',
   },
-  listContent: { paddingHorizontal: 16, paddingBottom: 24 },
-  sectionHeader: {
-    fontSize: 18,
+  title: {
+    fontSize: 26,
+    fontWeight: '700',
+    color: '#d32f2f',
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  sectionTitle: {
+    color: '#fff',
     fontWeight: '600',
-    color: '#fff',
+    fontSize: 16,
+    alignSelf: 'flex-start',
     marginTop: 16,
-    marginBottom: 8,
+    marginBottom: 10,
   },
-  card: {
+  buttonRow: {
     flexDirection: 'row',
-    backgroundColor: '#2a2a2a',
-    borderRadius: 10,
+    justifyContent: 'space-between',
+    width: '100%',
+    marginBottom: 16,
+  },
+  emojiButton: {
+    backgroundColor: '#1e1e1e',
     padding: 12,
-    marginBottom: 12,
+    borderRadius: 12,
+    width: 55,
+    height: 55,
+    justifyContent: 'center',
     alignItems: 'center',
+    borderColor: '#333',
+    borderWidth: 1,
   },
-  thumbnail: { width: 64, height: 64, borderRadius: 8, marginRight: 12 },
-  info: { flex: 1 },
-  name: { fontSize: 16, fontWeight: '600', color: '#fff' },
-  desc: { fontSize: 14, color: '#ccc', marginTop: 4 },
-  backButton: {
-    flexDirection: 'row',
+  selectedButton: {
+    borderColor: '#d32f2f',
+    backgroundColor: '#2a2a2a',
+  },
+  emoji: {
+    fontSize: 24,
+  },
+  input: {
+    backgroundColor: '#1e1e1e',
+    borderColor: '#333',
+    borderWidth: 1,
+    borderRadius: 10,
+    color: '#fff',
+    padding: 12,
+    fontSize: 14,
+    height: 100,
+    width: '100%',
+    textAlignVertical: 'top',
+    marginBottom: 24,
+  },
+  submitButton: {
+    backgroundColor: '#1c1c1c',
+    borderWidth: 1.5,
+    borderColor: '#d32f2f',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
     alignItems: 'center',
-    marginLeft: 16,
-    marginBottom: 12,
+    justifyContent: 'center',
+    width: '100%',
+    marginBottom: 16,
   },
-  backText: {
+  submitText: {
     color: '#fff',
     fontSize: 16,
-    marginLeft: 6,
-  },
-  scrollTopBtn: {
-    position: 'absolute',
-    bottom: 30,
-    right: 20,
-    backgroundColor: '#d32f2f',
-    padding: 14,
-    borderRadius: 50,
-    elevation: 5,
-    zIndex: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
 });
 
-export default ExerciseLibraryScreen;
+export default CheckInScreen;
