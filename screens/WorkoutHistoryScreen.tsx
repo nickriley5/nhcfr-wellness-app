@@ -1,3 +1,4 @@
+// Updated WorkoutHistoryScreen with clean toggle and unified chart style
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -10,7 +11,7 @@ import {
   TextInput,
 } from 'react-native';
 import { auth, firestore } from '../firebase';
-import { collection, getDocs, query, orderBy, where } from 'firebase/firestore';
+import { collection, getDocs } from 'firebase/firestore';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import LinearGradient from 'react-native-linear-gradient';
 import {
@@ -37,7 +38,7 @@ const WorkoutHistoryScreen: React.FC = () => {
   const [logs, setLogs] = useState<Record<string, WorkoutLog>>({});
   const [expanded, setExpanded] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [lastThree, setLastThree] = useState<Record<string, WorkoutLog[]>>({});
+  const [showLastThree, setShowLastThree] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const fetchLogs = async () => {
@@ -66,6 +67,13 @@ const WorkoutHistoryScreen: React.FC = () => {
 
   const toggleExpand = (id: string) => {
     setExpanded(prev => (prev === id ? null : id));
+  };
+
+  const toggleShowLastThree = (exerciseName: string) => {
+    setShowLastThree(prev => ({
+      ...prev,
+      [exerciseName]: !prev[exerciseName],
+    }));
   };
 
   const matchesSearch = (log: WorkoutLog) => {
@@ -147,7 +155,7 @@ const WorkoutHistoryScreen: React.FC = () => {
                               })
                             }
                           >
-                            <Text style={styles.progressMini}>📈</Text>
+                            <Ionicons name="stats-chart" size={16} color="#4fc3f7" />
                           </Pressable>
                         </View>
                         {ex.sets.map((set, setIndex) => (
@@ -156,20 +164,28 @@ const WorkoutHistoryScreen: React.FC = () => {
                           </Text>
                         ))}
 
-                        {/* 🆕 Last 3 Sessions */}
-                        <Text style={styles.recentLabel}>Last 3 Sessions:</Text>
-                        {getLastThreeSessions(ex.name).map((entry, index) => {
-                          const match = entry.exercises.find(e => e.name === ex.name);
-                          return (
-                            <View key={index}>
-                              {match?.sets.map((set, sIdx) => (
-                                <Text key={sIdx} style={styles.recentSet}>
-                                  {entry.id}: {set.reps} reps @ {set.weight} lbs
-                                </Text>
-                              ))}
-                            </View>
-                          );
-                        })}
+                        <Pressable onPress={() => toggleShowLastThree(ex.name)}>
+                          <Text style={styles.toggleLast3}>
+                            {showLastThree[ex.name] ? '− Hide Last 3 Sessions' : '+ Show Last 3 Sessions'}
+                          </Text>
+                        </Pressable>
+
+                        {showLastThree[ex.name] && (
+                          <View>
+                            {getLastThreeSessions(ex.name).map((entry, index) => {
+                              const match = entry.exercises.find(e => e.name === ex.name);
+                              return (
+                                <View key={index}>
+                                  {match?.sets.map((set, sIdx) => (
+                                    <Text key={sIdx} style={styles.recentSet}>
+                                      {entry.id}: {set.reps} reps @ {set.weight} lbs
+                                    </Text>
+                                  ))}
+                                </View>
+                              );
+                            })}
+                          </View>
+                        )}
                       </View>
                     ))}
                 </View>
@@ -252,15 +268,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 4,
   },
-  progressMini: {
-    color: '#4fc3f7',
-    fontSize: 16,
-  },
-  recentLabel: {
-    color: '#aaa',
+  toggleLast3: {
     fontSize: 12,
-    marginTop: 6,
-    fontStyle: 'italic',
+    color: '#4fc3f7',
+    marginTop: 4,
+    marginBottom: 4,
+    marginLeft: 8,
   },
   recentSet: {
     color: '#bbb',

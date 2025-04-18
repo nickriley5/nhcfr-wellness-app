@@ -210,7 +210,7 @@ const WorkoutDetailScreen: React.FC = () => {
                       />
                       <TextInput
                         style={styles.input}
-                        placeholder="weight (lbs)"
+                        placeholder="(lbs)"
                         placeholderTextColor="#777"
                         keyboardType="numeric"
                         value={set.weight}
