@@ -22,6 +22,8 @@ import WorkoutDetailScreen from './screens/WorkoutDetailScreen';
 import WorkoutHistoryScreen from './screens/WorkoutHistoryScreen';
 import ProgressChartScreen from './screens/ProgressChartScreen';
 import PRTrackerScreen from './screens/PRTrackerScreen';
+import AdaptWorkoutScreen from './screens/AdaptWorkoutScreen';
+
 
 
 // Auth context
@@ -51,7 +53,8 @@ export type RootStackParamList = {
   Main: NavigatorScreenParams<RootDrawerParamList>;
   ProfileSetup: undefined;
   CheckIn: undefined;
-  WorkoutDetail: { adapt?: boolean } | undefined;
+  WorkoutDetail: { adapt?: boolean; from?: string } | undefined;
+  AdaptWorkout: undefined;
   ExerciseLibrary: undefined;
   ExerciseDetail: { exerciseId: string };
   WorkoutHistory: undefined;
@@ -142,6 +145,7 @@ const AppNavigator = () => {
             <Stack.Screen name="WorkoutHistory" component={WorkoutHistoryScreen} />
             <Stack.Screen name="ProgressChart" component={ProgressChartScreen} />
             <Stack.Screen name="PRTracker" component={PRTrackerScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="AdaptWorkout" component={AdaptWorkoutScreen} />
           </>
         ) : (
           <Stack.Screen name="ProfileSetup" component={ProfileSetupScreen} />

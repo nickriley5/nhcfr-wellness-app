@@ -1,4 +1,4 @@
-// WorkoutDetailScreen with upgraded outlined buttons
+// screens/WorkoutDetailScreen.tsx
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -23,14 +23,18 @@ import {
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import LinearGradient from 'react-native-linear-gradient';
 import Video from 'react-native-video';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
 import PRCelebration from '../components/PRCelebration';
 import Toast from '../components/Toast';
+import { RouteProp } from '@react-navigation/native';
 
 const WorkoutDetailScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const route = useRoute<RouteProp<RootStackParamList, 'WorkoutDetail'>>();
+  const fromAdapt = route.params?.adapt ?? false;
+
   const [loading, setLoading] = useState(true);
   const [dayTitle, setDayTitle] = useState('');
   const [exercises, setExercises] = useState<any[]>([]);
@@ -191,20 +195,13 @@ const WorkoutDetailScreen: React.FC = () => {
           return (
             <View
               key={exIndex}
-              style={[styles.exerciseCard, complete && styles.exerciseCardCompleted]}
+              style={[styles.card, complete && styles.cardComplete]}
             >
-              <View style={styles.exerciseHeader}>
-                <Text
-                  style={[styles.exerciseName, complete && styles.exerciseNameCompleted]}
-                >
+              <View style={styles.cardHeader}>
+                <Text style={[styles.cardTitle, complete && styles.cardTitleComplete]}>
                   {ex.name}
                 </Text>
-                <Pressable
-                  onPress={() =>
-                    navigation.navigate('ProgressChart', { exerciseName: ex.name })
-                  }
-                  style={({ pressed }) => [{ transform: [{ scale: pressed ? 0.95 : 1 }] }]}
-                >
+                <Pressable onPress={() => navigation.navigate('ProgressChart', { exerciseName: ex.name })}>
                   <Ionicons name="stats-chart" size={20} color="#4fc3f7" />
                 </Pressable>
               </View>
@@ -243,9 +240,7 @@ const WorkoutDetailScreen: React.FC = () => {
                         placeholderTextColor="#777"
                         keyboardType="numeric"
                         value={set.reps}
-                        onChangeText={text =>
-                          handleInputChange(exIndex, setIndex, 'reps', text)
-                        }
+                        onChangeText={text => handleInputChange(exIndex, setIndex, 'reps', text)}
                       />
                       <TextInput
                         style={styles.input}
@@ -253,9 +248,7 @@ const WorkoutDetailScreen: React.FC = () => {
                         placeholderTextColor="#777"
                         keyboardType="numeric"
                         value={set.weight}
-                        onChangeText={text =>
-                          handleInputChange(exIndex, setIndex, 'weight', text)
-                        }
+                        onChangeText={text => handleInputChange(exIndex, setIndex, 'weight', text)}
                       />
                     </View>
                     {lastSet && (
@@ -270,23 +263,30 @@ const WorkoutDetailScreen: React.FC = () => {
           );
         })}
 
-        <Pressable style={styles.outlinedButton} onPress={saveWorkoutProgress}>
-          <Ionicons name="save" size={20} color="#fff" style={styles.icon} />
+        <Pressable style={styles.saveButton} onPress={saveWorkoutProgress}>
+          <Ionicons name="save" size={20} color="#fff" style={{ marginRight: 8 }} />
           <Text style={styles.buttonText}>Save Workout</Text>
         </Pressable>
 
         <Pressable
-          style={[styles.outlinedButton, styles.secondaryButton]}
-          onPress={() => navigation.goBack()}
-        >
-          <Ionicons name="arrow-back" size={20} color="#fff" style={styles.icon} />
-          <Text style={styles.buttonText}>Back</Text>
-        </Pressable>
+  style={[styles.saveButton, styles.secondaryButton]}
+  onPress={() =>
+    navigation.navigate('Main', {
+      screen: 'MainTabs',
+      params: { screen: 'Workout' },
+    })
+  }
+>
+  <Ionicons name="arrow-back" size={20} color="#fff" style={{ marginRight: 8 }} />
+  <Text style={styles.buttonText}>Back to Workout Hub</Text>
+</Pressable>
+
 
         {showPR && (
           <PRCelebration visible={showPR} messages={prMessages} onClose={() => setShowPR(false)} />
         )}
       </ScrollView>
+
       {showToast && (
         <Toast message="Workout saved successfully!" onClose={() => setShowToast(false)} />
       )}
@@ -296,7 +296,7 @@ const WorkoutDetailScreen: React.FC = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  content: { padding: 24, alignItems: 'center' },
+  content: { padding: 24 },
   title: {
     fontSize: 22,
     fontWeight: '700',
@@ -304,31 +304,29 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     textAlign: 'center',
   },
-  exerciseCard: {
+  card: {
     backgroundColor: '#2a2a2a',
     borderRadius: 10,
     padding: 16,
-    width: '100%',
     marginBottom: 16,
   },
-  exerciseCardCompleted: {
-    backgroundColor: '#1e1e1e',
+  cardComplete: {
+    opacity: 0.6,
     borderColor: '#4caf50',
     borderWidth: 1,
-    opacity: 0.6,
   },
-  exerciseHeader: {
+  cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 8,
   },
-  exerciseName: {
-    color: '#fff',
+  cardTitle: {
     fontSize: 18,
     fontWeight: '600',
+    color: '#fff',
   },
-  exerciseNameCompleted: {
+  cardTitleComplete: {
     textDecorationLine: 'line-through',
     color: '#aaa',
   },
@@ -338,20 +336,13 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     fontStyle: 'italic',
   },
-  setBlock: {
-    width: '100%',
-    marginBottom: 6,
-  },
+  setBlock: { marginBottom: 6 },
   setRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 4,
     gap: 8,
   },
-  setLabel: {
-    color: '#ccc',
-    width: 55,
-  },
+  setLabel: { color: '#ccc', width: 55 },
   input: {
     backgroundColor: '#1e1e1e',
     color: '#fff',
@@ -379,20 +370,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  video: {
-    width: '100%',
-    height: '100%',
-  },
-  playOverlay: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  playText: {
-    color: '#fff',
-    fontSize: 14,
-    marginTop: 4,
-  },
-  outlinedButton: {
+  video: { width: '100%', height: '100%' },
+  playOverlay: { alignItems: 'center', justifyContent: 'center' },
+  playText: { color: '#fff', fontSize: 14, marginTop: 4 },
+  saveButton: {
     backgroundColor: '#2a2a2a',
     borderWidth: 1.5,
     borderColor: '#d32f2f',
@@ -402,7 +383,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     borderRadius: 10,
     marginTop: 24,
-    width: '100%',
     justifyContent: 'center',
   },
   secondaryButton: {
@@ -413,9 +393,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
-  },
-  icon: {
-    marginRight: 8,
   },
 });
 

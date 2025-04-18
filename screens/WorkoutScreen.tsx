@@ -215,8 +215,8 @@ const WorkoutScreen: React.FC = () => {
             <Pressable style={styles.button} onPress={() => navigation.navigate('WorkoutDetail', undefined)}>
               <Text style={styles.buttonText}>View Today's Workout</Text>
             </Pressable>
-            <Pressable style={styles.button} onPress={() => navigation.navigate('WorkoutDetail', { adapt: true })}>
-              <Text style={styles.buttonText}>Adapt Today’s Workout</Text>
+            <Pressable style={styles.button} onPress={() => navigation.navigate('AdaptWorkout')}>
+                  <Text style={styles.buttonText}>Adapt Today’s Workout</Text>
             </Pressable>
           </View>
         )}
