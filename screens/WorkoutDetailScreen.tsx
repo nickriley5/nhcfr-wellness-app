@@ -109,7 +109,8 @@ const WorkoutDetailScreen: React.FC = () => {
   const saveWorkoutProgress = async () => {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
-
+  
+    const todayId = new Date().toISOString().split('T')[0];
     const logData = {
       dayTitle,
       completedAt: new Date(),
@@ -118,17 +119,53 @@ const WorkoutDetailScreen: React.FC = () => {
         sets: progress[exIndex],
       })),
     };
-
-    const todayId = new Date().toISOString().split('T')[0];
-
+  
     try {
+      // 🔍 FIRST: Load existing PRs BEFORE saving
+      const prRef = collection(firestore, 'users', uid, 'workoutLogs');
+      const snapshot = await getDocs(prRef);
+  
+      const currentPRs: Record<string, number> = {};
+  
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        data.exercises.forEach((ex: any) => {
+          ex.sets.forEach((set: any) => {
+            const weight = parseFloat(set.weight);
+            if (!isNaN(weight)) {
+              if (!currentPRs[ex.name] || weight > currentPRs[ex.name]) {
+                currentPRs[ex.name] = weight;
+              }
+            }
+          });
+        });
+      });
+  
+      // ✅ Save workout
       await setDoc(doc(firestore, 'users', uid, 'workoutLogs', todayId), logData);
       alert('Workout saved successfully!');
+  
+      // 🏅 Compare NEW logData to previously known PRs
+      const newPRs: string[] = [];
+  
+      logData.exercises.forEach((ex: any) => {
+        ex.sets.forEach((set: any) => {
+          const weight = parseFloat(set.weight);
+          if (!isNaN(weight) && weight > (currentPRs[ex.name] || 0)) {
+            newPRs.push(`${ex.name}: ${weight} lbs`);
+          }
+        });
+      });
+  
+      if (newPRs.length > 0) {
+        alert(`🎉 New PR(s)!\n\n${newPRs.join('\n')}`);
+      }
     } catch (error) {
-      console.error('Error saving workout:', error);
+      console.error('Error saving workout or checking PRs:', error);
       alert('Failed to save workout.');
     }
   };
+  
 
   if (loading) {
     return (
