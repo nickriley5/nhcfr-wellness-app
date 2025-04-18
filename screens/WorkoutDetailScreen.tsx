@@ -147,7 +147,7 @@ const WorkoutDetailScreen: React.FC = () => {
           const sets = progress[exIndex];
           const complete = isExerciseComplete(sets);
           const isPlaying = playingIndex === exIndex;
-          const last = lastSession?.[ex.name];
+          const previous = lastSession?.[ex.name] || [];
 
           return (
             <View
@@ -160,9 +160,9 @@ const WorkoutDetailScreen: React.FC = () => {
                 >
                   {ex.name}
                 </Text>
-                {complete && (
-                  <Ionicons name="checkmark-circle" size={22} color="#4caf50" />
-                )}
+                <Pressable onPress={() => navigation.navigate('ProgressChart', { exerciseName: ex.name })}>
+                  <Text style={styles.progressLink}>📈 See Trend</Text>
+                </Pressable>
               </View>
 
               <Text style={styles.recommendation}>
@@ -213,14 +213,12 @@ const WorkoutDetailScreen: React.FC = () => {
                 </View>
               ))}
 
-              {last && (
-                <View style={{ marginTop: 6 }}>
-                  <Text style={{ fontSize: 12, color: '#aaa', fontStyle: 'italic' }}>
-                    Last workout:
-                  </Text>
-                  {last.map((set, idx) => (
-                    <Text key={idx} style={{ fontSize: 12, color: '#888' }}>
-                      Set {idx + 1}: {set.reps} reps @ {set.weight} lbs
+              {previous.length > 0 && (
+                <View style={{ marginTop: 8 }}>
+                  <Text style={{ color: '#aaa', fontSize: 12 }}>Last workout:</Text>
+                  {previous.map((prev, i) => (
+                    <Text key={i} style={{ color: '#ccc', fontSize: 12 }}>
+                      Set {i + 1}: {prev.reps} reps @ {prev.weight} lbs
                     </Text>
                   ))}
                 </View>
@@ -353,6 +351,13 @@ const styles = StyleSheet.create({
   },
   icon: {
     marginRight: 8,
+  },
+  progressLink: {
+    fontSize: 12,
+    color: '#4fc3f7',
+    textDecorationLine: 'underline',
+    marginLeft: 12,
+    alignSelf: 'center',
   },
 });
 
