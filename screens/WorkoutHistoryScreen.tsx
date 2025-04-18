@@ -1,4 +1,4 @@
-// Updated WorkoutHistoryScreen with clean toggle and unified chart style
+// Updated WorkoutHistoryScreen with clean toggle, unified chart style, and Smart Summary
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -95,6 +95,47 @@ const WorkoutHistoryScreen: React.FC = () => {
     return entries.slice(0, 3);
   };
 
+  // 💡 Smart Summary rendering logic per workout
+  const renderSmartSummary = (log: WorkoutLog) => {
+    let totalVolume = 0;
+    let heaviest = 0;
+    const freqMap: Record<string, number> = {};
+
+    log.exercises.forEach(ex => {
+      freqMap[ex.name] = (freqMap[ex.name] || 0) + 1;
+      ex.sets.forEach(set => {
+        const reps = parseInt(set.reps);
+        const weight = parseFloat(set.weight);
+        if (!isNaN(reps) && !isNaN(weight)) {
+          totalVolume += reps * weight;
+          if (weight > heaviest) heaviest = weight;
+        }
+      });
+    });
+
+    const mostFrequent = Object.entries(freqMap).reduce((a, b) =>
+      b[1] > a[1] ? b : a
+    )[0];
+
+    return (
+      <View style={styles.summaryContainer}>
+        <Text style={styles.summaryTitle}>Smart Summary</Text>
+        <View style={styles.summaryItem}>
+          <Ionicons name="barbell-outline" size={16} color="#4fc3f7" />
+          <Text style={styles.summaryText}>Total Volume: {totalVolume.toLocaleString()} lbs</Text>
+        </View>
+        <View style={styles.summaryItem}>
+          <Ionicons name="repeat-outline" size={16} color="#4fc3f7" />
+          <Text style={styles.summaryText}>Most Performed: {mostFrequent}</Text>
+        </View>
+        <View style={styles.summaryItem}>
+          <Ionicons name="trophy-outline" size={16} color="#4fc3f7" />
+          <Text style={styles.summaryText}>Heaviest Lift: {heaviest} lbs</Text>
+        </View>
+      </View>
+    );
+  };
+
   if (loading) {
     return (
       <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
@@ -188,6 +229,9 @@ const WorkoutHistoryScreen: React.FC = () => {
                         )}
                       </View>
                     ))}
+
+                  {/* 📌 Insert Smart Summary under the workout details */}
+                  {renderSmartSummary(log)}
                 </View>
               )}
             </View>
@@ -279,6 +323,28 @@ const styles = StyleSheet.create({
     color: '#bbb',
     fontSize: 12,
     marginLeft: 8,
+  },
+  summaryContainer: {
+    marginTop: 16,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#444',
+  },
+  summaryTitle: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 14,
+    marginBottom: 8,
+  },
+  summaryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  summaryText: {
+    color: '#ddd',
+    marginLeft: 8,
+    fontSize: 13,
   },
 });
 
