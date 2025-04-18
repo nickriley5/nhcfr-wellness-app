@@ -147,7 +147,7 @@ const WorkoutDetailScreen: React.FC = () => {
           const sets = progress[exIndex];
           const complete = isExerciseComplete(sets);
           const isPlaying = playingIndex === exIndex;
-          const previous = lastSession?.[ex.name] || [];
+          const last = lastSession?.[ex.name];
 
           return (
             <View
@@ -160,8 +160,13 @@ const WorkoutDetailScreen: React.FC = () => {
                 >
                   {ex.name}
                 </Text>
-                <Pressable onPress={() => navigation.navigate('ProgressChart', { exerciseName: ex.name })}>
-                  <Text style={styles.progressLink}>📈 See Trend</Text>
+                <Pressable
+                  onPress={() =>
+                    navigation.navigate('ProgressChart', { exerciseName: ex.name })
+                  }
+                  style={({ pressed }) => [{ transform: [{ scale: pressed ? 0.95 : 1 }] }]}
+                >
+                  <Ionicons name="stats-chart" size={20} color="#4fc3f7" />
                 </Pressable>
               </View>
 
@@ -212,17 +217,6 @@ const WorkoutDetailScreen: React.FC = () => {
                   />
                 </View>
               ))}
-
-              {previous.length > 0 && (
-                <View style={{ marginTop: 8 }}>
-                  <Text style={{ color: '#aaa', fontSize: 12 }}>Last workout:</Text>
-                  {previous.map((prev, i) => (
-                    <Text key={i} style={{ color: '#ccc', fontSize: 12 }}>
-                      Set {i + 1}: {prev.reps} reps @ {prev.weight} lbs
-                    </Text>
-                  ))}
-                </View>
-              )}
             </View>
           );
         })}
@@ -270,6 +264,7 @@ const styles = StyleSheet.create({
   exerciseHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 8,
   },
   exerciseName: {
@@ -351,13 +346,6 @@ const styles = StyleSheet.create({
   },
   icon: {
     marginRight: 8,
-  },
-  progressLink: {
-    fontSize: 12,
-    color: '#4fc3f7',
-    textDecorationLine: 'underline',
-    marginLeft: 12,
-    alignSelf: 'center',
   },
 });
 
