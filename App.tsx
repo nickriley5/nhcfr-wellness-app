@@ -21,6 +21,7 @@ import DrawerNavigation from './navigation/DrawerNavigation';
 import WorkoutDetailScreen from './screens/WorkoutDetailScreen';
 import WorkoutHistoryScreen from './screens/WorkoutHistoryScreen';
 import ProgressChartScreen from './screens/ProgressChartScreen';
+import PRTrackerScreen from './screens/PRTrackerScreen';
 
 
 // Auth context
@@ -55,6 +56,7 @@ export type RootStackParamList = {
   ExerciseDetail: { exerciseId: string };
   WorkoutHistory: undefined;
   ProgressChart: { exerciseName: string };
+  PRTracker: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -139,6 +141,7 @@ const AppNavigator = () => {
             <Stack.Screen name="ExerciseDetail" component={require('./screens/ExerciseDetailScreen').default} />
             <Stack.Screen name="WorkoutHistory" component={WorkoutHistoryScreen} />
             <Stack.Screen name="ProgressChart" component={ProgressChartScreen} />
+            <Stack.Screen name="PRTracker" component={PRTrackerScreen} options={{ headerShown: false }} />
           </>
         ) : (
           <Stack.Screen name="ProfileSetup" component={ProfileSetupScreen} />
