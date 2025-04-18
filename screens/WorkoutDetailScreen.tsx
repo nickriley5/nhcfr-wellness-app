@@ -27,6 +27,8 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
 import PRCelebration from '../components/PRCelebration';
+import Toast from '../components/Toast';
+
 
 const WorkoutDetailScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -37,7 +39,9 @@ const WorkoutDetailScreen: React.FC = () => {
   const [lastSession, setLastSession] = useState<Record<string, any[]> | null>(null);
   const [playingIndex, setPlayingIndex] = useState<number | null>(null);
   const [showPR, setShowPR] = useState(false);
-  const [prMessage, setPRMessage] = useState('');
+  const [prMessages, setPRMessages] = useState<string[]>([]);
+  const [showToast, setShowToast] = useState(false);
+
 
   useEffect(() => {
     const fetchWorkout = async () => {
@@ -112,7 +116,7 @@ const WorkoutDetailScreen: React.FC = () => {
   const saveWorkoutProgress = async () => {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
-
+  
     const todayId = new Date().toISOString().split('T')[0];
     const logData = {
       dayTitle,
@@ -122,12 +126,14 @@ const WorkoutDetailScreen: React.FC = () => {
         sets: progress[exIndex],
       })),
     };
-
+  
     try {
+      // 🔍 Load existing PRs BEFORE saving
       const prRef = collection(firestore, 'users', uid, 'workoutLogs');
       const snapshot = await getDocs(prRef);
+  
       const currentPRs: Record<string, number> = {};
-
+  
       snapshot.forEach(doc => {
         const data = doc.data();
         data.exercises.forEach((ex: any) => {
@@ -141,10 +147,14 @@ const WorkoutDetailScreen: React.FC = () => {
           });
         });
       });
-
+  
+      // ✅ Save workout
       await setDoc(doc(firestore, 'users', uid, 'workoutLogs', todayId), logData);
-
+      setShowToast(true);
+  
+      // 🏅 Compare new log to previous PRs
       const newPRs: string[] = [];
+  
       logData.exercises.forEach((ex: any) => {
         ex.sets.forEach((set: any) => {
           const weight = parseFloat(set.weight);
@@ -153,20 +163,19 @@ const WorkoutDetailScreen: React.FC = () => {
           }
         });
       });
-
+      
+  
+      // 🎉 Trigger PR Celebration if any
       if (newPRs.length > 0) {
-        setPRMessage(`🔥 New PR(s)!
-
-${newPRs.join('\n')}`);
+        setPRMessages(newPRs);
         setShowPR(true);
-      } else {
-        alert('Workout saved successfully!');
       }
     } catch (error) {
       console.error('Error saving workout or checking PRs:', error);
       alert('Failed to save workout.');
     }
   };
+  
 
   if (loading) {
     return (
@@ -283,9 +292,13 @@ ${newPRs.join('\n')}`);
         </Pressable>
 
         {showPR && (
-          <PRCelebration visible={showPR} message={prMessage} onClose={() => setShowPR(false)} />
-        )}
+  <PRCelebration visible={showPR} messages={prMessages} onClose={() => setShowPR(false)} />
+)}
+
       </ScrollView>
+      {showToast && (
+  <Toast message="Workout saved successfully!" onClose={() => setShowToast(false)} />
+)}
     </LinearGradient>
   );
 };

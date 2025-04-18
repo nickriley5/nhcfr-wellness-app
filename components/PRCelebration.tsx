@@ -10,11 +10,11 @@ import ConfettiCannon from 'react-native-confetti-cannon';
 
 interface PRCelebrationProps {
   visible: boolean;
-  message: string;
+  messages: string[];
   onClose: () => void;
 }
 
-const PRCelebration: React.FC<PRCelebrationProps> = ({ visible, message, onClose }) => {
+const PRCelebration: React.FC<PRCelebrationProps> = ({ visible, messages, onClose }) => {
   useEffect(() => {
     if (visible) {
       const timer = setTimeout(() => onClose(), 5000);
@@ -27,7 +27,10 @@ const PRCelebration: React.FC<PRCelebrationProps> = ({ visible, message, onClose
       <Pressable style={styles.overlay} onPress={onClose}>
         <View style={styles.bubble}>
           <Text style={styles.emoji}>🎉</Text>
-          <Text style={styles.message}>{message}</Text>
+          <Text style={styles.header}>New PRs Unlocked!</Text>
+          {messages.map((msg, idx) => (
+            <Text key={idx} style={styles.message}>{msg}</Text>
+          ))}
         </View>
         <ConfettiCannon count={80} origin={{ x: 200, y: -10 }} fadeOut />
       </Pressable>
@@ -46,7 +49,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#d32f2f',
     padding: 24,
     borderRadius: 16,
-    maxWidth: '80%',
+    maxWidth: '85%',
     alignItems: 'center',
     elevation: 10,
   },
@@ -54,11 +57,19 @@ const styles = StyleSheet.create({
     fontSize: 48,
     marginBottom: 10,
   },
-  message: {
-    fontSize: 20,
+  header: {
+    fontSize: 22,
     color: '#fff',
-    fontWeight: '700',
+    fontWeight: '800',
+    marginBottom: 10,
     textAlign: 'center',
+  },
+  message: {
+    fontSize: 18,
+    color: '#fff',
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 4,
   },
 });
 
