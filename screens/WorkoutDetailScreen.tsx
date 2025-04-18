@@ -1,4 +1,4 @@
-// WorkoutDetailScreen with previous workout summary below each set block and grey placeholders retained
+// WorkoutDetailScreen with previous workout summary, PR celebration overlay, and grey placeholders
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -26,6 +26,7 @@ import Video from 'react-native-video';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
+import PRCelebration from '../components/PRCelebration';
 
 const WorkoutDetailScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -35,6 +36,8 @@ const WorkoutDetailScreen: React.FC = () => {
   const [progress, setProgress] = useState<any[][]>([]);
   const [lastSession, setLastSession] = useState<Record<string, any[]> | null>(null);
   const [playingIndex, setPlayingIndex] = useState<number | null>(null);
+  const [showPR, setShowPR] = useState(false);
+  const [prMessage, setPRMessage] = useState('');
 
   useEffect(() => {
     const fetchWorkout = async () => {
@@ -109,7 +112,7 @@ const WorkoutDetailScreen: React.FC = () => {
   const saveWorkoutProgress = async () => {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
-  
+
     const todayId = new Date().toISOString().split('T')[0];
     const logData = {
       dayTitle,
@@ -119,14 +122,12 @@ const WorkoutDetailScreen: React.FC = () => {
         sets: progress[exIndex],
       })),
     };
-  
+
     try {
-      // 🔍 FIRST: Load existing PRs BEFORE saving
       const prRef = collection(firestore, 'users', uid, 'workoutLogs');
       const snapshot = await getDocs(prRef);
-  
       const currentPRs: Record<string, number> = {};
-  
+
       snapshot.forEach(doc => {
         const data = doc.data();
         data.exercises.forEach((ex: any) => {
@@ -140,14 +141,10 @@ const WorkoutDetailScreen: React.FC = () => {
           });
         });
       });
-  
-      // ✅ Save workout
+
       await setDoc(doc(firestore, 'users', uid, 'workoutLogs', todayId), logData);
-      alert('Workout saved successfully!');
-  
-      // 🏅 Compare NEW logData to previously known PRs
+
       const newPRs: string[] = [];
-  
       logData.exercises.forEach((ex: any) => {
         ex.sets.forEach((set: any) => {
           const weight = parseFloat(set.weight);
@@ -156,16 +153,20 @@ const WorkoutDetailScreen: React.FC = () => {
           }
         });
       });
-  
+
       if (newPRs.length > 0) {
-        alert(`🎉 New PR(s)!\n\n${newPRs.join('\n')}`);
+        setPRMessage(`🔥 New PR(s)!
+
+${newPRs.join('\n')}`);
+        setShowPR(true);
+      } else {
+        alert('Workout saved successfully!');
       }
     } catch (error) {
       console.error('Error saving workout or checking PRs:', error);
       alert('Failed to save workout.');
     }
   };
-  
 
   if (loading) {
     return (
@@ -280,6 +281,10 @@ const WorkoutDetailScreen: React.FC = () => {
           <Ionicons name="arrow-back" size={20} color="#fff" style={styles.icon} />
           <Text style={styles.buttonText}>Back</Text>
         </Pressable>
+
+        {showPR && (
+          <PRCelebration visible={showPR} message={prMessage} onClose={() => setShowPR(false)} />
+        )}
       </ScrollView>
     </LinearGradient>
   );
