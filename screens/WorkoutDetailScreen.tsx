@@ -1,4 +1,4 @@
-// Reverted WorkoutDetailScreen to show default grey placeholders for 'reps' and 'weight' while still pulling last values
+// WorkoutDetailScreen with previous workout summary below each set block and grey placeholders retained
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -192,31 +192,41 @@ const WorkoutDetailScreen: React.FC = () => {
                 )}
               </TouchableOpacity>
 
-              {sets.map((set, setIndex) => (
-                <View key={setIndex} style={styles.setRow}>
-                  <Text style={styles.setLabel}>Set {setIndex + 1}:</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="reps"
-                    placeholderTextColor="#777"
-                    keyboardType="numeric"
-                    value={set.reps}
-                    onChangeText={text =>
-                      handleInputChange(exIndex, setIndex, 'reps', text)
-                    }
-                  />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="weight (lbs)"
-                    placeholderTextColor="#777"
-                    keyboardType="numeric"
-                    value={set.weight}
-                    onChangeText={text =>
-                      handleInputChange(exIndex, setIndex, 'weight', text)
-                    }
-                  />
-                </View>
-              ))}
+              {sets.map((set, setIndex) => {
+                const lastSet = last?.[setIndex];
+                return (
+                  <View key={setIndex} style={styles.setBlock}>
+                    <View style={styles.setRow}>
+                      <Text style={styles.setLabel}>Set {setIndex + 1}:</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="reps"
+                        placeholderTextColor="#777"
+                        keyboardType="numeric"
+                        value={set.reps}
+                        onChangeText={text =>
+                          handleInputChange(exIndex, setIndex, 'reps', text)
+                        }
+                      />
+                      <TextInput
+                        style={styles.input}
+                        placeholder="weight (lbs)"
+                        placeholderTextColor="#777"
+                        keyboardType="numeric"
+                        value={set.weight}
+                        onChangeText={text =>
+                          handleInputChange(exIndex, setIndex, 'weight', text)
+                        }
+                      />
+                    </View>
+                    {lastSet && (
+                      <Text style={styles.lastWorkoutText}>
+                        Last: {lastSet.reps} reps @ {lastSet.weight} lbs
+                      </Text>
+                    )}
+                  </View>
+                );
+              })}
             </View>
           );
         })}
@@ -282,10 +292,14 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     fontStyle: 'italic',
   },
+  setBlock: {
+    width: '100%',
+    marginBottom: 6,
+  },
   setRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 4,
     gap: 8,
   },
   setLabel: {
@@ -301,6 +315,13 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     borderWidth: 1,
     borderColor: '#333',
+  },
+  lastWorkoutText: {
+    color: '#999',
+    fontSize: 12,
+    fontStyle: 'italic',
+    marginLeft: 55,
+    marginBottom: 4,
   },
   videoBox: {
     width: '100%',
