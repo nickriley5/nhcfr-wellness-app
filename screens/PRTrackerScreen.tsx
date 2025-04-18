@@ -1,4 +1,4 @@
-// PRTrackerScreen.tsx
+// PRTrackerScreen.tsx — with PR Date & Source Title
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -15,6 +15,7 @@ import LinearGradient from 'react-native-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 
 interface WorkoutLog {
+  dayTitle: string;
   exercises: {
     name: string;
     sets: {
@@ -24,14 +25,12 @@ interface WorkoutLog {
   }[];
 }
 
-interface PRMap {
-  [exercise: string]: number; // max weight
-}
-
 const PRTrackerScreen: React.FC = () => {
   const navigation = useNavigation();
   const [loading, setLoading] = useState(true);
-  const [prs, setPrs] = useState<PRMap>({});
+  const [prData, setPrData] = useState<
+    { name: string; weight: number; reps: number; date: string; workoutTitle: string }[]
+  >([]);
 
   useEffect(() => {
     const fetchPRs = async () => {
@@ -41,23 +40,39 @@ const PRTrackerScreen: React.FC = () => {
 
         const logRef = collection(firestore, 'users', uid, 'workoutLogs');
         const snapshot = await getDocs(logRef);
-        const prMap: PRMap = {};
+        const logs: Record<string, WorkoutLog> = {};
 
         snapshot.forEach(doc => {
-          const data = doc.data() as WorkoutLog;
-          data.exercises.forEach(ex => {
+          logs[doc.id] = doc.data() as WorkoutLog;
+        });
+
+        const exerciseMap: Record<string, { weight: number; reps: number; date: string; workoutTitle: string }> = {};
+
+        Object.entries(logs).forEach(([id, log]) => {
+          log.exercises.forEach(ex => {
             ex.sets.forEach(set => {
               const weight = parseFloat(set.weight);
-              if (!isNaN(weight)) {
-                if (!prMap[ex.name] || weight > prMap[ex.name]) {
-                  prMap[ex.name] = weight;
+              const reps = parseInt(set.reps);
+              if (!isNaN(weight) && !isNaN(reps)) {
+                if (!exerciseMap[ex.name] || weight > exerciseMap[ex.name].weight) {
+                  exerciseMap[ex.name] = {
+                    weight,
+                    reps,
+                    date: id,
+                    workoutTitle: log.dayTitle || 'Workout',
+                  };
                 }
               }
             });
           });
         });
 
-        setPrs(prMap);
+        const sorted = Object.entries(exerciseMap).map(([name, data]) => ({
+          name,
+          ...data,
+        }));
+
+        setPrData(sorted);
       } catch (err) {
         console.error(err);
       } finally {
@@ -73,7 +88,6 @@ const PRTrackerScreen: React.FC = () => {
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>All-Time PRs</Text>
 
-        {/* Back button */}
         <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={20} color="#fff" />
           <Text style={styles.backText}>Back</Text>
@@ -81,17 +95,16 @@ const PRTrackerScreen: React.FC = () => {
 
         {loading ? (
           <ActivityIndicator size="large" color="#d32f2f" />
-        ) : Object.keys(prs).length === 0 ? (
+        ) : prData.length === 0 ? (
           <Text style={styles.noPRText}>No PRs found yet. Start logging workouts!</Text>
         ) : (
-          Object.entries(prs)
-            .sort((a, b) => a[0].localeCompare(b[0]))
-            .map(([name, weight]) => (
-              <View key={name} style={styles.prItem}>
-                <Ionicons name="trophy-outline" size={18} color="#4fc3f7" style={{ marginRight: 8 }} />
-                <Text style={styles.prText}>{name}: {weight} lbs</Text>
-              </View>
-            ))
+          prData.map((pr, idx) => (
+            <View key={idx} style={styles.prCard}>
+              <Text style={styles.exerciseName}>{pr.name}</Text>
+              <Text style={styles.prText}>🏋️ {pr.weight} lbs for {pr.reps} reps</Text>
+              <Text style={styles.metaText}>📅 {pr.date} | 📓 {pr.workoutTitle}</Text>
+            </View>
+          ))
         )}
       </ScrollView>
     </LinearGradient>
@@ -123,18 +136,28 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 20,
   },
-  prItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#2a2a2a',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 10,
+  prCard: {
+    backgroundColor: '#1e1e1e',
+    padding: 14,
+    borderRadius: 10,
+    marginBottom: 14,
+    borderColor: '#444',
+    borderWidth: 1,
+  },
+  exerciseName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#4fc3f7',
+    marginBottom: 4,
   },
   prText: {
+    fontSize: 14,
     color: '#fff',
-    fontSize: 15,
-    fontWeight: '600',
+  },
+  metaText: {
+    fontSize: 12,
+    color: '#bbb',
+    marginTop: 4,
   },
 });
 
