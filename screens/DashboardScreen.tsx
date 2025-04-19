@@ -1,5 +1,14 @@
+// screens/DashboardScreen.tsx
+
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+  ScrollView,
+  Alert,                     // ← added
+} from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import {
   useNavigation,
@@ -7,6 +16,7 @@ import {
 } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { TabParamList, RootStackParamList } from '../App';
 import { auth, firestore } from '../firebase';
 import {
   collection,
@@ -16,7 +26,7 @@ import {
   orderBy,
   DocumentData,
 } from 'firebase/firestore';
-import { TabParamList, RootStackParamList } from '../App';
+import { generateProgram } from '../src/services/programService'; // ← new import
 import MoodEnergyChart from '../components/MoodEnergyChart';
 
 interface CheckInEntry extends DocumentData {
@@ -80,6 +90,20 @@ const DashboardScreen: React.FC = () => {
     fetchCheckIns();
   }, [view]);
 
+  // ← NEW: generate + navigate to Workout Hub
+  const onGenerateWorkout = async () => {
+    try {
+      await generateProgram();
+      navigation.navigate('Main', {
+        screen: 'MainTabs',
+        params: { screen: 'Workout' },
+      });
+    } catch (err) {
+      console.error(err);
+      Alert.alert('Error', (err as Error).message);
+    }
+  };
+
   const QuickViews = () => (
     <View style={styles.quickContainer}>
       <View style={styles.quickCard}>
@@ -118,7 +142,9 @@ const DashboardScreen: React.FC = () => {
                 style={[styles.toggleButton, view === key && styles.toggleActive]}
                 onPress={() => setView(key)}
               >
-                <Text style={styles.toggleText}>{key.charAt(0).toUpperCase() + key.slice(1)}</Text>
+                <Text style={styles.toggleText}>
+                  {key.charAt(0).toUpperCase() + key.slice(1)}
+                </Text>
               </Pressable>
             ))}
           </View>
@@ -138,7 +164,9 @@ const DashboardScreen: React.FC = () => {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>💡 AI Coach</Text>
-          <Text style={styles.sectionText}>Personalized fitness & recovery tips coming soon.</Text>
+          <Text style={styles.sectionText}>
+            Personalized fitness & recovery tips coming soon.
+          </Text>
         </View>
 
         <Pressable
@@ -148,9 +176,10 @@ const DashboardScreen: React.FC = () => {
           <Text style={styles.buttonText}>Generate Meal Plan</Text>
         </Pressable>
 
+        {/* ← UPDATED: now calls your service */}
         <Pressable
           style={styles.outlinedButton}
-          onPress={() => navigation.navigate('WorkoutDetail')}
+          onPress={onGenerateWorkout}
         >
           <Text style={styles.buttonText}>Generate Workout</Text>
         </Pressable>
