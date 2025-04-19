@@ -1,205 +1,138 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  Pressable,
-  Alert,
-  TextInput,
   ScrollView,
+  Image,
+  Pressable,
 } from 'react-native';
-import { getAuth } from 'firebase/auth';
-import {
-  getFirestore,
-  collection,
-  addDoc,
-  serverTimestamp,
-} from 'firebase/firestore';
-import { getApp } from 'firebase/app';
+import LinearGradient from 'react-native-linear-gradient';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
-import Toast from '../components/Toast';
 
-const moodOptions = ['😩', '😕', '😐', '🙂', '😄'];
-const energyOptions = ['😴', '😓', '😐', '💪', '⚡'];
+const exercises = [
+  {
+    id: 'push_up',
+    name: 'Pushups',
+    description: 'Great for upper body strength, especially chest and triceps.',
+    videoUri: 'https://www.w3schools.com/html/mov_bbb.mp4',
+    thumbnailUri: 'https://via.placeholder.com/100',
+    equipment: 'Bodyweight',
+    muscles: ['Chest', 'Triceps', 'Shoulders'],
+    tips: 'Keep a straight back and engage your core.',
+  },
+  {
+    id: 'goblet_squat',
+    name: 'Goblet Squat',
+    description: 'Targets legs and glutes. A fundamental lower-body movement.',
+    videoUri: 'https://www.w3schools.com/html/mov_bbb.mp4',
+    thumbnailUri: 'https://via.placeholder.com/100',
+    equipment: 'Bodyweight',
+    muscles: ['Quads', 'Glutes', 'Hamstrings'],
+    tips: 'Keep your heels on the ground and knees behind toes.',
+  },
+  {
+    id: 'plank',
+    name: 'Plank',
+    description: 'Great for core stability and endurance.',
+    videoUri: 'https://www.w3schools.com/html/mov_bbb.mp4',
+    thumbnailUri: 'https://via.placeholder.com/100',
+    equipment: 'None',
+    muscles: ['Abs', 'Back', 'Shoulders'],
+    tips: 'Maintain a straight line from head to heels.',
+  },
+];
 
-const CheckInScreen = () => {
-  const [mood, setMood] = useState<number | null>(null);
-  const [energy, setEnergy] = useState<number | null>(null);
-  const [notes, setNotes] = useState('');
-  const [showToast, setShowToast] = useState(false);
+type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-
-  const handleSubmit = async () => {
-    const auth = getAuth(getApp());
-    const db = getFirestore(getApp());
-    const uid = auth.currentUser?.uid;
-
-    if (!uid || mood === null || energy === null) {
-      Alert.alert('Please select both mood and energy.');
-      return;
-    }
-
-    try {
-      await addDoc(collection(db, 'checkins'), {
-        uid,
-        mood,
-        energy,
-        notes,
-        timestamp: serverTimestamp(),
-      });
-
-      setMood(null);
-      setEnergy(null);
-      setNotes('');
-      setShowToast(true);
-
-      setTimeout(() => {
-        setShowToast(false);
-        navigation.navigate('Main', {
-            screen: 'MainTabs',
-            params: { screen: 'Home' },
-          });
-          
-      }, 2000);
-
-    } catch (err) {
-      console.error('Check-In Error:', err);
-      Alert.alert('Error', 'Something went wrong while saving your check-in.');
-    }
-  };
+const ExerciseLibraryScreen: React.FC = () => {
+  const navigation = useNavigation<NavProp>();
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Daily Check-In</Text>
+    <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
+      <ScrollView contentContainerStyle={styles.content}>
+        {/* ✅ Back Button */}
+        <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
+          <Ionicons name="arrow-back" size={22} color="#fff" />
+          <Text style={styles.backText}>Back</Text>
+        </Pressable>
 
-      <Text style={styles.sectionTitle}>How’s your mood today?</Text>
-      <View style={styles.buttonRow}>
-        {moodOptions.map((emoji, index) => (
+        <Text style={styles.title}>Exercise Library</Text>
+
+        {exercises.map((ex, index) => (
           <Pressable
             key={index}
-            style={[styles.emojiButton, mood === index + 1 && styles.selectedButton]}
-            onPress={() => setMood(index + 1)}
+            style={styles.card}
+            onPress={() => navigation.navigate('ExerciseDetail', { exerciseId: ex.id })}
           >
-            <Text style={styles.emoji}>{emoji}</Text>
+            <View style={styles.row}>
+              <Image source={{ uri: ex.thumbnailUri }} style={styles.thumbnail} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.exerciseName}>{ex.name}</Text>
+                <Text style={styles.description}>{ex.description}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#888" />
+            </View>
           </Pressable>
         ))}
-      </View>
-
-      <Text style={styles.sectionTitle}>How’s your energy level?</Text>
-      <View style={styles.buttonRow}>
-        {energyOptions.map((emoji, index) => (
-          <Pressable
-            key={index}
-            style={[styles.emojiButton, energy === index + 1 && styles.selectedButton]}
-            onPress={() => setEnergy(index + 1)}
-          >
-            <Text style={styles.emoji}>{emoji}</Text>
-          </Pressable>
-        ))}
-      </View>
-
-      <Text style={styles.sectionTitle}>Anything on your mind?</Text>
-      <TextInput
-        value={notes}
-        onChangeText={setNotes}
-        placeholder="Optional note (sore, bad sleep, stress, etc.)"
-        placeholderTextColor="#888"
-        multiline
-        style={styles.input}
-      />
-
-      <Pressable style={styles.submitButton} onPress={handleSubmit}>
-        <Text style={styles.submitText}>Submit Check-In</Text>
-      </Pressable>
-
-      {showToast && (
-        <Toast message="Check-in saved successfully!" onClose={() => setShowToast(false)} />
-      )}
-    </ScrollView>
+      </ScrollView>
+    </LinearGradient>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flexGrow: 1,
+  container: { flex: 1 },
+  content: {
     padding: 24,
-    backgroundColor: '#121212',
+  },
+  backButton: {
+    flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: 12,
+    alignSelf: 'flex-start',
+  },
+  backText: {
+    color: '#fff',
+    fontSize: 16,
+    marginLeft: 8,
   },
   title: {
     fontSize: 26,
     fontWeight: '700',
     color: '#d32f2f',
-    marginBottom: 24,
+    marginBottom: 16,
     textAlign: 'center',
   },
-  sectionTitle: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 16,
-    alignSelf: 'flex-start',
-    marginTop: 16,
-    marginBottom: 10,
-  },
-  buttonRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    width: '100%',
-    marginBottom: 16,
-  },
-  emojiButton: {
-    backgroundColor: '#1e1e1e',
-    padding: 12,
-    borderRadius: 12,
-    width: 55,
-    height: 55,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderColor: '#333',
-    borderWidth: 1,
-  },
-  selectedButton: {
-    borderColor: '#d32f2f',
+  card: {
     backgroundColor: '#2a2a2a',
-  },
-  emoji: {
-    fontSize: 24,
-  },
-  input: {
-    backgroundColor: '#1e1e1e',
-    borderColor: '#333',
-    borderWidth: 1,
-    borderRadius: 10,
-    color: '#fff',
-    padding: 12,
-    fontSize: 14,
-    height: 100,
-    width: '100%',
-    textAlignVertical: 'top',
-    marginBottom: 24,
-  },
-  submitButton: {
-    backgroundColor: '#1c1c1c',
-    borderWidth: 1.5,
-    borderColor: '#d32f2f',
     borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '100%',
+    padding: 16,
     marginBottom: 16,
   },
-  submitText: {
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  thumbnail: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+    marginRight: 12,
+  },
+  exerciseName: {
+    fontSize: 18,
+    fontWeight: '600',
     color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  description: {
+    color: '#ccc',
+    fontSize: 14,
   },
 });
 
-export default CheckInScreen;
+export default ExerciseLibraryScreen;

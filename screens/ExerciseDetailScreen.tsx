@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  Image,
   ScrollView,
   Pressable,
   ActivityIndicator,
@@ -13,65 +12,32 @@ import {
   RouteProp,
   useNavigation,
 } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack'; // ✅ NEW
+import LinearGradient from 'react-native-linear-gradient';
+
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import Video from 'react-native-video';
+
+
+// Exercise type and mock data
+import { exercises } from '../data/exercises'; // Assume shared data is imported
 
 type ExerciseDetailRouteProp = RouteProp<RootStackParamList, 'ExerciseDetail'>;
-type NavProp = NativeStackNavigationProp<RootStackParamList>; // ✅ NEW
-
-interface Exercise {
-  id: string;
-  name: string;
-  category: string;
-  equipment: string[];
-  description: string;
-  thumbnail: { uri: string };
-}
-
-const EXERCISES: Exercise[] = [
-  {
-    id: 'push_up',
-    name: 'Push‑Up',
-    category: 'Upper Body',
-    equipment: ['Bodyweight'],
-    description: 'Standard push‑up focusing on chest and triceps.',
-    thumbnail: { uri: 'https://via.placeholder.com/200' },
-  },
-  {
-    id: 'goblet_squat',
-    name: 'Goblet Squat',
-    category: 'Lower Body',
-    equipment: ['Dumbbell'],
-    description: 'Hold a dumbbell at chest level and squat.',
-    thumbnail: { uri: 'https://via.placeholder.com/200' },
-  },
-  {
-    id: 'plank',
-    name: 'Plank',
-    category: 'Core',
-    equipment: ['None'],
-    description: 'Maintain a straight body line on elbows or hands.',
-    thumbnail: { uri: 'https://via.placeholder.com/200' },
-  },
-];
+type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
 const ExerciseDetailScreen: React.FC = () => {
-  const navigation = useNavigation<NavProp>(); // ✅ TYPED
+  const navigation = useNavigation<NavProp>();
   const { params } = useRoute<ExerciseDetailRouteProp>();
   const { exerciseId } = params;
 
-  const [exercise, setExercise] = useState<Exercise | null>(null);
+  const [exercise, setExercise] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const loadExercise = () => {
-      const found = EXERCISES.find(e => e.id === exerciseId);
-      setExercise(found ?? null);
-      setLoading(false);
-    };
-
-    loadExercise();
+    const found = exercises.find((e: any) => e.id === exerciseId);
+    setExercise(found ?? null);
+    setLoading(false);
   }, [exerciseId]);
 
   if (loading) {
@@ -91,31 +57,46 @@ const ExerciseDetailScreen: React.FC = () => {
   }
 
   return (
+    <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={{ flex: 1 }}>
     <ScrollView contentContainerStyle={styles.container}>
       <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
         <Ionicons name="arrow-back" size={24} color="#fff" />
         <Text style={styles.backText}>Back</Text>
       </Pressable>
 
-      <Image source={exercise.thumbnail} style={styles.image} />
       <Text style={styles.name}>{exercise.name}</Text>
       <Text style={styles.category}>{exercise.category}</Text>
-      <Text style={styles.equipment}>
-        Equipment: {exercise.equipment.join(', ')}
-      </Text>
+      <Text style={styles.equipment}>Equipment: {exercise.equipment.join(', ')}</Text>
       <Text style={styles.desc}>{exercise.description}</Text>
 
-      {/* ✅ View Progress Button */}
+      <Video
+        source={{ uri: exercise.videoUri }}
+        style={styles.video}
+        resizeMode="cover"
+        controls
+      />
+
+      {exercise.muscles && (
+        <Text style={styles.detail}>Target Muscles: {exercise.muscles.join(', ')}</Text>
+      )}
+
+      {exercise.tips && (
+        <Text style={styles.tipText}>🔥 Tip: <Text style={styles.tipInner}>{exercise.tips}</Text></Text>
+      )}
+
       <Pressable
+        style={styles.progressButton}
         onPress={() =>
           navigation.navigate('ProgressChart', {
             exerciseName: exercise.name,
           })
         }
       >
-        <Text style={styles.progressLink}>📈 View Progress</Text>
+        <Ionicons name="stats-chart" size={18} color="#4fc3f7" style={{ marginRight: 6 }} />
+        <Text style={styles.progressText}>View Progress</Text>
       </Pressable>
     </ScrollView>
+    </LinearGradient>
   );
 };
 
@@ -123,7 +104,8 @@ const styles = StyleSheet.create({
   container: {
     padding: 24,
     alignItems: 'center',
-    backgroundColor: '#121212',
+    backgroundColor: 'transparent',
+    paddingBottom: 60,
   },
   loadingContainer: {
     flex: 1,
@@ -135,50 +117,81 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignSelf: 'flex-start',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   backText: {
     color: '#fff',
     fontSize: 16,
     marginLeft: 6,
   },
-  image: {
-    width: 200,
-    height: 200,
-    borderRadius: 12,
-    marginBottom: 16,
-  },
   name: {
-    fontSize: 24,
-    fontWeight: '700',
+    fontSize: 26,
+    fontWeight: '800',
     color: '#fff',
-    marginBottom: 4,
+    marginBottom: 6,
+    textAlign: 'center',
   },
   category: {
     fontSize: 18,
-    fontWeight: '500',
+    fontWeight: '600',
     color: '#d32f2f',
     marginBottom: 4,
   },
   equipment: {
     fontSize: 14,
-    color: '#ccc',
-    marginBottom: 12,
+    color: '#bbb',
+    marginBottom: 8,
   },
   desc: {
     fontSize: 16,
     color: '#ccc',
     textAlign: 'center',
+    marginBottom: 16,
+  },
+  video: {
+    width: '100%',
+    height: 220,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  detail: {
+    fontSize: 14,
+    color: '#aaa',
+    fontStyle: 'italic',
+    marginBottom: 10,
+  },
+  tipText: {
+    fontSize: 14,
+    color: '#4fc3f7',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  tipInner: {
+    fontStyle: 'italic',
+  },
+  progressButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#121212',
+    borderWidth: 1.5,
+    borderColor: '#4fc3f7',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    marginTop: 20,
+    width: '90%',
+    alignSelf: 'center',
+  },
+  progressText: {
+    fontSize: 14,
+    color: '#4fc3f7',
+    fontWeight: '600',
   },
   error: {
     fontSize: 18,
     color: '#f00',
-  },
-  progressLink: {
-    color: '#4fc3f7',
-    fontSize: 13,
-    marginTop: 16,
-    fontStyle: 'italic',
   },
 });
 
