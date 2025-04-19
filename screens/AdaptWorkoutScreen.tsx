@@ -7,6 +7,9 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  Modal,
+  FlatList,
+  Image,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -18,23 +21,53 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import Toast from '../components/Toast';
 import Video from 'react-native-video';
 
-const equipmentOptions = ['Bodyweight', 'Kettlebell', 'Bands'];
 const fallbackVideos: Record<string, string> = {
   Pushups: 'https://www.w3schools.com/html/mov_bbb.mp4',
   'Bent-over Rows': 'https://www.w3schools.com/html/mov_bbb.mp4',
   'Overhead Press': 'https://www.w3schools.com/html/mov_bbb.mp4',
+  'Air Squat': 'https://www.w3schools.com/html/mov_bbb.mp4',
 };
 
-type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+const similarExercises: Record<string, { name: string; videoUri: string; thumbnailUri: string }[]> = {
+    Pushups: [
+      { name: 'Incline Pushup', videoUri: fallbackVideos['Pushups'], thumbnailUri: 'https://via.placeholder.com/100' },
+      { name: 'Kneeling Pushup', videoUri: fallbackVideos['Pushups'], thumbnailUri: 'https://via.placeholder.com/100' },
+      { name: 'Wide Pushup', videoUri: fallbackVideos['Pushups'], thumbnailUri: 'https://via.placeholder.com/100' },
+    ],
+    'Bent-over Rows': [
+      { name: 'Band Rows', videoUri: fallbackVideos['Bent-over Rows'], thumbnailUri: 'https://via.placeholder.com/100' },
+      { name: 'Single Arm Rows', videoUri: fallbackVideos['Bent-over Rows'], thumbnailUri: 'https://via.placeholder.com/100' },
+    ],
+    'Overhead Press': [
+      { name: 'Pike Press', videoUri: fallbackVideos['Overhead Press'], thumbnailUri: 'https://via.placeholder.com/100' },
+      { name: 'Band Press', videoUri: fallbackVideos['Overhead Press'], thumbnailUri: 'https://via.placeholder.com/100' },
+    ],
+    'Air Squat': [
+      { name: 'Wall Sit', videoUri: fallbackVideos['Air Squat'], thumbnailUri: 'https://via.placeholder.com/100' },
+      { name: 'Split Squat', videoUri: fallbackVideos['Air Squat'], thumbnailUri: 'https://via.placeholder.com/100' },
+      { name: 'Step-Up', videoUri: fallbackVideos['Air Squat'], thumbnailUri: 'https://via.placeholder.com/100' },
+    ],
+    'Bodyweight Row': [
+      { name: 'Inverted Row', videoUri: fallbackVideos['Bent-over Rows'], thumbnailUri: 'https://via.placeholder.com/100' },
+      { name: 'Band Row', videoUri: fallbackVideos['Bent-over Rows'], thumbnailUri: 'https://via.placeholder.com/100' },
+    ],
+    'Plank': [
+      { name: 'Side Plank', videoUri: fallbackVideos['Pushups'], thumbnailUri: 'https://via.placeholder.com/100' },
+      { name: 'Forearm Plank', videoUri: fallbackVideos['Pushups'], thumbnailUri: 'https://via.placeholder.com/100' },
+      { name: 'Plank with Reach', videoUri: fallbackVideos['Pushups'], thumbnailUri: 'https://via.placeholder.com/100' },
+    ],
+  };
+  
 
 const AdaptWorkoutScreen: React.FC = () => {
-  const navigation = useNavigation<NavigationProp>();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [exercises, setExercises] = useState<any[]>([]);
   const [adaptedExercises, setAdaptedExercises] = useState<any[]>([]);
-  const [selectedEquipment, setSelectedEquipment] = useState('Bodyweight');
   const [loading, setLoading] = useState(true);
   const [showToast, setShowToast] = useState(false);
   const [playingIndex, setPlayingIndex] = useState<number | null>(null);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [currentIndex, setCurrentIndex] = useState<number | null>(null);
 
   useEffect(() => {
     const fetchWorkout = async () => {
@@ -61,13 +94,21 @@ const AdaptWorkoutScreen: React.FC = () => {
   }, []);
 
   const handleAdapt = (index: number) => {
-    const adapted = [...adaptedExercises];
-    adapted[index] = {
-      ...adapted[index],
-      name: 'Air Squat',
-      videoUri: fallbackVideos['Pushups'],
+    setCurrentIndex(index);
+    setModalVisible(true);
+  };
+
+  const selectReplacement = (replacement: { name: string; videoUri: string }) => {
+    if (currentIndex === null) return;
+    const updated = [...adaptedExercises];
+    updated[currentIndex] = {
+      ...updated[currentIndex],
+      name: replacement.name,
+      videoUri: replacement.videoUri,
     };
-    setAdaptedExercises(adapted);
+    setAdaptedExercises(updated);
+    setModalVisible(false);
+    setCurrentIndex(null);
   };
 
   const handleSave = async () => {
@@ -85,7 +126,7 @@ const AdaptWorkoutScreen: React.FC = () => {
         await setDoc(docRef, data);
         setShowToast(true);
         setTimeout(() => {
-          navigation.navigate('WorkoutDetail');
+          navigation.navigate('WorkoutDetail', { adapt: true });
         }, 2000);
       }
     } catch (err) {
@@ -148,7 +189,43 @@ const AdaptWorkoutScreen: React.FC = () => {
           <Ionicons name="save" size={20} color="#fff" style={styles.icon} />
           <Text style={styles.buttonText}>Save Adapted Workout</Text>
         </Pressable>
+        <Pressable
+  style={[styles.saveButton, styles.secondaryButton]}
+  onPress={() =>
+    navigation.navigate('Main', {
+      screen: 'MainTabs',
+      params: { screen: 'Workout' },
+    })
+  }
+>
+  <Ionicons name="arrow-back" size={20} color="#fff" style={styles.icon} />
+  <Text style={styles.buttonText}>Back to Workout Hub</Text>
+</Pressable>
       </ScrollView>
+
+      <Modal visible={modalVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Choose Replacement</Text>
+            <FlatList
+              data={similarExercises[adaptedExercises[currentIndex!]?.name] || []}
+              keyExtractor={(item) => item.name}
+              renderItem={({ item }) => (
+                <Pressable style={styles.replacementItem} onPress={() => selectReplacement(item)}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Image source={{ uri: item.thumbnailUri }} style={{ width: 50, height: 50, marginRight: 10, borderRadius: 8 }} />
+                    <Text style={styles.replacementText}>{item.name}</Text>
+                  </View>
+                </Pressable>
+              )}
+            />
+            <Pressable style={[styles.button, { marginTop: 12 }]} onPress={() => setModalVisible(false)}>
+              <Text style={styles.buttonText}>Cancel</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
       {showToast && (
         <Toast message="Adapted workout saved!" onClose={() => setShowToast(false)} />
       )}
@@ -226,6 +303,40 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginLeft: 8,
   },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#1e1e1e',
+    borderRadius: 12,
+    padding: 20,
+    width: '80%',
+  },
+  modalTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  replacementItem: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+  },
+  replacementText: {
+    color: '#fff',
+    fontSize: 16,
+  },
+  secondaryButton: {
+    marginTop: 10,
+    borderColor: '#888',
+  },
+  
 });
 
 export default AdaptWorkoutScreen;
