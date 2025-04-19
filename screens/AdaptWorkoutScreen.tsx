@@ -56,6 +56,10 @@ const similarExercises: Record<string, { name: string; videoUri: string; thumbna
       { name: 'Forearm Plank', videoUri: fallbackVideos['Pushups'], thumbnailUri: 'https://via.placeholder.com/100' },
       { name: 'Plank with Reach', videoUri: fallbackVideos['Pushups'], thumbnailUri: 'https://via.placeholder.com/100' },
     ],
+    'Split Squat': [
+  { name: 'Wall Sit', videoUri: fallbackVideos['Air Squat'], thumbnailUri: 'https://via.placeholder.com/100' },
+  { name: 'Step-Up', videoUri: fallbackVideos['Air Squat'], thumbnailUri: 'https://via.placeholder.com/100' },
+],
   };
   
 
@@ -68,6 +72,8 @@ const AdaptWorkoutScreen: React.FC = () => {
   const [playingIndex, setPlayingIndex] = useState<number | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [currentIndex, setCurrentIndex] = useState<number | null>(null);
+  const [showAllReplacements, setShowAllReplacements] = useState(false);
+
 
   useEffect(() => {
     const fetchWorkout = async () => {
@@ -109,7 +115,8 @@ const AdaptWorkoutScreen: React.FC = () => {
     setAdaptedExercises(updated);
     setModalVisible(false);
     setCurrentIndex(null);
-  };
+    setShowAllReplacements(false);
+  };  
 
   const handleSave = async () => {
     try {
@@ -204,27 +211,65 @@ const AdaptWorkoutScreen: React.FC = () => {
       </ScrollView>
 
       <Modal visible={modalVisible} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Choose Replacement</Text>
-            <FlatList
-              data={similarExercises[adaptedExercises[currentIndex!]?.name] || []}
-              keyExtractor={(item) => item.name}
-              renderItem={({ item }) => (
-                <Pressable style={styles.replacementItem} onPress={() => selectReplacement(item)}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <Image source={{ uri: item.thumbnailUri }} style={{ width: 50, height: 50, marginRight: 10, borderRadius: 8 }} />
+  <View style={styles.modalOverlay}>
+    <View style={styles.modalContent}>
+      {currentIndex !== null && (
+        <>
+          <Text style={styles.modalTitle}>
+            Replacing: <Text style={{ color: '#4fc3f7' }}>{adaptedExercises[currentIndex]?.name}</Text>
+          </Text>
+          <Text style={styles.modalSubTitle}>Choose a replacement exercise:</Text>
+
+          <FlatList
+            data={
+              showAllReplacements
+                ? similarExercises[adaptedExercises[currentIndex]?.name] || []
+                : (similarExercises[adaptedExercises[currentIndex]?.name] || []).slice(0, 3)
+            }
+            keyExtractor={(item) => item.name}
+            renderItem={({ item }) => (
+              <Pressable style={styles.replacementItem} onPress={() => selectReplacement(item)}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Image
+                    source={{ uri: item.thumbnailUri }}
+                    style={{ width: 50, height: 50, marginRight: 10, borderRadius: 8 }}
+                  />
+                  <View>
                     <Text style={styles.replacementText}>{item.name}</Text>
+                    <Text style={styles.replacementTag}>🏷 No Equipment</Text>
                   </View>
-                </Pressable>
-              )}
-            />
-            <Pressable style={[styles.button, { marginTop: 12 }]} onPress={() => setModalVisible(false)}>
-              <Text style={styles.buttonText}>Cancel</Text>
+                </View>
+              </Pressable>
+            )}
+          />
+
+          {similarExercises[adaptedExercises[currentIndex]?.name]?.length > 3 && (
+            <Pressable
+              onPress={() => setShowAllReplacements(prev => !prev)}
+              style={{ alignItems: 'center', marginVertical: 8 }}
+            >
+              <Text style={{ color: '#4fc3f7', fontSize: 14 }}>
+                {showAllReplacements ? '➖ Show Less' : '➕ Show More Options'}
+              </Text>
             </Pressable>
-          </View>
-        </View>
-      </Modal>
+          )}
+        </>
+      )}
+
+      <Pressable
+        style={[styles.button, { marginTop: 12 }]}
+        onPress={() => {
+          setModalVisible(false);
+          setShowAllReplacements(false);
+        }}
+      >
+        <Text style={styles.buttonText}>Cancel</Text>
+      </Pressable>
+    </View>
+  </View>
+</Modal>
+
+
 
       {showToast && (
         <Toast message="Adapted workout saved!" onClose={() => setShowToast(false)} />
@@ -322,6 +367,13 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     textAlign: 'center',
   },
+  modalSubTitle: {
+    fontSize: 14,
+    color: '#bbb',
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  
   replacementItem: {
     paddingVertical: 10,
     paddingHorizontal: 12,
@@ -336,7 +388,12 @@ const styles = StyleSheet.create({
     marginTop: 10,
     borderColor: '#888',
   },
-  
+  replacementTag: {
+    fontSize: 12,
+    color: '#aaa',
+    marginTop: 2,
+    fontStyle: 'italic',
+  },
 });
 
 export default AdaptWorkoutScreen;
