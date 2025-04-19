@@ -7,16 +7,12 @@ import {
   StyleSheet,
   Pressable,
   ScrollView,
-  Alert,                     // ← added
+  Alert,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
-import {
-  useNavigation,
-  CompositeNavigationProp,
-} from '@react-navigation/native';
-import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { TabParamList, RootStackParamList } from '../App';
+import { useNavigation } from '@react-navigation/native';
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { auth, firestore } from '../firebase';
 import {
   collection,
@@ -26,8 +22,9 @@ import {
   orderBy,
   DocumentData,
 } from 'firebase/firestore';
-import { generateProgram } from '../src/services/programService'; // ← new import
+import { generateProgram } from '../src/services/programService';
 import MoodEnergyChart from '../components/MoodEnergyChart';
+import type { TabParamList, RootStackParamList } from '../App';
 
 interface CheckInEntry extends DocumentData {
   id: string;
@@ -36,38 +33,36 @@ interface CheckInEntry extends DocumentData {
   timestamp: Date;
 }
 
-type DashboardNavProp = CompositeNavigationProp<
-  BottomTabNavigationProp<TabParamList, 'Dashboard'>,
-  NativeStackNavigationProp<RootStackParamList>
->;
+type TabNavProp = BottomTabNavigationProp<TabParamList, 'Dashboard'>;
+type StackNavProp = NativeStackNavigationProp<RootStackParamList>;
 
 const DashboardScreen: React.FC = () => {
-  const navigation = useNavigation<DashboardNavProp>();
+  const tabNav = useNavigation<TabNavProp>();
+  const stackNav = useNavigation<StackNavProp>();
+
   const [view, setView] = useState<'week' | 'month' | 'all'>('week');
   const [moodData, setMoodData] = useState<number[]>([]);
   const [energyData, setEnergyData] = useState<number[]>([]);
-  const [hasCheckedInToday, setHasCheckedInToday] = useState<boolean>(true);
+  const [hasCheckedInToday, setHasCheckedInToday] = useState(true);
 
   useEffect(() => {
     const fetchCheckIns = async () => {
       try {
         const user = auth.currentUser;
         if (!user) return;
-
         const q = query(
           collection(firestore, 'checkins'),
           where('uid', '==', user.uid),
           orderBy('timestamp', 'desc')
         );
-        const snapshot = await getDocs(q);
-
-        let entries: CheckInEntry[] = snapshot.docs.map(doc => {
-          const data = doc.data();
+        const snap = await getDocs(q);
+        let entries: CheckInEntry[] = snap.docs.map(doc => {
+          const d = doc.data();
           return {
             id: doc.id,
-            mood: data.mood ?? 0,
-            energy: data.energy ?? 0,
-            timestamp: data.timestamp?.toDate() || new Date(0),
+            mood: d.mood ?? 0,
+            energy: d.energy ?? 0,
+            timestamp: d.timestamp?.toDate() || new Date(0),
           };
         });
 
@@ -82,25 +77,21 @@ const DashboardScreen: React.FC = () => {
         entries.reverse();
         setMoodData(entries.map(e => e.mood));
         setEnergyData(entries.map(e => e.energy));
-      } catch (err) {
-        console.error(err);
+      } catch (e) {
+        console.error(e);
       }
     };
 
     fetchCheckIns();
   }, [view]);
 
-  // ← NEW: generate + navigate to Workout Hub
   const onGenerateWorkout = async () => {
     try {
       await generateProgram();
-      navigation.navigate('Main', {
-        screen: 'MainTabs',
-        params: { screen: 'Workout' },
-      });
-    } catch (err) {
-      console.error(err);
-      Alert.alert('Error', (err as Error).message);
+      tabNav.navigate('Workout');
+    } catch (e: any) {
+      console.error(e);
+      Alert.alert('Error', e.message);
     }
   };
 
@@ -112,7 +103,7 @@ const DashboardScreen: React.FC = () => {
       </View>
       <Pressable
         style={styles.quickCard}
-        onPress={() => navigation.navigate('WorkoutDetail')}
+        onPress={() => stackNav.navigate('WorkoutDetail')}
       >
         <Text style={styles.quickTitle}>🏋️ Today's Workout</Text>
         <Text style={styles.quickDetail}>Kettlebell circuit & mobility</Text>
@@ -154,7 +145,7 @@ const DashboardScreen: React.FC = () => {
         {!hasCheckedInToday && (
           <Pressable
             style={[styles.outlinedButton, styles.checkInButton]}
-            onPress={() => navigation.navigate('CheckIn')}
+            onPress={() => stackNav.navigate('CheckIn')}
           >
             <Text style={styles.buttonText}>Check In Now</Text>
           </Pressable>
@@ -171,12 +162,11 @@ const DashboardScreen: React.FC = () => {
 
         <Pressable
           style={styles.outlinedButton}
-          onPress={() => navigation.navigate('MealPlan')}
+          onPress={() => tabNav.navigate('MealPlan')}
         >
           <Text style={styles.buttonText}>Generate Meal Plan</Text>
         </Pressable>
 
-        {/* ← UPDATED: now calls your service */}
         <Pressable
           style={styles.outlinedButton}
           onPress={onGenerateWorkout}
@@ -186,7 +176,7 @@ const DashboardScreen: React.FC = () => {
 
         <Pressable
           style={styles.outlinedButton}
-          onPress={() => navigation.navigate('WorkoutHistory')}
+          onPress={() => stackNav.navigate('WorkoutHistory')}
         >
           <Text style={styles.buttonText}>📚 View Workout History</Text>
         </Pressable>
