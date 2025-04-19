@@ -1,64 +1,73 @@
 // src/services/programService.ts
 
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { db, auth } from '../../firebase';
+import { auth, db } from '../../firebase';
 
-/**
- * Fetches the current training program for the logged-in user.
- * @returns The program data object, or null if not found.
- */
-export async function getCurrentProgram(): Promise<any | null> {
-  const user = auth.currentUser;
-  if (!user) {
-    throw new Error('User not authenticated');
-  }
+export interface Exercise {
+  name: string;
+  sets: number;
+  reps: number | string;
+}
 
-  const programRef = doc(db, 'programs', user.uid);
-  const snap = await getDoc(programRef);
-  return snap.exists() ? snap.data() : null;
+export interface Day {
+  day: number;
+  title: string;
+  exercises: Exercise[];
+}
+
+export interface Program {
+  days: Day[];
+  currentDay: number;
+  completedDays: number[];
 }
 
 /**
- * Saves adapted exercises for a given day index into the user's program.
- * @param dayIndex - Zero-based index of the day in the program.
- * @param adaptedExercises - Array of exercise objects to persist.
+ * Fetches the current training program for the logged‐in user.
+ * @returns The Program object, or null if none exists yet.
+ */
+export async function getCurrentProgram(): Promise<Program | null> {
+  const user = auth.currentUser;
+  if (!user) throw new Error('User not authenticated');
+
+  const programRef = doc(db, 'programs', user.uid);
+  const snap = await getDoc(programRef);
+  return snap.exists() ? (snap.data() as Program) : null;
+}
+
+/**
+ * Persists an adapted list of exercises for a given day index.
  */
 export async function saveAdaptedWorkout(
   dayIndex: number,
-  adaptedExercises: any[]
+  adaptedExercises: Exercise[]
 ): Promise<void> {
   const user = auth.currentUser;
-  if (!user) {
-    throw new Error('User not authenticated');
-  }
+  if (!user) throw new Error('User not authenticated');
 
   const programRef = doc(db, 'programs', user.uid);
   const snap = await getDoc(programRef);
-  if (!snap.exists()) {
-    throw new Error('Program not found');
-  }
+  if (!snap.exists()) throw new Error('Program not found');
 
-  const data = snap.data();
-  data.days[dayIndex].exercises = adaptedExercises;
-  await setDoc(programRef, data);
+  const program = snap.data() as Program;
+  program.days[dayIndex].exercises = adaptedExercises;
+
+  await setDoc(programRef, program);
 }
 
 /**
- * Generates a fresh seven-day program for the user and saves it.
+ * (Optional) Generates and saves a brand‐new 7‑day program under the user’s document.
  */
 export async function generateProgram(): Promise<void> {
   const user = auth.currentUser;
-  if (!user) {
-    throw new Error('User not signed in');
-  }
+  if (!user) throw new Error('User not signed in');
 
-  const program = [
+  const program: Day[] = [
     {
       day: 1,
       title: 'Upper Body Strength',
       exercises: [
         { name: 'Pushups', sets: 4, reps: 12 },
-        { name: 'Bent-over Rows', sets: 4, reps: 10 },
+        { name: 'Bent‑over Rows', sets: 4, reps: 10 },
         { name: 'Overhead Press', sets: 3, reps: 8 },
       ],
     },
@@ -84,7 +93,7 @@ export async function generateProgram(): Promise<void> {
       day: 4,
       title: 'Active Recovery',
       exercises: [
-        { name: 'Walking', sets: 1, reps: '20-30 mins' },
+        { name: 'Walking', sets: 1, reps: '20‑30 mins' },
         { name: 'Deep Breathing', sets: 1, reps: '5 mins' },
       ],
     },
@@ -109,13 +118,12 @@ export async function generateProgram(): Promise<void> {
     {
       day: 7,
       title: 'Rest Day',
-      exercises: [
-        { name: 'Full Rest', sets: 1, reps: 'Enjoy it' },
-      ],
+      exercises: [{ name: 'Full Rest', sets: 1, reps: 'Enjoy it' }],
     },
   ];
 
-  await setDoc(doc(db, 'programs', user.uid), {
+  const programRef = doc(db, 'programs', user.uid);
+  await setDoc(programRef, {
     createdAt: serverTimestamp(),
     days: program,
     currentDay: 1,
