@@ -27,7 +27,6 @@ const WorkoutScreen: React.FC = () => {
   const [selectedEquipment, setSelectedEquipment] = useState('None');
   const [selectedIntensity, setSelectedIntensity] = useState('Medium');
 
-  // Show any hook errors
   useEffect(() => {
     if (error) Alert.alert('Error', error);
   }, [error]);
@@ -69,16 +68,8 @@ const WorkoutScreen: React.FC = () => {
 
         <View style={styles.divider} />
 
-        {/* Quick‑Workout Generator */}
-        <Pressable
-          style={styles.dropdownToggle}
-          onPress={() => setShowFilters(v => !v)}
-        >
-          <Ionicons
-            name={showFilters ? 'chevron-up' : 'chevron-down'}
-            size={18}
-            color="#fff"
-          />
+        <Pressable style={styles.dropdownToggle} onPress={() => setShowFilters(prev => !prev)}>
+          <Ionicons name={showFilters ? 'chevron-up' : 'chevron-down'} size={18} color="#fff" />
           <Text style={styles.dropdownText}>Quick Workout Generator</Text>
         </Pressable>
 
@@ -139,24 +130,17 @@ const WorkoutScreen: React.FC = () => {
           </View>
         )}
 
-        {/* Main Program Card */}
         {hasProgram ? (
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Current Program</Text>
             <Text style={styles.cardText}>
-              Day {program!.currentDay}: {program!.days[program!.currentDay - 1].title}
+              Day {program.currentDay}: {program.days[program.currentDay - 1].title}
             </Text>
-            <Pressable
-              style={styles.primaryButton}
-              onPress={() => navigation.navigate('WorkoutDetail')}
-            >
+            <Pressable style={styles.primaryButton} onPress={() => navigation.navigate('WorkoutDetail')}>
               <Text style={styles.buttonText}>View Today's Workout</Text>
             </Pressable>
-            <Pressable
-              style={styles.primaryButton}
-              onPress={() => navigation.navigate('AdaptWorkout')}
-            >
-              <Text style={styles.buttonText}>Adapt Today’s Workout</Text>
+            <Pressable style={styles.primaryButton} onPress={() => navigation.navigate('AdaptWorkout')}>
+              <Text style={styles.buttonText}>Adapt Today's Workout</Text>
             </Pressable>
           </View>
         ) : (
@@ -166,11 +150,7 @@ const WorkoutScreen: React.FC = () => {
           </Pressable>
         )}
 
-        {/* Utility Buttons */}
-        <Pressable
-          style={styles.secondaryButton}
-          onPress={() => navigation.navigate('ExerciseLibrary')}
-        >
+        <Pressable style={styles.secondaryButton} onPress={() => navigation.navigate('ExerciseLibrary')}>
           <Ionicons name="book" size={20} color="#fff" style={styles.icon} />
           <Text style={styles.buttonText}>Exercise Library</Text>
         </Pressable>
