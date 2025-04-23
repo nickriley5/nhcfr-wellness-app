@@ -12,7 +12,7 @@ import {
 import LinearGradient from 'react-native-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { auth, firestore } from '../firebase';
+import { auth, db } from '../firebase';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { RootStackParamList } from '../App';
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -39,7 +39,7 @@ const MealPlanScreen: React.FC = () => {
         if (!uid) return;
 
         const today = new Date().toISOString().split('T')[0];
-        const ref = doc(firestore, 'mealPlans', `${uid}_${today}`);
+        const ref = doc(db, 'mealPlans', `${uid}_${today}`);
         const snap = await getDoc(ref);
 
         if (snap.exists()) {
@@ -70,7 +70,7 @@ const MealPlanScreen: React.FC = () => {
       if (!uid) throw new Error('Not signed in');
 
       const today = new Date().toISOString().split('T')[0];
-      const ref = doc(firestore, 'mealPlans', `${uid}_${today}`);
+      const ref = doc(db, 'mealPlans', `${uid}_${today}`);
       await setDoc(ref, { meals: placeholder, generatedAt: serverTimestamp() }, { merge: true });
       setMeals(placeholder);
     } catch (err) {

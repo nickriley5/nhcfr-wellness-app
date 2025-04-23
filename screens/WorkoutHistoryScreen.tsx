@@ -1,4 +1,3 @@
-// Cleaned and fixed WorkoutHistoryScreen with all helper functions defined
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -11,18 +10,15 @@ import {
   TextInput,
 } from 'react-native';
 import { auth, db } from '../firebase';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, Timestamp } from 'firebase/firestore';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import LinearGradient from 'react-native-linear-gradient';
-import {
-  useNavigation,
-  NavigationProp,
-} from '@react-navigation/native';
+import { useNavigation, NavigationProp } from '@react-navigation/native';
 import { RootStackParamList } from '../App';
 
 interface WorkoutLog {
   dayTitle: string;
-  completedAt: string;
+  completedAt: Timestamp; // <-- proper typing here
   exercises: {
     name: string;
     sets: {
@@ -188,6 +184,21 @@ const WorkoutHistoryScreen: React.FC = () => {
     );
   };
 
+  const formatLogTitle = (log: WorkoutLog) => {
+    try {
+      const dateObj = log.completedAt.toDate();
+      const date = dateObj.toLocaleDateString([], {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      });
+      return `${log.dayTitle} — ${date}`;
+    } catch {
+      return log.dayTitle || 'Workout';
+    }
+  };  
+    
+
   if (loading) {
     return (
       <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
@@ -200,22 +211,15 @@ const WorkoutHistoryScreen: React.FC = () => {
     <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>Workout History</Text>
-
-        {/* 🔙 Moved Back Button to Top */}
         <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={20} color="#fff" />
           <Text style={styles.backText}>Back</Text>
         </Pressable>
-
-        {/* 📊 Top-of-Page Progress Panel */}
         {renderTopProgressPanel()}
-
-{/* 🏆 View All-Time PRs Button */}
-<Pressable style={styles.prButton} onPress={() => navigation.navigate('PRTracker')}>
-  <Ionicons name="trophy-outline" size={16} color="#4fc3f7" />
-  <Text style={styles.prButtonText}>View All-Time PRs</Text>
-</Pressable>
-
+        <Pressable style={styles.prButton} onPress={() => navigation.navigate('PRTracker')}>
+          <Ionicons name="trophy-outline" size={16} color="#4fc3f7" />
+          <Text style={styles.prButtonText}>View All-Time PRs</Text>
+        </Pressable>
         <TextInput
           style={styles.searchInput}
           placeholder="Search by exercise name..."
@@ -223,79 +227,58 @@ const WorkoutHistoryScreen: React.FC = () => {
           value={searchQuery}
           onChangeText={setSearchQuery}
         />
-
-        {/* 📘 Workout Cards Below */}
         {Object.entries(logs)
           .sort(([a], [b]) => b.localeCompare(a))
           .filter(([_, log]) => matchesSearch(log))
           .map(([id, log]) => (
             <View key={id} style={styles.card}>
               <TouchableOpacity onPress={() => toggleExpand(id)} style={styles.cardHeader}>
-                <Text style={styles.cardTitle}>
-                  {log.dayTitle || 'Workout'} — {id}
-                </Text>
+              <Text style={styles.cardTitle}>{formatLogTitle(log)}</Text>
                 <Ionicons
                   name={expanded === id ? 'chevron-up' : 'chevron-down'}
                   size={20}
                   color="#fff"
                 />
               </TouchableOpacity>
-
               {expanded === id && (
                 <View style={styles.cardBody}>
-                  {log.exercises
-                    .filter(ex =>
-                      !searchQuery.trim() ||
-                      ex.name.toLowerCase().includes(searchQuery.toLowerCase())
-                    )
-                    .map((ex, exIndex) => (
-                      <View key={exIndex} style={styles.exerciseBlock}>
-                        <View style={styles.progressRow}>
-                          <Text style={styles.exerciseName}>{ex.name}</Text>
-                          <Pressable
-                            onPress={() =>
-                              navigation.navigate('ProgressChart', {
-                                exerciseName: ex.name,
-                              })
-                            }
-                          >
-                            <Ionicons name="stats-chart" size={16} color="#4fc3f7" />
-                          </Pressable>
-                        </View>
-                        {ex.sets.map((set, setIndex) => (
-                          <Text key={setIndex} style={styles.setText}>
-                            Set {setIndex + 1}: {set.reps} reps @ {set.weight} lbs
-                          </Text>
-                        ))}
-
-                        <Pressable onPress={() => toggleShowLastThree(ex.name)}>
-                          <Text style={styles.toggleLast3}>
-                            {showLastThree[ex.name] ? '− Hide Last 3 Sessions' : '+ Show Last 3 Sessions'}
-                          </Text>
+                  {log.exercises.map((ex, exIndex) => (
+                    <View key={exIndex} style={styles.exerciseBlock}>
+                      <View style={styles.progressRow}>
+                        <Text style={styles.exerciseName}>{ex.name}</Text>
+                        <Pressable onPress={() => navigation.navigate('ProgressChart', { exerciseName: ex.name })}>
+                          <Ionicons name="stats-chart" size={16} color="#4fc3f7" />
                         </Pressable>
-
-                        {showLastThree[ex.name] && (
-                          <View>
-                            {getLastThreeSessions(ex.name).map((entry, index) => {
-                              const match = entry.exercises.find(e => e.name === ex.name);
-                              return (
-                                <View key={index} style={styles.sessionBox}>
-  <Text style={styles.sessionDate}>{entry.id}</Text>
-  {match?.sets.map((set, sIdx) => (
-    <Text key={sIdx} style={styles.recentSet}>
-      Set {sIdx + 1}: {set.reps} reps @ {set.weight} lbs
-    </Text>
-  ))}
-</View>
-
-                              );
-                            })}
-                          </View>
-                        )}
                       </View>
-                    ))}
-
-                  {/* 📌 Insert Smart Summary under the workout details */}
+                      {ex.sets.map((set, setIndex) => (
+                        <Text key={setIndex} style={styles.setText}>
+                          Set {setIndex + 1}: {set.reps} reps @ {set.weight} lbs
+                        </Text>
+                      ))}
+                      <Pressable onPress={() => toggleShowLastThree(ex.name)}>
+                        <Text style={styles.toggleLast3}>
+                          {showLastThree[ex.name] ? '− Hide Last 3 Sessions' : '+ Show Last 3 Sessions'}
+                        </Text>
+                      </Pressable>
+                      {showLastThree[ex.name] && (
+                        <View>
+                          {getLastThreeSessions(ex.name).map((entry, index) => {
+                            const match = entry.exercises.find(e => e.name === ex.name);
+                            return (
+                              <View key={index} style={styles.sessionBox}>
+                                <Text style={styles.sessionDate}>{entry.id}</Text>
+                                {match?.sets.map((set, sIdx) => (
+                                  <Text key={sIdx} style={styles.recentSet}>
+                                    Set {sIdx + 1}: {set.reps} reps @ {set.weight} lbs
+                                  </Text>
+                                ))}
+                              </View>
+                            );
+                          })}
+                        </View>
+                      )}
+                    </View>
+                  ))}
                   {renderSmartSummary(log)}
                 </View>
               )}

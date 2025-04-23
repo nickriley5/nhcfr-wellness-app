@@ -1,4 +1,3 @@
-// screens/WorkoutDetailScreen.tsx
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -71,7 +70,7 @@ const WorkoutDetailScreen: React.FC = () => {
           const initialProgress = enriched.map((ex: any) =>
             Array.from({ length: Number(ex.sets || 3) }, () => ({ reps: '', weight: '' }))
           );
-          
+
           setProgress(initialProgress);
 
           const logRef = collection(db, 'users', uid, 'workoutLogs');
@@ -121,15 +120,22 @@ const WorkoutDetailScreen: React.FC = () => {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
 
-    const todayId = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    const workoutId = now.toISOString().replace(/[:.]/g, '-');
+    
     const logData = {
-      dayTitle,
-      completedAt: Timestamp.now(),
+      dayTitle: dayTitle, // KEEP THIS CLEAN – don't include time here
+      completedAt: Timestamp.fromDate(now), // Save actual DateTime object
       exercises: exercises.map((ex, exIndex) => ({
         name: ex.name,
         sets: progress[exIndex],
       })),
     };
+    
+
+// Save it to Firestore
+await setDoc(doc(db, 'users', uid, 'workoutLogs', workoutId), logData);
+
 
     try {
       const prRef = collection(db, 'users', uid, 'workoutLogs');
@@ -151,7 +157,7 @@ const WorkoutDetailScreen: React.FC = () => {
         });
       });
 
-      await setDoc(doc(db, 'users', uid, 'workoutLogs', todayId), logData);
+      await setDoc(doc(db, 'users', uid, 'workoutLogs', workoutId), logData);
       setShowToast(true);
 
       const newPRs: string[] = [];
