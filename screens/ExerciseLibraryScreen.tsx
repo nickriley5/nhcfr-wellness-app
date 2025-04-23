@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -12,49 +12,51 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
+import { getFirestore, collection, getDocs } from 'firebase/firestore';
+import { firebaseApp } from '../firebase';
 
-const exercises = [
-  {
-    id: 'push_up',
-    name: 'Pushups',
-    description: 'Great for upper body strength, especially chest and triceps.',
-    videoUri: 'https://www.w3schools.com/html/mov_bbb.mp4',
-    thumbnailUri: 'https://via.placeholder.com/100',
-    equipment: 'Bodyweight',
-    muscles: ['Chest', 'Triceps', 'Shoulders'],
-    tips: 'Keep a straight back and engage your core.',
-  },
-  {
-    id: 'goblet_squat',
-    name: 'Goblet Squat',
-    description: 'Targets legs and glutes. A fundamental lower-body movement.',
-    videoUri: 'https://www.w3schools.com/html/mov_bbb.mp4',
-    thumbnailUri: 'https://via.placeholder.com/100',
-    equipment: 'Bodyweight',
-    muscles: ['Quads', 'Glutes', 'Hamstrings'],
-    tips: 'Keep your heels on the ground and knees behind toes.',
-  },
-  {
-    id: 'plank',
-    name: 'Plank',
-    description: 'Great for core stability and endurance.',
-    videoUri: 'https://www.w3schools.com/html/mov_bbb.mp4',
-    thumbnailUri: 'https://via.placeholder.com/100',
-    equipment: 'None',
-    muscles: ['Abs', 'Back', 'Shoulders'],
-    tips: 'Maintain a straight line from head to heels.',
-  },
-];
+// Map categories to icon names
+const categoryIcons: Record<string, string> = {
+  'Upper Body': 'barbell-outline',
+  'Lower Body': 'walk-outline',
+  Core: 'body-outline',
+  Conditioning: 'flash-outline',
+  'Full Body': 'fitness-outline',
+  'Mobility & Flexibility': 'accessibility-outline',
+  'Recovery / Rest': 'bed-outline',
+};
 
-type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
+const db = getFirestore(firebaseApp);
+
+// 👇 MOVE THESE INSIDE THE COMPONENT
 const ExerciseLibraryScreen: React.FC = () => {
-  const navigation = useNavigation<NavProp>();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList, 'ExerciseLibrary'>>();
+  const [exercises, setExercises] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchExercises = async () => {
+      try {
+        const snapshot = await getDocs(collection(db, 'exercises'));
+        const list = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+        setExercises(list);
+      } catch (error) {
+        console.error('Failed to fetch exercises:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchExercises();
+  }, []);
 
   return (
     <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
-        {/* ✅ Back Button */}
         <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={22} color="#fff" />
           <Text style={styles.backText}>Back</Text>
@@ -62,17 +64,23 @@ const ExerciseLibraryScreen: React.FC = () => {
 
         <Text style={styles.title}>Exercise Library</Text>
 
-        {exercises.map((ex, index) => (
+        {exercises.map((ex) => (
           <Pressable
-            key={index}
+            key={ex.id}
             style={styles.card}
             onPress={() => navigation.navigate('ExerciseDetail', { exerciseId: ex.id })}
           >
             <View style={styles.row}>
+              <Ionicons
+                name={categoryIcons[ex.category] ?? 'fitness-outline'}
+                size={36}
+                color="#d32f2f"
+                style={styles.icon}
+              />
               <Image source={{ uri: ex.thumbnailUri }} style={styles.thumbnail} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.exerciseName}>{ex.name}</Text>
-                <Text style={styles.description}>{ex.description}</Text>
+                <Text style={styles.description}>{ex.coachingNotes}</Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color="#888" />
             </View>
@@ -85,9 +93,7 @@ const ExerciseLibraryScreen: React.FC = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  content: {
-    padding: 24,
-  },
+  content: { padding: 24 },
   backButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -117,11 +123,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
+  icon: {
+    marginRight: 8,
+  },
   thumbnail: {
-    width: 80,
-    height: 80,
+    width: 60,
+    height: 60,
     borderRadius: 8,
-    marginRight: 12,
+    marginRight: 8,
   },
   exerciseName: {
     fontSize: 18,

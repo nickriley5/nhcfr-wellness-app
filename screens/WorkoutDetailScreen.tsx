@@ -10,7 +10,7 @@ import {
   TextInput,
   TouchableOpacity,
 } from 'react-native';
-import { auth, firestore } from '../firebase';
+import { auth, db } from '../firebase';
 import {
   doc,
   getDoc,
@@ -51,7 +51,7 @@ const WorkoutDetailScreen: React.FC = () => {
         const uid = auth.currentUser?.uid;
         if (!uid) return;
 
-        const docRef = doc(firestore, 'programs', uid);
+        const docRef = doc(db, 'programs', uid);
         const docSnap = await getDoc(docRef);
 
         if (docSnap.exists()) {
@@ -72,7 +72,7 @@ const WorkoutDetailScreen: React.FC = () => {
           );
           setProgress(initialProgress);
 
-          const logRef = collection(firestore, 'users', uid, 'workoutLogs');
+          const logRef = collection(db, 'users', uid, 'workoutLogs');
           const q = query(logRef, orderBy('completedAt', 'desc'));
           const logsSnap = await getDocs(q);
 
@@ -130,7 +130,7 @@ const WorkoutDetailScreen: React.FC = () => {
     };
 
     try {
-      const prRef = collection(firestore, 'users', uid, 'workoutLogs');
+      const prRef = collection(db, 'users', uid, 'workoutLogs');
       const snapshot = await getDocs(prRef);
 
       const currentPRs: Record<string, number> = {};
@@ -149,7 +149,7 @@ const WorkoutDetailScreen: React.FC = () => {
         });
       });
 
-      await setDoc(doc(firestore, 'users', uid, 'workoutLogs', todayId), logData);
+      await setDoc(doc(db, 'users', uid, 'workoutLogs', todayId), logData);
       setShowToast(true);
 
       const newPRs: string[] = [];

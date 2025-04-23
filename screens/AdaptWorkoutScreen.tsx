@@ -16,10 +16,20 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
-import { auth, firestore } from '../firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { auth, db } from '../firebase';
+import { doc, getDoc, setDoc, collection, getDocs } from 'firebase/firestore';
 import Toast from '../components/Toast';
 import Video from 'react-native-video';
+
+// Define the shape of an exercise object
+interface Exercise {
+  name: string;
+  equipment?: string;
+  focusArea?: string;
+  tags: string[];
+  videoUri?: string;
+  thumbnailUri?: string;
+}
 
 const fallbackVideos: Record<string, string> = {
   Pushups: 'https://www.w3schools.com/html/mov_bbb.mp4',
@@ -28,45 +38,11 @@ const fallbackVideos: Record<string, string> = {
   'Air Squat': 'https://www.w3schools.com/html/mov_bbb.mp4',
 };
 
-const similarExercises: Record<string, { name: string; videoUri: string; thumbnailUri: string }[]> = {
-    Pushups: [
-      { name: 'Incline Pushup', videoUri: fallbackVideos['Pushups'], thumbnailUri: 'https://via.placeholder.com/100' },
-      { name: 'Kneeling Pushup', videoUri: fallbackVideos['Pushups'], thumbnailUri: 'https://via.placeholder.com/100' },
-      { name: 'Wide Pushup', videoUri: fallbackVideos['Pushups'], thumbnailUri: 'https://via.placeholder.com/100' },
-    ],
-    'Bent-over Rows': [
-      { name: 'Band Rows', videoUri: fallbackVideos['Bent-over Rows'], thumbnailUri: 'https://via.placeholder.com/100' },
-      { name: 'Single Arm Rows', videoUri: fallbackVideos['Bent-over Rows'], thumbnailUri: 'https://via.placeholder.com/100' },
-    ],
-    'Overhead Press': [
-      { name: 'Pike Press', videoUri: fallbackVideos['Overhead Press'], thumbnailUri: 'https://via.placeholder.com/100' },
-      { name: 'Band Press', videoUri: fallbackVideos['Overhead Press'], thumbnailUri: 'https://via.placeholder.com/100' },
-    ],
-    'Air Squat': [
-      { name: 'Wall Sit', videoUri: fallbackVideos['Air Squat'], thumbnailUri: 'https://via.placeholder.com/100' },
-      { name: 'Split Squat', videoUri: fallbackVideos['Air Squat'], thumbnailUri: 'https://via.placeholder.com/100' },
-      { name: 'Step-Up', videoUri: fallbackVideos['Air Squat'], thumbnailUri: 'https://via.placeholder.com/100' },
-    ],
-    'Bodyweight Row': [
-      { name: 'Inverted Row', videoUri: fallbackVideos['Bent-over Rows'], thumbnailUri: 'https://via.placeholder.com/100' },
-      { name: 'Band Row', videoUri: fallbackVideos['Bent-over Rows'], thumbnailUri: 'https://via.placeholder.com/100' },
-    ],
-    'Plank': [
-      { name: 'Side Plank', videoUri: fallbackVideos['Pushups'], thumbnailUri: 'https://via.placeholder.com/100' },
-      { name: 'Forearm Plank', videoUri: fallbackVideos['Pushups'], thumbnailUri: 'https://via.placeholder.com/100' },
-      { name: 'Plank with Reach', videoUri: fallbackVideos['Pushups'], thumbnailUri: 'https://via.placeholder.com/100' },
-    ],
-    'Split Squat': [
-  { name: 'Wall Sit', videoUri: fallbackVideos['Air Squat'], thumbnailUri: 'https://via.placeholder.com/100' },
-  { name: 'Step-Up', videoUri: fallbackVideos['Air Squat'], thumbnailUri: 'https://via.placeholder.com/100' },
-],
-  };
-  
-
 const AdaptWorkoutScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const [exercises, setExercises] = useState<any[]>([]);
-  const [adaptedExercises, setAdaptedExercises] = useState<any[]>([]);
+  const [workoutExercises, setWorkoutExercises] = useState<Exercise[]>([]);
+  const [adaptedExercises, setAdaptedExercises] = useState<Exercise[]>([]);
+  const [similar, setSimilar] = useState<Exercise[]>([]);
   const [loading, setLoading] = useState(true);
   const [showToast, setShowToast] = useState(false);
   const [playingIndex, setPlayingIndex] = useState<number | null>(null);
@@ -74,23 +50,22 @@ const AdaptWorkoutScreen: React.FC = () => {
   const [currentIndex, setCurrentIndex] = useState<number | null>(null);
   const [showAllReplacements, setShowAllReplacements] = useState(false);
 
-
   useEffect(() => {
     const fetchWorkout = async () => {
       const uid = auth.currentUser?.uid;
       if (!uid) return;
 
-      const docRef = doc(firestore, 'programs', uid);
+      const docRef = doc(db, 'programs', uid);
       const docSnap = await getDoc(docRef);
 
       if (docSnap.exists()) {
-        const data = docSnap.data();
+        const data = docSnap.data() as any;
         const day = data.currentDay - 1;
-        const todayExercises = data.days[day].exercises.map((ex: any) => ({
+        const todayExercises: Exercise[] = data.days[day].exercises.map((ex: any) => ({
           ...ex,
           videoUri: fallbackVideos[ex.name] || fallbackVideos['Pushups'],
         }));
-        setExercises(todayExercises);
+        setWorkoutExercises(todayExercises);
         setAdaptedExercises(todayExercises);
       }
       setLoading(false);
@@ -99,35 +74,59 @@ const AdaptWorkoutScreen: React.FC = () => {
     fetchWorkout();
   }, []);
 
+  useEffect(() => {
+    const fetchSimilar = async () => {
+      if (currentIndex !== null && adaptedExercises[currentIndex]) {
+        const currentExercise = adaptedExercises[currentIndex];
+        const snapshot = await getDocs(collection(db, 'exercises'));
+        const allExercises: Exercise[] = snapshot.docs.map(doc => doc.data() as Exercise);
+
+        const similarList = allExercises.filter(ex =>
+          ex.name !== currentExercise.name &&
+          (
+            ex.focusArea === currentExercise.focusArea ||
+            (Array.isArray(ex.tags) && Array.isArray(currentExercise.tags) &&
+              ex.tags.some(tag => currentExercise.tags.includes(tag))) ||
+            ex.equipment === 'Bodyweight'
+          )
+        );
+        setSimilar(similarList);
+      }
+    };
+
+    fetchSimilar();
+  }, [currentIndex]);
+
   const handleAdapt = (index: number) => {
     setCurrentIndex(index);
     setModalVisible(true);
   };
 
-  const selectReplacement = (replacement: { name: string; videoUri: string }) => {
+  const selectReplacement = (replacement: Exercise) => {
     if (currentIndex === null) return;
     const updated = [...adaptedExercises];
     updated[currentIndex] = {
       ...updated[currentIndex],
       name: replacement.name,
       videoUri: replacement.videoUri,
+      thumbnailUri: replacement.thumbnailUri,
     };
     setAdaptedExercises(updated);
     setModalVisible(false);
     setCurrentIndex(null);
     setShowAllReplacements(false);
-  };  
+  };
 
   const handleSave = async () => {
     try {
       const uid = auth.currentUser?.uid;
       if (!uid) return;
 
-      const docRef = doc(firestore, 'programs', uid);
+      const docRef = doc(db, 'programs', uid);
       const docSnap = await getDoc(docRef);
 
       if (docSnap.exists()) {
-        const data = docSnap.data();
+        const data = docSnap.data() as any;
         const day = data.currentDay - 1;
         data.days[day].exercises = adaptedExercises;
         await setDoc(docRef, data);
@@ -153,6 +152,9 @@ const AdaptWorkoutScreen: React.FC = () => {
       </LinearGradient>
     );
   }
+
+  // Prepare the list of similar exercises when modal is open
+  
 
   return (
     <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
@@ -197,79 +199,84 @@ const AdaptWorkoutScreen: React.FC = () => {
           <Text style={styles.buttonText}>Save Adapted Workout</Text>
         </Pressable>
         <Pressable
-  style={[styles.saveButton, styles.secondaryButton]}
-  onPress={() =>
-    navigation.navigate('Main', {
-      screen: 'MainTabs',
-      params: { screen: 'Workout' },
-    })
-  }
->
-  <Ionicons name="arrow-back" size={20} color="#fff" style={styles.icon} />
-  <Text style={styles.buttonText}>Back to Workout Hub</Text>
-</Pressable>
+          style={[styles.saveButton, styles.secondaryButton]}
+          onPress={() =>
+            navigation.navigate('Main', {
+              screen: 'MainTabs',
+              params: { screen: 'Workout' },
+            })
+          }
+        >
+          <Ionicons name="arrow-back" size={20} color="#fff" style={styles.icon} />
+          <Text style={styles.buttonText}>Back to Workout Hub</Text>
+        </Pressable>
       </ScrollView>
 
+      {/* Replacement Modal */}
       <Modal visible={modalVisible} animationType="slide" transparent>
-  <View style={styles.modalOverlay}>
-    <View style={styles.modalContent}>
-      {currentIndex !== null && (
-        <>
-          <Text style={styles.modalTitle}>
-            Replacing: <Text style={{ color: '#4fc3f7' }}>{adaptedExercises[currentIndex]?.name}</Text>
-          </Text>
-          <Text style={styles.modalSubTitle}>Choose a replacement exercise:</Text>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            {currentIndex !== null && (
+              <>
+                <Text style={styles.modalTitle}>
+                  Replacing:{' '}
+                  <Text style={{ color: '#4fc3f7' }}>
+                    {adaptedExercises[currentIndex].name}
+                  </Text>
+                </Text>
+                <Text style={styles.modalSubTitle}>Choose a replacement:</Text>
 
-          <FlatList
-            data={
-              showAllReplacements
-                ? similarExercises[adaptedExercises[currentIndex]?.name] || []
-                : (similarExercises[adaptedExercises[currentIndex]?.name] || []).slice(0, 3)
-            }
-            keyExtractor={(item) => item.name}
-            renderItem={({ item }) => (
-              <Pressable style={styles.replacementItem} onPress={() => selectReplacement(item)}>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Image
-                    source={{ uri: item.thumbnailUri }}
-                    style={{ width: 50, height: 50, marginRight: 10, borderRadius: 8 }}
-                  />
-                  <View>
-                    <Text style={styles.replacementText}>{item.name}</Text>
-                    <Text style={styles.replacementTag}>🏷 No Equipment</Text>
-                  </View>
-                </View>
-              </Pressable>
+                <FlatList
+                  data={(similar || []).slice(0, showAllReplacements ? undefined : 3)}
+                  keyExtractor={item => item.name}
+                  renderItem={({ item }) => (
+                    <Pressable
+                      style={styles.replacementItem}
+                      onPress={() => selectReplacement(item)}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        {item.thumbnailUri && (
+                          <Image
+                            source={{ uri: item.thumbnailUri }}
+                            style={{ width: 50, height: 50, marginRight: 10, borderRadius: 8 }}
+                          />
+                        )}
+                        <View>
+                          <Text style={styles.replacementText}>{item.name}</Text>
+                          <Text style={styles.replacementTag}>
+                            🏷 {item.equipment || 'No Equipment'}
+                          </Text>
+                        </View>
+                      </View>
+                    </Pressable>
+                  )}
+                />
+
+                {similar.length > 3 && (
+                  <Pressable
+                    onPress={() => setShowAllReplacements(prev => !prev)}
+                    style={{ alignItems: 'center', marginVertical: 8 }}
+                  >
+                    <Text style={{ color: '#4fc3f7', fontSize: 14 }}>
+                      {showAllReplacements ? '➖ Show Less' : '➕ Show More'}
+                    </Text>
+                  </Pressable>
+                )}
+              </>
             )}
-          />
 
-          {similarExercises[adaptedExercises[currentIndex]?.name]?.length > 3 && (
             <Pressable
-              onPress={() => setShowAllReplacements(prev => !prev)}
-              style={{ alignItems: 'center', marginVertical: 8 }}
+              style={[styles.button, { marginTop: 12 }]}
+              onPress={() => {
+                setModalVisible(false);
+                setShowAllReplacements(false);
+              }}
             >
-              <Text style={{ color: '#4fc3f7', fontSize: 14 }}>
-                {showAllReplacements ? '➖ Show Less' : '➕ Show More Options'}
-              </Text>
+              <Text style={styles.buttonText}>Cancel</Text>
             </Pressable>
-          )}
-        </>
-      )}
-
-      <Pressable
-        style={[styles.button, { marginTop: 12 }]}
-        onPress={() => {
-          setModalVisible(false);
-          setShowAllReplacements(false);
-        }}
-      >
-        <Text style={styles.buttonText}>Cancel</Text>
-      </Pressable>
-    </View>
-  </View>
-</Modal>
-
-
+          </View>
+        </View>
+      </Modal>
 
       {showToast && (
         <Toast message="Adapted workout saved!" onClose={() => setShowToast(false)} />
@@ -373,7 +380,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 10,
   },
-  
   replacementItem: {
     paddingVertical: 10,
     paddingHorizontal: 12,
@@ -384,15 +390,15 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
   },
-  secondaryButton: {
-    marginTop: 10,
-    borderColor: '#888',
-  },
   replacementTag: {
     fontSize: 12,
     color: '#aaa',
     marginTop: 2,
     fontStyle: 'italic',
+  },
+  secondaryButton: {
+    marginTop: 10,
+    borderColor: '#888',
   },
 });
 

@@ -1,6 +1,4 @@
-import type { Exercise } from '../utils/generateDailyWorkout';
-
-export const exercises: Exercise[] = [
+[
   {
     "name": "Barbell Bench Press",
     "category": "Exercise Library",

@@ -7,7 +7,7 @@ import {
 } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { auth, firestore } from '../firebase';
+import { auth, db } from '../firebase';
 import {
   collection,
   getDocs,
@@ -45,7 +45,7 @@ const DashboardScreen: React.FC = () => {
         if (!user) return;
 
         const q = query(
-          collection(firestore, 'checkins'),
+          collection(db, 'checkins'),
           where('uid', '==', user.uid),
           orderBy('timestamp', 'desc')
         );

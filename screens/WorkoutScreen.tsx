@@ -13,7 +13,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { auth, firestore } from '../firebase';
+import { auth, db } from '../firebase';
 import {
   doc,
   getDoc,
@@ -42,7 +42,7 @@ const WorkoutScreen: React.FC = () => {
       const uid = auth.currentUser?.uid;
       if (!uid) return;
 
-      const docRef = doc(firestore, 'programs', uid);
+      const docRef = doc(db, 'programs', uid);
       const docSnap = await getDoc(docRef);
 
       if (docSnap.exists()) {
@@ -122,7 +122,7 @@ const WorkoutScreen: React.FC = () => {
         },
       ];
 
-      await setDoc(doc(firestore, 'programs', uid), {
+      await setDoc(doc(db, 'programs', uid), {
         createdAt: serverTimestamp(),
         days: program,
         currentDay: 1,
