@@ -10,7 +10,7 @@ import {
   Pressable,
   TextInput,
 } from 'react-native';
-import { auth, firestore } from '../firebase';
+import { auth, db } from '../firebase';
 import { collection, getDocs } from 'firebase/firestore';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import LinearGradient from 'react-native-linear-gradient';
@@ -46,7 +46,7 @@ const WorkoutHistoryScreen: React.FC = () => {
         const uid = auth.currentUser?.uid;
         if (!uid) return;
 
-        const logRef = collection(firestore, 'users', uid, 'workoutLogs');
+        const logRef = collection(db, 'users', uid, 'workoutLogs');
         const snapshot = await getDocs(logRef);
         const logData: Record<string, WorkoutLog> = {};
 

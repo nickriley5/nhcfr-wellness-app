@@ -60,6 +60,7 @@ export type RootStackParamList = {
   WorkoutHistory: undefined;
   ProgressChart: { exerciseName: string };
   PRTracker: undefined;
+  Profile: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();

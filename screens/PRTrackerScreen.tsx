@@ -8,7 +8,7 @@ import {
   ActivityIndicator,
   Pressable,
 } from 'react-native';
-import { auth, firestore } from '../firebase';
+import { auth, db } from '../firebase';
 import { collection, getDocs } from 'firebase/firestore';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import LinearGradient from 'react-native-linear-gradient';
@@ -38,7 +38,7 @@ const PRTrackerScreen: React.FC = () => {
         const uid = auth.currentUser?.uid;
         if (!uid) return;
 
-        const logRef = collection(firestore, 'users', uid, 'workoutLogs');
+        const logRef = collection(db, 'users', uid, 'workoutLogs');
         const snapshot = await getDocs(logRef);
         const logs: Record<string, WorkoutLog> = {};
 
@@ -73,8 +73,8 @@ const PRTrackerScreen: React.FC = () => {
         }));
 
         setPrData(sorted);
-      } catch (err) {
-        console.error(err);
+      } catch (err: any) {
+        console.error('Failed to fetch PRs:', err?.message || err);
       } finally {
         setLoading(false);
       }

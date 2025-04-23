@@ -19,6 +19,7 @@ import {
   getDocs,
   orderBy,
   query,
+  Timestamp,
 } from 'firebase/firestore';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import LinearGradient from 'react-native-linear-gradient';
@@ -68,8 +69,9 @@ const WorkoutDetailScreen: React.FC = () => {
           setExercises(enriched);
 
           const initialProgress = enriched.map((ex: any) =>
-            Array.from({ length: ex.sets }, () => ({ reps: '', weight: '' }))
+            Array.from({ length: Number(ex.sets || 3) }, () => ({ reps: '', weight: '' }))
           );
+          
           setProgress(initialProgress);
 
           const logRef = collection(db, 'users', uid, 'workoutLogs');
@@ -122,7 +124,7 @@ const WorkoutDetailScreen: React.FC = () => {
     const todayId = new Date().toISOString().split('T')[0];
     const logData = {
       dayTitle,
-      completedAt: new Date(),
+      completedAt: Timestamp.now(),
       exercises: exercises.map((ex, exIndex) => ({
         name: ex.name,
         sets: progress[exIndex],

@@ -121,15 +121,32 @@ const AdaptWorkoutScreen: React.FC = () => {
     try {
       const uid = auth.currentUser?.uid;
       if (!uid) return;
-
+  
       const docRef = doc(db, 'programs', uid);
       const docSnap = await getDoc(docRef);
-
+  
       if (docSnap.exists()) {
         const data = docSnap.data() as any;
         const day = data.currentDay - 1;
-        data.days[day].exercises = adaptedExercises;
+  
+        // Merge only name, video, and thumbnail into original structure
+        const updatedDay = data.days[day];
+        const mergedExercises = updatedDay.exercises.map((original: any, i: number) => {
+          const adapted = adaptedExercises?.[i];
+        
+          return {
+            ...original,
+            name: adapted?.name ?? original.name,
+            videoUri: adapted?.videoUri ?? original.videoUri ?? '',
+            thumbnailUri: adapted?.thumbnailUri ?? original.thumbnailUri ?? '',
+          };
+        });
+        
+  
+        data.days[day].exercises = mergedExercises;
+  
         await setDoc(docRef, data);
+  
         setShowToast(true);
         setTimeout(() => {
           navigation.navigate('WorkoutDetail', { adapt: true });
@@ -140,6 +157,8 @@ const AdaptWorkoutScreen: React.FC = () => {
       Alert.alert('Error', 'Failed to save adapted workout.');
     }
   };
+  
+  
 
   const togglePlay = (index: number) => {
     setPlayingIndex(prev => (prev === index ? null : index));
