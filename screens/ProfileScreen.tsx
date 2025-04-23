@@ -39,19 +39,18 @@ const ProfileScreen = () => {
       quality: 0.7,
       selectionLimit: 1,
     });
-  
+
     if (result.assets && result.assets.length > 0) {
       const photoUri = result.assets[0].uri;
-  
+
       const uid = auth.currentUser?.uid;
       if (!uid) return;
-  
+
       const userRef = doc(db, 'users', uid);
       await updateDoc(userRef, { profilePicture: photoUri });
       setProfile((prev: any) => ({ ...prev, profilePicture: photoUri }));
     }
   };
-  
 
   useEffect(() => {
     fetchProfile();
@@ -76,20 +75,22 @@ const ProfileScreen = () => {
       </Pressable>
 
       <View style={styles.profileSection}>
-        <Pressable onPress={updateProfilePicture}>
-          <Image
-            source={{ uri: profile?.profilePicture || 'https://via.placeholder.com/100' }}
-            style={styles.profileImage}
-          />
+        <Pressable onPress={updateProfilePicture} style={styles.profileImageContainer}>
+        <Image
+    source={{ uri: profile?.profilePicture || 'https://via.placeholder.com/100' }}
+    style={styles.profileImage}
+  />
           <Text style={styles.changePhoto}>Change Photo</Text>
         </Pressable>
-        <Text style={styles.name}>{profile?.name || 'No name set'}</Text>
-        <Text style={styles.info}>DOB: {profile?.dob}</Text>
-        <Text style={styles.info}>Height: {profile?.height} in</Text>
-        <Text style={styles.info}>Weight: {profile?.weight} lbs</Text>
-        <Text style={styles.info}>Goal Weight: {profile?.goalWeight} lbs</Text>
-        <Text style={styles.info}>Diet: {profile?.dietaryPreference}</Text>
-        <Text style={styles.info}>Restrictions: {profile?.dietaryRestrictions?.join(', ') || 'None'}</Text>
+
+        <Text style={styles.name}>{profile?.name || 'Good afternoon, Firefighter!'}</Text>
+
+        <View style={styles.detailRow}><Text style={styles.label}>DOB:</Text><Text style={styles.value}>{profile?.dob || '-'}</Text></View>
+        <View style={styles.detailRow}><Text style={styles.label}>Height:</Text><Text style={styles.value}>{profile?.height} in</Text></View>
+        <View style={styles.detailRow}><Text style={styles.label}>Weight:</Text><Text style={styles.value}>{profile?.weight} lbs</Text></View>
+        <View style={styles.detailRow}><Text style={styles.label}>Goal Weight:</Text><Text style={styles.value}>{profile?.goalWeight} lbs</Text></View>
+        <View style={styles.detailRow}><Text style={styles.label}>Diet:</Text><Text style={styles.value}>{profile?.dietaryPreference || 'None'}</Text></View>
+        <View style={styles.detailRow}><Text style={styles.label}>Restrictions:</Text><Text style={styles.value}>{profile?.dietaryRestrictions?.join(', ') || 'None'}</Text></View>
       </View>
 
       <Pressable style={styles.editButton} onPress={() => Alert.alert('Edit functionality coming soon.')}>
@@ -106,10 +107,20 @@ const styles = StyleSheet.create({
   backButton: { flexDirection: 'row', alignItems: 'center', padding: 20 },
   backText: { color: '#fff', fontSize: 16, marginLeft: 8 },
   profileSection: { alignItems: 'center', paddingHorizontal: 24 },
-  profileImage: { width: 100, height: 100, borderRadius: 50, marginBottom: 12 },
-  changePhoto: { color: '#4fc3f7', fontSize: 12, marginBottom: 8 },
-  name: { fontSize: 22, fontWeight: '700', color: '#fff', marginBottom: 4 },
-  info: { fontSize: 14, color: '#bbb', marginBottom: 2 },
+  profileImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    marginBottom: 12,
+    borderWidth: 1.5,
+    borderColor: '#444',
+  },
+  
+  changePhoto: { color: '#4fc3f7', fontSize: 12, marginBottom: 12 },
+  name: { fontSize: 20, fontWeight: '700', color: '#fff', marginBottom: 12 },
+  detailRow: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', paddingHorizontal: 24, marginBottom: 6 },
+  label: { color: '#bbb', fontSize: 14 },
+  value: { color: '#fff', fontSize: 14, fontWeight: '600' },
   editButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -121,6 +132,11 @@ const styles = StyleSheet.create({
     margin: 24,
     borderRadius: 10,
   },
+  profileImageContainer: {
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  
   editText: { color: '#fff', marginLeft: 6, fontWeight: '600' },
 });
 

@@ -20,6 +20,7 @@ const Tab = createBottomTabNavigator();
 
 const CustomDrawerContent = (props: any) => {
   const [userName, setUserName] = useState('Firefighter');
+const [profilePicture, setProfilePicture] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchName = async () => {
@@ -33,6 +34,9 @@ const CustomDrawerContent = (props: any) => {
         if (data?.fullName) {
           const firstName = data.fullName.split(' ')[0];
           setUserName(firstName);
+        }
+        if (data?.profilePicture) {
+          setProfilePicture(data.profilePicture);
         }
       } catch (err) {
         console.error('Failed to load name:', err);
@@ -62,10 +66,11 @@ const CustomDrawerContent = (props: any) => {
     <View style={{ flex: 1, justifyContent: 'space-between' }}>
       <DrawerContentScrollView {...props} contentContainerStyle={styles.drawerContainer}>
         <View style={styles.profileSection}>
-          <Image
-            source={require('../assets/profile-placeholder.png')}
-            style={styles.profileImage}
-          />
+        <Image
+  source={{ uri: profilePicture || 'https://via.placeholder.com/100' }}
+  style={styles.profileImage}
+/>
+
           <Text style={styles.profileName}>{`${getGreeting()}, ${userName}!`}</Text>
         </View>
 
@@ -177,6 +182,8 @@ const styles = StyleSheet.create({
     height: 80,
     borderRadius: 40,
     marginBottom: 12,
+    borderWidth: 1.5,
+    borderColor: '#444',
   },
   profileName: {
     color: '#fff',
