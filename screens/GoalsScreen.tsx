@@ -1,19 +1,24 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Modal, TextInput, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Modal, ScrollView, Alert } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
 import { auth, db } from '../firebase';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import WheelPicker from 'react-native-wheely';
 
 const GoalsScreen = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [goalWeight, setGoalWeight] = useState('');
   const [dietPreference, setDietPreference] = useState('');
-  const [restrictions, setRestrictions] = useState('');
+  const [restrictions, setRestrictions] = useState<string[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [editType, setEditType] = useState<'goals' | 'meal' | 'workout' | null>(null);
+
+  const dietOptions = ['Paleo', 'Carnivore', 'Vegan', 'Vegetarian', 'Keto'];
+  const restrictionOptions = ['None', 'Dairy-Free', 'Gluten-Free', 'Low FODMAP'];
+  const weightOptions = Array.from({ length: 200 }, (_, i) => (100 + i).toString());
 
   useEffect(() => {
     const fetchGoals = async () => {
@@ -25,7 +30,7 @@ const GoalsScreen = () => {
           const data = docSnap.data();
           setGoalWeight(data.goalWeight?.toString() || '');
           setDietPreference(data.dietPreference || '');
-          setRestrictions(Array.isArray(data.restrictions) ? data.restrictions.join(', ') : '');
+          setRestrictions(Array.isArray(data.restrictions) ? data.restrictions : []);
         }
       } catch (err) {
         Alert.alert('Error loading goals');
@@ -42,7 +47,7 @@ const GoalsScreen = () => {
       await updateDoc(doc(db, 'users', uid), {
         goalWeight,
         dietPreference,
-        restrictions: restrictions.split(',').map(r => r.trim()),
+        restrictions: restrictions.includes('None') ? [] : restrictions,
       });
       setModalVisible(false);
       Alert.alert('Goals updated successfully!');
@@ -67,21 +72,21 @@ const GoalsScreen = () => {
 
       <Text style={styles.infoText}>Goal Weight: {goalWeight} lbs</Text>
       <Text style={styles.infoText}>Diet: {dietPreference || 'None'}</Text>
-      <Text style={styles.infoText}>Restrictions: {restrictions || 'None'}</Text>
+      <Text style={styles.infoText}>Restrictions: {restrictions.length > 0 ? restrictions.join(', ') : 'None'}</Text>
 
-      <Pressable style={styles.outlinedButton} onPress={() => openEditModal('goals')}>
+      <Pressable style={styles.thinButton} onPress={() => openEditModal('goals')}>
         <Ionicons name="create-outline" size={20} color="#fff" style={{ marginRight: 10 }} />
-        <Text style={styles.buttonText}>Edit Fitness & Diet Goals</Text>
+        <Text style={styles.thinButtonText}>Edit Fitness & Diet Goals</Text>
       </Pressable>
 
-      <Pressable style={styles.outlinedButton} onPress={() => openEditModal('meal')}>
+      <Pressable style={styles.thinButton} onPress={() => openEditModal('meal')}>
         <Ionicons name="fast-food-outline" size={20} color="#fff" style={{ marginRight: 10 }} />
-        <Text style={styles.buttonText}>Change Meal Program</Text>
+        <Text style={styles.thinButtonText}>Change Meal Program</Text>
       </Pressable>
 
-      <Pressable style={styles.outlinedButton} onPress={() => openEditModal('workout')}>
+      <Pressable style={styles.thinButton} onPress={() => openEditModal('workout')}>
         <Ionicons name="barbell-outline" size={20} color="#fff" style={{ marginRight: 10 }} />
-        <Text style={styles.buttonText}>Change Workout Program</Text>
+        <Text style={styles.thinButtonText}>Change Workout Program</Text>
       </Pressable>
 
       <Modal visible={modalVisible} transparent animationType="slide">
@@ -94,23 +99,39 @@ const GoalsScreen = () => {
             {editType === 'goals' && (
               <>
                 <Text style={styles.label}>Goal Weight (lbs)</Text>
-                <TextInput
-                  style={styles.input}
-                  keyboardType="numeric"
-                  value={goalWeight}
-                  onChangeText={setGoalWeight}
+                <WheelPicker
+                  selectedIndex={weightOptions.indexOf(goalWeight)}
+                  options={weightOptions}
+                  onChange={i => setGoalWeight(weightOptions[i])}
+                  visibleRest={2}
+                  itemHeight={40}
+                  containerStyle={{ height: 160, backgroundColor: '#2a2a2a' }}
+                  selectedIndicatorStyle={{ borderTopWidth: 1, borderBottomWidth: 1, borderColor: '#d32f2f' }}
+                  itemTextStyle={{ color: '#d32f2f', fontSize: 16 }}
                 />
                 <Text style={styles.label}>Dietary Preference</Text>
-                <TextInput
-                  style={styles.input}
-                  value={dietPreference}
-                  onChangeText={setDietPreference}
+                <WheelPicker
+                  selectedIndex={dietOptions.indexOf(dietPreference)}
+                  options={dietOptions}
+                  onChange={i => setDietPreference(dietOptions[i])}
+                  visibleRest={2}
+                  itemHeight={40}
+                  containerStyle={{ height: 160, backgroundColor: '#2a2a2a' }}
+                  selectedIndicatorStyle={{ borderTopWidth: 1, borderBottomWidth: 1, borderColor: '#d32f2f' }}
+                  itemTextStyle={{ color: '#d32f2f', fontSize: 16 }}
                 />
-                <Text style={styles.label}>Dietary Restrictions</Text>
-                <TextInput
-                  style={styles.input}
-                  value={restrictions}
-                  onChangeText={setRestrictions}
+                <Text style={styles.label}>Restrictions</Text>
+                <WheelPicker
+                  selectedIndex={restrictions.length ? restrictionOptions.indexOf(restrictions[0]) : 0}
+                  options={restrictionOptions}
+                  onChange={i => setRestrictions(
+                    restrictionOptions[i] === 'None' ? [] : [restrictionOptions[i]]
+                  )}
+                  visibleRest={2}
+                  itemHeight={40}
+                  containerStyle={{ height: 160, backgroundColor: '#2a2a2a' }}
+                  selectedIndicatorStyle={{ borderTopWidth: 1, borderBottomWidth: 1, borderColor: '#d32f2f' }}
+                  itemTextStyle={{ color: '#d32f2f', fontSize: 16 }}
                 />
               </>
             )}
@@ -118,12 +139,12 @@ const GoalsScreen = () => {
             {editType !== 'goals' && <Text style={styles.infoText}>Customization coming soon...</Text>}
 
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 16 }}>
-              <Pressable style={[styles.outlinedButton, { flex: 1, marginRight: 10 }]} onPress={() => setModalVisible(false)}>
-                <Text style={styles.buttonText}>Cancel</Text>
+              <Pressable style={[styles.thinButton, { flex: 1, marginRight: 10 }]} onPress={() => setModalVisible(false)}>
+                <Text style={styles.thinButtonText}>Cancel</Text>
               </Pressable>
               {editType === 'goals' && (
-                <Pressable style={[styles.outlinedButton, { flex: 1 }]} onPress={saveGoals}>
-                  <Text style={styles.buttonText}>Save</Text>
+                <Pressable style={[styles.thinButton, { flex: 1 }]} onPress={saveGoals}>
+                  <Text style={styles.thinButtonText}>Save</Text>
                 </Pressable>
               )}
             </View>
@@ -139,34 +160,18 @@ const styles = StyleSheet.create({
   title: { fontSize: 22, fontWeight: '700', color: '#fff', marginBottom: 20 },
   infoText: { color: '#ddd', fontSize: 16, marginBottom: 8 },
   label: { color: '#ccc', fontSize: 14, marginTop: 10 },
-  input: {
-    backgroundColor: '#1e1e1e',
-    color: '#fff',
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    fontSize: 14,
-    borderColor: '#333',
-    borderWidth: 1,
-    marginTop: 4,
-  },
-  outlinedButton: {
+  thinButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#2a2a2a',
+    backgroundColor: 'transparent',
     borderColor: '#d32f2f',
     borderWidth: 1.5,
     padding: 12,
     marginTop: 16,
     borderRadius: 10,
   },
-  buttonText: {
-    color: '#fff',
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
+  thinButtonText: { color: '#fff', fontWeight: '600' },
   modalBackground: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
