@@ -10,12 +10,13 @@ import {
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { LineChart } from 'react-native-chart-kit';
 import { Dimensions } from 'react-native';
-import { auth, firestore } from '../firebase';
+import { auth, db } from '../firebase';
 import { collection, getDocs } from 'firebase/firestore';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import LinearGradient from 'react-native-linear-gradient';
 import { RootStackParamList } from '../App';
 
+const screenWidth = Dimensions.get('window').width - 40;
 type ProgressScreenRouteProp = RouteProp<RootStackParamList, 'ProgressChart'>;
 
 interface WorkoutLog {
@@ -29,8 +30,6 @@ interface WorkoutLog {
   }[];
 }
 
-const screenWidth = Dimensions.get('window').width - 40;
-
 const ProgressChartScreen: React.FC = () => {
   const navigation = useNavigation();
   const route = useRoute<ProgressScreenRouteProp>();
@@ -38,6 +37,7 @@ const ProgressChartScreen: React.FC = () => {
 
   const [loading, setLoading] = useState(true);
   const [chartType, setChartType] = useState<'weight' | 'reps' | 'volume'>('weight');
+  const [dateRange, setDateRange] = useState<'7D' | '30D' | 'ALL'>('ALL');
   const [dataPoints, setDataPoints] = useState<number[]>([]);
   const [labels, setLabels] = useState<string[]>([]);
 
@@ -47,24 +47,37 @@ const ProgressChartScreen: React.FC = () => {
         const uid = auth.currentUser?.uid;
         if (!uid) return;
 
-        const logRef = collection(firestore, 'users', uid, 'workoutLogs');
+        const logRef = collection(db, 'users', uid, 'workoutLogs');
         const snapshot = await getDocs(logRef);
 
         const sortedLogs = snapshot.docs
-          .map(doc => ({
-            id: doc.id,
-            ...doc.data(),
-          }))
+          .map(doc => ({ id: doc.id, ...doc.data() }))
           .sort((a, b) => a.id.localeCompare(b.id)) as (WorkoutLog & { id: string })[];
+
+        const now = new Date();
+        let filteredLogs = sortedLogs;
+
+        if (dateRange === '7D') {
+          filteredLogs = sortedLogs.filter(log => {
+            const logDate = new Date(log.id);
+            const diff = (now.getTime() - logDate.getTime()) / (1000 * 60 * 60 * 24);
+            return diff <= 7;
+          });
+        } else if (dateRange === '30D') {
+          filteredLogs = sortedLogs.filter(log => {
+            const logDate = new Date(log.id);
+            const diff = (now.getTime() - logDate.getTime()) / (1000 * 60 * 60 * 24);
+            return diff <= 30;
+          });
+        }
 
         const entries: number[] = [];
         const entryLabels: string[] = [];
 
-        sortedLogs.forEach(log => {
+        filteredLogs.forEach(log => {
           const exercise = log.exercises.find(ex => ex.name === exerciseName);
           if (exercise) {
             let value = 0;
-
             if (chartType === 'weight') {
               value = exercise.sets.reduce((acc, set) => acc + parseInt(set.weight || '0'), 0);
             } else if (chartType === 'reps') {
@@ -75,9 +88,8 @@ const ProgressChartScreen: React.FC = () => {
                 0
               );
             }
-
             entries.push(value);
-            entryLabels.push(log.id.slice(5)); // shows MM-DD
+            entryLabels.push(log.id.slice(5));
           }
         });
 
@@ -91,7 +103,7 @@ const ProgressChartScreen: React.FC = () => {
     };
 
     fetchLogs();
-  }, [chartType]);
+  }, [chartType, dateRange]);
 
   if (loading) {
     return (
@@ -104,7 +116,6 @@ const ProgressChartScreen: React.FC = () => {
   return (
     <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
-        {/* Back button */}
         <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={20} color="#fff" />
           <Text style={styles.backText}>Back</Text>
@@ -112,7 +123,6 @@ const ProgressChartScreen: React.FC = () => {
 
         <Text style={styles.title}>{exerciseName} Progress</Text>
 
-        {/* Toggle buttons */}
         <View style={styles.toggleGroup}>
           {(['weight', 'reps', 'volume'] as const).map(key => (
             <Pressable
@@ -125,14 +135,23 @@ const ProgressChartScreen: React.FC = () => {
           ))}
         </View>
 
+        <View style={styles.rangeGroup}>
+          {(['7D', '30D', 'ALL'] as const).map(key => (
+            <Pressable
+              key={key}
+              style={[styles.rangeButton, dateRange === key && styles.rangeActive]}
+              onPress={() => setDateRange(key)}
+            >
+              <Text style={styles.rangeText}>{key}</Text>
+            </Pressable>
+          ))}
+        </View>
+
         {dataPoints.length === 0 ? (
           <Text style={styles.emptyText}>No data available for this exercise yet.</Text>
         ) : (
           <LineChart
-            data={{
-              labels,
-              datasets: [{ data: dataPoints }],
-            }}
+            data={{ labels, datasets: [{ data: dataPoints }] }}
             width={screenWidth}
             height={220}
             chartConfig={{
@@ -140,11 +159,7 @@ const ProgressChartScreen: React.FC = () => {
               backgroundGradientTo: '#1c1c1c',
               color: () => '#d32f2f',
               labelColor: () => '#fff',
-              propsForDots: {
-                r: '4',
-                strokeWidth: '2',
-                stroke: '#fff',
-              },
+              propsForDots: { r: '4', strokeWidth: '2', stroke: '#fff' },
             }}
             style={{ marginVertical: 16, borderRadius: 10 }}
           />
@@ -191,6 +206,25 @@ const styles = StyleSheet.create({
   toggleText: {
     color: '#fff',
     fontSize: 14,
+  },
+  rangeGroup: {
+    flexDirection: 'row',
+    marginBottom: 12,
+  },
+  rangeButton: {
+    backgroundColor: '#444',
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    marginHorizontal: 4,
+  },
+  rangeActive: {
+    backgroundColor: '#4fc3f7',
+  },
+  rangeText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
   },
   emptyText: {
     color: '#aaa',

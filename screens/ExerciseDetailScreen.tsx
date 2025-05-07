@@ -13,14 +13,13 @@ import {
   useNavigation,
 } from '@react-navigation/native';
 import LinearGradient from 'react-native-linear-gradient';
-
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../App';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import Video from 'react-native-video';
+import { doc, getDoc, getFirestore, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { firebaseApp, auth } from '../firebase';
+import { RootStackParamList } from '../App';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
-import { doc, getDoc, getFirestore } from 'firebase/firestore';
-import { firebaseApp } from '../firebase';
 
 type ExerciseDetailRouteProp = RouteProp<RootStackParamList, 'ExerciseDetail'>;
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
@@ -32,6 +31,8 @@ const ExerciseDetailScreen: React.FC = () => {
 
   const [exercise, setExercise] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [favorited, setFavorited] = useState(false);
+  const [playing, setPlaying] = useState(false);
 
   const db = getFirestore(firebaseApp);
 
@@ -45,6 +46,13 @@ const ExerciseDetailScreen: React.FC = () => {
         } else {
           console.warn('Exercise not found.');
         }
+
+        const uid = auth.currentUser?.uid;
+        if (uid) {
+          const userDoc = await getDoc(doc(db, 'users', uid));
+          const favorites = userDoc.data()?.favorites || [];
+          setFavorited(favorites.includes(exerciseId));
+        }
       } catch (error) {
         console.error('Error fetching exercise:', error);
       } finally {
@@ -54,6 +62,20 @@ const ExerciseDetailScreen: React.FC = () => {
 
     fetchExercise();
   }, [exerciseId]);
+
+  const toggleFavorite = async () => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    try {
+      const userRef = doc(db, 'users', uid);
+      await updateDoc(userRef, {
+        favorites: favorited ? arrayRemove(exerciseId) : arrayUnion(exerciseId),
+      });
+      setFavorited(!favorited);
+    } catch (err) {
+      console.error('Failed to toggle favorite:', err);
+    }
+  };
 
   if (loading) {
     return (
@@ -79,26 +101,51 @@ const ExerciseDetailScreen: React.FC = () => {
           <Text style={styles.backText}>Back</Text>
         </Pressable>
 
-        <Text style={styles.name}>{exercise.name}</Text>
+        <View style={styles.headerRow}>
+          <Text style={styles.name}>{exercise.name}</Text>
+          <Pressable onPress={toggleFavorite}>
+            <Ionicons name={favorited ? 'heart' : 'heart-outline'} size={26} color="#d32f2f" />
+          </Pressable>
+        </View>
+
         <Text style={styles.category}>{exercise.category}</Text>
-        <Text style={styles.equipment}>
-          Equipment: {Array.isArray(exercise.equipment) ? exercise.equipment.join(', ') : exercise.equipment}
-        </Text>
-        <Text style={styles.desc}>{exercise.description}</Text>
+        <Text style={styles.equipment}>Equipment: {exercise.equipment || 'Bodyweight'}</Text>
+        <Text style={styles.level}>Level: {exercise.level || 'All Levels'}</Text>
 
         <Video
           source={{ uri: exercise.videoUrl || exercise.videoUri }}
           style={styles.video}
           resizeMode="cover"
+          paused={!playing}
           controls
+          onEnd={() => setPlaying(false)}
         />
 
-        {exercise.muscles && (
-          <Text style={styles.detail}>Target Muscles: {exercise.muscles.join(', ')}</Text>
+        <Pressable onPress={() => setPlaying(p => !p)} style={styles.playButton}>
+          <Ionicons name={playing ? 'pause' : 'play'} size={18} color="#fff" />
+          <Text style={styles.playText}>{playing ? 'Pause Video' : 'Play Video'}</Text>
+        </Pressable>
+
+        <Text style={styles.desc}>{exercise.description}</Text>
+
+        {exercise.coachingNotes && (
+          <Text style={styles.coachingNotes}>Coach’s Notes: {exercise.coachingNotes}</Text>
         )}
 
-        {exercise.tips && (
-          <Text style={styles.tipText}>🔥 Tip: <Text style={styles.tipInner}>{exercise.tips}</Text></Text>
+        {exercise.tags && (
+          <View style={styles.tagContainer}>
+            {exercise.tags.map((tag: string) => (
+              <Text key={tag} style={styles.tag}>{tag}</Text>
+            ))}
+          </View>
+        )}
+
+        {exercise.goalTags && (
+          <View style={styles.tagContainer}>
+            {exercise.goalTags.map((tag: string) => (
+              <Text key={tag} style={[styles.tag, styles.goalTag]}>{tag}</Text>
+            ))}
+          </View>
         )}
 
         <Pressable
@@ -121,7 +168,6 @@ const styles = StyleSheet.create({
   container: {
     padding: 24,
     alignItems: 'center',
-    backgroundColor: 'transparent',
     paddingBottom: 60,
   },
   loadingContainer: {
@@ -141,12 +187,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginLeft: 6,
   },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginBottom: 8,
+  },
   name: {
     fontSize: 26,
     fontWeight: '800',
     color: '#fff',
-    marginBottom: 6,
-    textAlign: 'center',
   },
   category: {
     fontSize: 18,
@@ -157,7 +208,12 @@ const styles = StyleSheet.create({
   equipment: {
     fontSize: 14,
     color: '#bbb',
-    marginBottom: 8,
+    marginBottom: 4,
+  },
+  level: {
+    fontSize: 14,
+    color: '#999',
+    marginBottom: 12,
   },
   desc: {
     fontSize: 16,
@@ -169,23 +225,42 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 220,
     borderRadius: 12,
+    marginBottom: 8,
+  },
+  playButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: 16,
   },
-  detail: {
+  playText: {
+    color: '#fff',
     fontSize: 14,
-    color: '#aaa',
-    fontStyle: 'italic',
-    marginBottom: 10,
+    marginLeft: 6,
   },
-  tipText: {
+  coachingNotes: {
     fontSize: 14,
     color: '#4fc3f7',
     fontStyle: 'italic',
-    textAlign: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
   },
-  tipInner: {
-    fontStyle: 'italic',
+  tagContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  tag: {
+    backgroundColor: '#333',
+    color: '#fff',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+    margin: 4,
+    fontSize: 12,
+  },
+  goalTag: {
+    backgroundColor: '#4fc3f7',
+    color: '#000',
   },
   progressButton: {
     flexDirection: 'row',
