@@ -45,10 +45,10 @@ const DashboardScreen: React.FC = () => {
         if (!user) return;
 
         const q = query(
-          collection(db, 'checkins'),
-          where('uid', '==', user.uid),
+          collection(db, 'users', user.uid, 'checkIns'), // ✅ fixed path
           orderBy('timestamp', 'desc')
         );
+        
         const snapshot = await getDocs(q);
 
         let entries: CheckInEntry[] = snapshot.docs.map(doc => {

@@ -1,135 +1,138 @@
+// screens/RegisterScreen.tsx
 import React, { useState } from 'react';
 import {
   View,
-  TextInput,
   Text,
+  TextInput,
   Pressable,
+  ActivityIndicator,
   StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
+  Alert,
 } from 'react-native';
 import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
 import { getApp } from 'firebase/app';
-import { useNavigation } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../App';
 
-type RegisterScreenNavigationProp = NativeStackNavigationProp<
-  RootStackParamList,
-  'Register'
->;
-
-const RegisterScreen = () => {
+export default function RegisterScreen({ navigation }: any) {
+  const auth = getAuth(getApp());
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const navigation = useNavigation<RegisterScreenNavigationProp>();
+  const [loading, setLoading] = useState(false);
 
   const handleRegister = async () => {
+    if (!email || !password) {
+      Alert.alert('Missing Fields', 'Please enter both email and password.');
+      return;
+    }
+    setLoading(true);
+
     try {
-      const app = getApp();
-      const auth = getAuth(app);
-      await createUserWithEmailAndPassword(auth, email, password);
-      alert('Account created! Please log in.');
-      navigation.navigate('Login'); // ✅ Return to login after registration
-    } catch (error: any) {
-      console.error(error);
-      alert(error.message);
+      await createUserWithEmailAndPassword(auth, email.trim(), password);
+      // on success, navigate or do whatever your flow needs:
+      navigation.replace('ProfileSetup');
+    } catch (err: any) {
+      // Network error
+      if (err.code === 'auth/network-request-failed') {
+        Alert.alert(
+          'Network Error',
+          'Unable to reach server. Please check your internet connection and try again.'
+        );
+      }
+      // Existing account
+      else if (err.code === 'auth/email-already-in-use') {
+        Alert.alert('Email Taken', 'That email is already registered. Please log in instead.');
+      }
+      // Weak password
+      else if (err.code === 'auth/weak-password') {
+        Alert.alert('Weak Password', 'Password should be at least 6 characters.');
+      }
+      // Invalid email
+      else if (err.code === 'auth/invalid-email') {
+        Alert.alert('Invalid Email', 'Please enter a valid email address.');
+      }
+      else {
+        console.error(err);
+        Alert.alert('Registration Error', err.message || 'Something went wrong.');
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={styles.wrapper}
-    >
-      <View style={styles.card}>
-        <Text style={styles.title}>Create Account</Text>
-
-        <TextInput
-          placeholder="Email"
-          placeholderTextColor="#ccc"
-          value={email}
-          onChangeText={setEmail}
-          style={styles.input}
-        />
-
-        <TextInput
-          placeholder="Password"
-          placeholderTextColor="#ccc"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-          style={styles.input}
-        />
-
-        <Pressable style={styles.button} onPress={handleRegister}>
-          <Text style={styles.buttonText}>Sign Up</Text>
-        </Pressable>
-
-        <Pressable onPress={() => navigation.navigate('Login')}>
-          <Text style={styles.linkText}>Already have an account? Log in</Text>
-        </Pressable>
-      </View>
-    </KeyboardAvoidingView>
+    <View style={styles.container}>
+      <Text style={styles.title}>Create Account</Text>
+      <TextInput
+        style={styles.input}
+        placeholder="Email"
+        placeholderTextColor="#aaa"
+        autoCapitalize="none"
+        keyboardType="email-address"
+        value={email}
+        onChangeText={setEmail}
+      />
+      <TextInput
+        style={styles.input}
+        placeholder="Password"
+        placeholderTextColor="#aaa"
+        secureTextEntry
+        value={password}
+        onChangeText={setPassword}
+      />
+      <Pressable
+        style={[styles.button, loading && styles.buttonDisabled]}
+        onPress={handleRegister}
+        disabled={loading}
+      >
+        {loading
+          ? <ActivityIndicator color="#fff" />
+          : <Text style={styles.buttonText}>Register</Text>
+        }
+      </Pressable>
+      <Pressable onPress={() => navigation.goBack()}>
+        <Text style={styles.linkText}>Already have an account? Log In</Text>
+      </Pressable>
+    </View>
   );
-};
+}
 
 const styles = StyleSheet.create({
-  wrapper: {
+  container: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
     backgroundColor: '#121212',
     padding: 20,
-  },
-  card: {
-    width: '100%',
-    backgroundColor: '#1e1e1e',
-    padding: 24,
-    borderRadius: 12,
-    borderColor: '#333',
-    borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 10,
+    justifyContent: 'center',
   },
   title: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontSize: 28,
     color: '#fff',
-    marginBottom: 20,
+    marginBottom: 24,
     textAlign: 'center',
   },
   input: {
-    backgroundColor: '#2a2a2a',
+    backgroundColor: '#1e1e1e',
     color: '#fff',
-    borderWidth: 1,
-    borderColor: '#444',
     padding: 12,
-    borderRadius: 10,
+    borderRadius: 8,
     marginBottom: 16,
-    fontSize: 16,
   },
   button: {
     backgroundColor: '#d32f2f',
-    padding: 14,
-    borderRadius: 10,
+    padding: 16,
+    borderRadius: 8,
     alignItems: 'center',
-    marginTop: 4,
-    marginBottom: 16,
+    marginBottom: 12,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
   },
   buttonText: {
     color: '#fff',
-    fontWeight: 'bold',
     fontSize: 16,
+    fontWeight: '600',
   },
   linkText: {
-    color: '#d32f2f',
-    fontSize: 14,
+    color: '#4fc3f7',
     textAlign: 'center',
+    marginTop: 8,
   },
 });
-
-export default RegisterScreen;

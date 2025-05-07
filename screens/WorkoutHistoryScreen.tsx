@@ -1,3 +1,5 @@
+// WorkoutHistoryScreen.tsx
+
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -5,12 +7,18 @@ import {
   StyleSheet,
   ScrollView,
   ActivityIndicator,
-  TouchableOpacity,
   Pressable,
   TextInput,
+  TouchableOpacity,
 } from 'react-native';
 import { auth, db } from '../firebase';
-import { collection, getDocs, Timestamp } from 'firebase/firestore';
+import {
+  collection,
+  getDocs,
+  orderBy,
+  query,
+  Timestamp,
+} from 'firebase/firestore';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import LinearGradient from 'react-native-linear-gradient';
 import { useNavigation, NavigationProp } from '@react-navigation/native';
@@ -18,7 +26,7 @@ import { RootStackParamList } from '../App';
 
 interface WorkoutLog {
   dayTitle: string;
-  completedAt: Timestamp; // <-- proper typing here
+  completedAt: Timestamp;
   exercises: {
     name: string;
     sets: {
@@ -31,9 +39,9 @@ interface WorkoutLog {
 const WorkoutHistoryScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp<RootStackParamList>>();
   const [loading, setLoading] = useState(true);
-  const [logs, setLogs] = useState<Record<string, WorkoutLog>>({});
+  const [logs, setLogs] = useState<{ id: string; log: WorkoutLog }[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [searchQuery, setSearchQuery] = useState('');
   const [showLastThree, setShowLastThree] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -43,14 +51,15 @@ const WorkoutHistoryScreen: React.FC = () => {
         if (!uid) return;
 
         const logRef = collection(db, 'users', uid, 'workoutLogs');
-        const snapshot = await getDocs(logRef);
-        const logData: Record<string, WorkoutLog> = {};
+        const q = query(logRef, orderBy('completedAt', 'desc'));
+        const snapshot = await getDocs(q);
 
+        const logsData: { id: string; log: WorkoutLog }[] = [];
         snapshot.forEach(doc => {
-          logData[doc.id] = doc.data() as WorkoutLog;
+          logsData.push({ id: doc.id, log: doc.data() as WorkoutLog });
         });
 
-        setLogs(logData);
+        setLogs(logsData);
       } catch (err) {
         console.error(err);
       } finally {
@@ -65,84 +74,14 @@ const WorkoutHistoryScreen: React.FC = () => {
     setExpanded(prev => (prev === id ? null : id));
   };
 
-  const toggleShowLastThree = (exerciseName: string) => {
-    setShowLastThree(prev => ({
-      ...prev,
-      [exerciseName]: !prev[exerciseName],
-    }));
+  const toggleShowLastThree = (name: string) => {
+    setShowLastThree(prev => ({ ...prev, [name]: !prev[name] }));
   };
 
-  const matchesSearch = (log: WorkoutLog) => {
-    if (!searchQuery.trim()) return true;
-    return log.exercises.some(ex =>
-      ex.name.toLowerCase().includes(searchQuery.trim().toLowerCase())
-    );
-  };
-
-  const getLastThreeSessions = (exerciseName: string) => {
-    const entries = Object.entries(logs)
-      .sort(([a], [b]) => b.localeCompare(a))
-      .map(([id, log]) => ({ id, ...log }))
-      .filter(log =>
-        log.exercises.some(ex =>
-          ex.name.toLowerCase() === exerciseName.toLowerCase()
-        )
-      );
-    return entries.slice(0, 3);
-  };
-
-  const renderTopProgressPanel = () => {
-    const totalWorkouts = Object.keys(logs).length;
-    let totalVolume = 0;
-    const allExercises: string[] = [];
-    let lastWorkoutDate = '';
-
-    Object.entries(logs).forEach(([id, log]) => {
-      lastWorkoutDate = id > lastWorkoutDate ? id : lastWorkoutDate;
-      log.exercises.forEach(ex => {
-        allExercises.push(ex.name);
-        ex.sets.forEach(set => {
-          const reps = parseInt(set.reps);
-          const weight = parseFloat(set.weight);
-          if (!isNaN(reps) && !isNaN(weight)) {
-            totalVolume += reps * weight;
-          }
-        });
-      });
-    });
-
-    const freqMap: Record<string, number> = {};
-    allExercises.forEach(name => {
-      freqMap[name] = (freqMap[name] || 0) + 1;
-    });
-    const topExercises = Object.entries(freqMap)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 3)
-      .map(([name]) => name)
-      .join(', ');
-
-    return (
-      <View style={styles.panelContainer}>
-        <Text style={styles.panelTitle}>Your Training Stats</Text>
-        <View style={styles.panelItem}>
-          <Ionicons name="calendar-outline" size={16} color="#4fc3f7" />
-          <Text style={styles.panelText}>Total Workouts: {totalWorkouts}</Text>
-        </View>
-        <View style={styles.panelItem}>
-          <Ionicons name="barbell-outline" size={16} color="#4fc3f7" />
-          <Text style={styles.panelText}>Lifetime Volume: {totalVolume.toLocaleString()} lbs</Text>
-        </View>
-        <View style={styles.panelItem}>
-          <Ionicons name="repeat-outline" size={16} color="#4fc3f7" />
-          <Text style={styles.panelText}>Top Exercises: {topExercises}</Text>
-        </View>
-        <View style={styles.panelItem}>
-          <Ionicons name="time-outline" size={16} color="#4fc3f7" />
-          <Text style={styles.panelText}>Last Workout: {lastWorkoutDate}</Text>
-        </View>
-      </View>
-    );
-  };
+  const getLastThreeSessions = (exerciseName: string) =>
+    logs
+      .filter(l => l.log.exercises.some(ex => ex.name === exerciseName))
+      .slice(0, 3);
 
   const renderSmartSummary = (log: WorkoutLog) => {
     let totalVolume = 0;
@@ -161,43 +100,24 @@ const WorkoutHistoryScreen: React.FC = () => {
       });
     });
 
-    const mostFrequent = Object.entries(freqMap).reduce((a, b) =>
-      b[1] > a[1] ? b : a
-    )[0];
+    const mostFrequent = Object.entries(freqMap).sort((a, b) => b[1] - a[1])[0][0];
 
     return (
-      <View style={styles.summaryContainer}>
+      <View style={styles.summary}>
         <Text style={styles.summaryTitle}>Smart Summary</Text>
-        <View style={styles.summaryItem}>
-          <Ionicons name="barbell-outline" size={16} color="#4fc3f7" />
-          <Text style={styles.summaryText}>Total Volume: {totalVolume.toLocaleString()} lbs</Text>
-        </View>
-        <View style={styles.summaryItem}>
-          <Ionicons name="repeat-outline" size={16} color="#4fc3f7" />
-          <Text style={styles.summaryText}>Most Performed: {mostFrequent}</Text>
-        </View>
-        <View style={styles.summaryItem}>
-          <Ionicons name="trophy-outline" size={16} color="#4fc3f7" />
-          <Text style={styles.summaryText}>Heaviest Lift: {heaviest} lbs</Text>
-        </View>
+        <Text style={styles.summaryItem}>💪 Volume: {totalVolume.toLocaleString()} lbs</Text>
+        <Text style={styles.summaryItem}>🔁 Frequent: {mostFrequent}</Text>
+        <Text style={styles.summaryItem}>🏆 Heaviest: {heaviest} lbs</Text>
       </View>
     );
   };
 
-  const formatLogTitle = (log: WorkoutLog) => {
-    try {
-      const dateObj = log.completedAt.toDate();
-      const date = dateObj.toLocaleDateString([], {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-      });
-      return `${log.dayTitle} — ${date}`;
-    } catch {
-      return log.dayTitle || 'Workout';
-    }
-  };  
-    
+  const formatDate = (timestamp: Timestamp) =>
+    timestamp.toDate().toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
 
   if (loading) {
     return (
@@ -211,29 +131,38 @@ const WorkoutHistoryScreen: React.FC = () => {
     <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>Workout History</Text>
+
         <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={20} color="#fff" />
-          <Text style={styles.backText}>Back</Text>
+  <Ionicons name="arrow-back" size={20} color="#fff" />
+  <Text style={styles.backText}>Back</Text>
+</Pressable>
+
+
+        <Pressable style={styles.prLink} onPress={() => navigation.navigate('PRTracker')}>
+          <Ionicons name="trophy-outline" size={18} color="#4fc3f7" />
+          <Text style={styles.prText}> View All-Time PRs</Text>
         </Pressable>
-        {renderTopProgressPanel()}
-        <Pressable style={styles.prButton} onPress={() => navigation.navigate('PRTracker')}>
-          <Ionicons name="trophy-outline" size={16} color="#4fc3f7" />
-          <Text style={styles.prButtonText}>View All-Time PRs</Text>
-        </Pressable>
+
         <TextInput
           style={styles.searchInput}
-          placeholder="Search by exercise name..."
+          placeholder="Search exercises..."
           placeholderTextColor="#999"
           value={searchQuery}
           onChangeText={setSearchQuery}
         />
-        {Object.entries(logs)
-          .sort(([a], [b]) => b.localeCompare(a))
-          .filter(([_, log]) => matchesSearch(log))
-          .map(([id, log]) => (
+
+        {logs
+          .filter(l =>
+            l.log.exercises.some(ex =>
+              ex.name.toLowerCase().includes(searchQuery.toLowerCase())
+            )
+          )
+          .map(({ id, log }) => (
             <View key={id} style={styles.card}>
               <TouchableOpacity onPress={() => toggleExpand(id)} style={styles.cardHeader}>
-              <Text style={styles.cardTitle}>{formatLogTitle(log)}</Text>
+                <Text style={styles.cardTitle}>
+                  {log.dayTitle} — {formatDate(log.completedAt)}
+                </Text>
                 <Ionicons
                   name={expanded === id ? 'chevron-up' : 'chevron-down'}
                   size={20}
@@ -242,41 +171,40 @@ const WorkoutHistoryScreen: React.FC = () => {
               </TouchableOpacity>
               {expanded === id && (
                 <View style={styles.cardBody}>
-                  {log.exercises.map((ex, exIndex) => (
-                    <View key={exIndex} style={styles.exerciseBlock}>
-                      <View style={styles.progressRow}>
+                  {log.exercises.map((ex, idx) => (
+                    <View key={idx} style={styles.exerciseBlock}>
+                      <View style={styles.exerciseRow}>
                         <Text style={styles.exerciseName}>{ex.name}</Text>
                         <Pressable onPress={() => navigation.navigate('ProgressChart', { exerciseName: ex.name })}>
                           <Ionicons name="stats-chart" size={16} color="#4fc3f7" />
                         </Pressable>
                       </View>
-                      {ex.sets.map((set, setIndex) => (
-                        <Text key={setIndex} style={styles.setText}>
-                          Set {setIndex + 1}: {set.reps} reps @ {set.weight} lbs
+                      {ex.sets.map((set, sIdx) => (
+                        <Text key={sIdx} style={styles.setText}>
+                          Set {sIdx + 1}: {set.reps} reps @ {set.weight} lbs
                         </Text>
                       ))}
                       <Pressable onPress={() => toggleShowLastThree(ex.name)}>
-                        <Text style={styles.toggleLast3}>
-                          {showLastThree[ex.name] ? '− Hide Last 3 Sessions' : '+ Show Last 3 Sessions'}
+                        <Text style={styles.toggleText}>
+                          {showLastThree[ex.name] ? '− Hide' : '+ Show'} Last 3 Sessions
                         </Text>
                       </Pressable>
-                      {showLastThree[ex.name] && (
-                        <View>
-                          {getLastThreeSessions(ex.name).map((entry, index) => {
-                            const match = entry.exercises.find(e => e.name === ex.name);
-                            return (
-                              <View key={index} style={styles.sessionBox}>
-                                <Text style={styles.sessionDate}>{entry.id}</Text>
-                                {match?.sets.map((set, sIdx) => (
-                                  <Text key={sIdx} style={styles.recentSet}>
-                                    Set {sIdx + 1}: {set.reps} reps @ {set.weight} lbs
-                                  </Text>
-                                ))}
-                              </View>
-                            );
-                          })}
-                        </View>
-                      )}
+                      {showLastThree[ex.name] &&
+                        getLastThreeSessions(ex.name).map((entry, i) => {
+                          const match = entry.log.exercises.find(e => e.name === ex.name);
+                          return (
+                            <View key={i} style={styles.lastSessionBox}>
+                              <Text style={styles.sessionDate}>
+                                {formatDate(entry.log.completedAt)}
+                              </Text>
+                              {match?.sets.map((s, j) => (
+                                <Text key={j} style={styles.recentSet}>
+                                  Set {j + 1}: {s.reps} reps @ {s.weight} lbs
+                                </Text>
+                              ))}
+                            </View>
+                          );
+                        })}
                     </View>
                   ))}
                   {renderSmartSummary(log)}
@@ -298,6 +226,28 @@ const styles = StyleSheet.create({
     color: '#d32f2f',
     marginBottom: 20,
     textAlign: 'center',
+  },
+  prLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 14,
+    justifyContent: 'center',
+  },
+  prText: {
+    color: '#4fc3f7',
+    fontSize: 14,
+    marginLeft: 6,
+  },
+  searchInput: {
+    backgroundColor: '#1e1e1e',
+    color: '#fff',
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 14,
+    borderColor: '#333',
+    borderWidth: 1,
+    marginBottom: 20,
   },
   card: {
     backgroundColor: '#2a2a2a',
@@ -321,10 +271,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#1c1c1c',
   },
   exerciseBlock: {
-    marginBottom: 12,
+    marginBottom: 14,
+  },
+  exerciseRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 6,
   },
   exerciseName: {
-    color: '#d32f2f',
+    color: '#fff',
     fontSize: 15,
     fontWeight: '600',
   },
@@ -333,117 +288,55 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginLeft: 8,
   },
-  backButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  backText: {
-    color: '#fff',
-    fontSize: 16,
-    marginLeft: 8,
-  },
-  searchInput: {
-    backgroundColor: '#1e1e1e',
-    color: '#fff',
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    fontSize: 14,
-    borderColor: '#333',
-    borderWidth: 1,
-    marginBottom: 20,
-  },
-  progressRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  toggleLast3: {
-    fontSize: 12,
+  toggleText: {
     color: '#4fc3f7',
+    fontSize: 12,
+    marginLeft: 8,
     marginTop: 4,
-    marginBottom: 4,
-    marginLeft: 8,
   },
-  recentSet: {
-    color: '#bbb',
-    fontSize: 12,
-    marginLeft: 8,
-  },
-  summaryContainer: {
-    marginTop: 16,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#444',
-  },
-  summaryTitle: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 14,
-    marginBottom: 8,
-  },
-  summaryItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  summaryText: {
-    color: '#ddd',
-    marginLeft: 8,
-    fontSize: 13,
-  },
-  panelContainer: {
-    marginBottom: 16,
-    padding: 12,
-    backgroundColor: '#1e1e1e',
-    borderRadius: 10,
-    borderColor: '#444',
-    borderWidth: 1,
-  },
-  panelTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#fff',
-    textAlign: 'center',
-    marginBottom: 10,
-  },
-  panelItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  panelText: {
-    color: '#ccc',
-    marginLeft: 8,
-    fontSize: 13,
-  },
-  prButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  prButtonText: {
-    color: '#4fc3f7',
-    fontSize: 14,
-    fontWeight: '600',
-    marginLeft: 6,
-  }, 
-  sessionBox: {
-    borderColor: '#444',
-    borderWidth: 1,
-    borderRadius: 8,
-    padding: 8,
-    marginVertical: 6,
+  lastSessionBox: {
     backgroundColor: '#292929',
-  }, 
+    padding: 8,
+    borderRadius: 6,
+    marginTop: 6,
+  },
   sessionDate: {
     color: '#4fc3f7',
     fontWeight: '600',
     marginBottom: 4,
   },
+  recentSet: {
+    color: '#ccc',
+    fontSize: 12,
+    marginLeft: 8,
+  },
+  summary: {
+    marginTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#444',
+    paddingTop: 10,
+  },
+  summaryTitle: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 14,
+    marginBottom: 6,
+  },
+  summaryItem: {
+    color: '#ccc',
+    fontSize: 13,
+    marginBottom: 4,
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  backText: {
+    color: '#fff',
+    fontSize: 16,
+    marginLeft: 8,
+  },  
 });
 
 export default WorkoutHistoryScreen;

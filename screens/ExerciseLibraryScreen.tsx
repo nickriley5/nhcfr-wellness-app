@@ -6,16 +6,26 @@ import {
   ScrollView,
   Image,
   Pressable,
+  ActivityIndicator,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
-import { getFirestore, collection, getDocs } from 'firebase/firestore';
-import { firebaseApp } from '../firebase';
+import {
+  getFirestore,
+  collection,
+  getDocs,
+  doc,
+  setDoc,
+  deleteDoc,
+  getDoc,
+} from 'firebase/firestore';
+import { firebaseApp, auth } from '../firebase';
 
-// Map categories to icon names
+const db = getFirestore(firebaseApp);
+
 const categoryIcons: Record<string, string> = {
   'Upper Body': 'barbell-outline',
   'Lower Body': 'walk-outline',
@@ -26,33 +36,60 @@ const categoryIcons: Record<string, string> = {
   'Recovery / Rest': 'bed-outline',
 };
 
-
-const db = getFirestore(firebaseApp);
-
-// 👇 MOVE THESE INSIDE THE COMPONENT
 const ExerciseLibraryScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList, 'ExerciseLibrary'>>();
   const [exercises, setExercises] = useState<any[]>([]);
+  const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchExercises = async () => {
+    const fetchData = async () => {
       try {
+        const uid = auth.currentUser?.uid;
         const snapshot = await getDocs(collection(db, 'exercises'));
-        const list = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
+        const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setExercises(list);
+
+        if (uid) {
+          const favSnapshot = await getDoc(doc(db, 'users', uid, 'favorites', 'list'));
+          if (favSnapshot.exists()) {
+            setFavorites(new Set(favSnapshot.data().ids || []));
+          }
+        }
       } catch (error) {
-        console.error('Failed to fetch exercises:', error);
+        console.error('Failed to load exercise library:', error);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchExercises();
+    fetchData();
   }, []);
+
+  const toggleFavorite = async (exerciseId: string) => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+
+    const newFavorites = new Set(favorites);
+    if (favorites.has(exerciseId)) {
+      newFavorites.delete(exerciseId);
+    } else {
+      newFavorites.add(exerciseId);
+    }
+    setFavorites(newFavorites);
+
+    await setDoc(doc(db, 'users', uid, 'favorites', 'list'), {
+      ids: Array.from(newFavorites),
+    });
+  };
+
+  if (loading) {
+    return (
+      <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
+        <ActivityIndicator size="large" color="#d32f2f" />
+      </LinearGradient>
+    );
+  }
 
   return (
     <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
@@ -82,7 +119,13 @@ const ExerciseLibraryScreen: React.FC = () => {
                 <Text style={styles.exerciseName}>{ex.name}</Text>
                 <Text style={styles.description}>{ex.coachingNotes}</Text>
               </View>
-              <Ionicons name="chevron-forward" size={20} color="#888" />
+              <Pressable onPress={() => toggleFavorite(ex.id)}>
+                <Ionicons
+                  name={favorites.has(ex.id) ? 'star' : 'star-outline'}
+                  size={20}
+                  color="#fbc02d"
+                />
+              </Pressable>
             </View>
           </Pressable>
         ))}

@@ -41,17 +41,18 @@ const WorkoutScreen: React.FC = () => {
     const fetchProgram = async () => {
       const uid = auth.currentUser?.uid;
       if (!uid) return;
-
-      const docRef = doc(db, 'programs', uid);
+  
+      const docRef = doc(db, 'users', uid, 'program', 'active'); // ✅ matches your rules
       const docSnap = await getDoc(docRef);
-
+  
       if (docSnap.exists()) {
         setCurrentProgram(docSnap.data());
       }
     };
-
+  
     fetchProgram();
   }, []);
+ 
 
   const generateProgram = async () => {
     try {
@@ -122,12 +123,12 @@ const WorkoutScreen: React.FC = () => {
         },
       ];
 
-      await setDoc(doc(db, 'programs', uid), {
+      await setDoc(doc(db, 'users', uid, 'program', 'active'), {
         createdAt: serverTimestamp(),
         days: program,
         currentDay: 1,
         completedDays: [],
-      });
+      });   
 
       Alert.alert('Success', 'Program generated!');
       setCurrentProgram({

@@ -55,7 +55,7 @@ const AdaptWorkoutScreen: React.FC = () => {
       const uid = auth.currentUser?.uid;
       if (!uid) return;
 
-      const docRef = doc(db, 'programs', uid);
+      const docRef = doc(db, 'users', uid, 'program', 'active');
       const docSnap = await getDoc(docRef);
 
       if (docSnap.exists()) {
@@ -122,7 +122,7 @@ const AdaptWorkoutScreen: React.FC = () => {
       const uid = auth.currentUser?.uid;
       if (!uid) return;
   
-      const docRef = doc(db, 'programs', uid);
+      const docRef = doc(db, 'users', uid, 'program', 'active');
       const docSnap = await getDoc(docRef);
   
       if (docSnap.exists()) {

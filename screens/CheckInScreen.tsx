@@ -35,7 +35,7 @@ const CheckInScreen = () => {
     }
 
     try {
-      await addDoc(collection(db, 'checkins'), {
+      await addDoc(collection(db, 'users', uid, 'checkIns'), {
         uid,
         mood,
         energy,

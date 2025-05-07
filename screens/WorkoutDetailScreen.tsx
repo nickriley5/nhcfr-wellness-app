@@ -51,7 +51,7 @@ const WorkoutDetailScreen: React.FC = () => {
         const uid = auth.currentUser?.uid;
         if (!uid) return;
 
-        const docRef = doc(db, 'programs', uid);
+        const docRef = doc(db, 'users', uid, 'program', 'active');
         const docSnap = await getDoc(docRef);
 
         if (docSnap.exists()) {
@@ -157,7 +157,6 @@ await setDoc(doc(db, 'users', uid, 'workoutLogs', workoutId), logData);
         });
       });
 
-      await setDoc(doc(db, 'users', uid, 'workoutLogs', workoutId), logData);
       setShowToast(true);
 
       const newPRs: string[] = [];
