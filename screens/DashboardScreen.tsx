@@ -1,5 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+  ScrollView,
+  Animated,
+} from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import {
   useNavigation,
@@ -10,74 +17,88 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { auth, db } from '../firebase';
 import {
   collection,
+  doc,
+  getDoc,
   getDocs,
-  query,
-  where,
   orderBy,
-  DocumentData,
+  query,
 } from 'firebase/firestore';
 import { TabParamList, RootStackParamList } from '../App';
 import MoodEnergyChart from '../components/MoodEnergyChart';
-
-interface CheckInEntry extends DocumentData {
-  id: string;
-  mood: number;
-  energy: number;
-  timestamp: Date;
-}
 
 type DashboardNavProp = CompositeNavigationProp<
   BottomTabNavigationProp<TabParamList, 'Dashboard'>,
   NativeStackNavigationProp<RootStackParamList>
 >;
 
-const DashboardScreen: React.FC = () => {
+export default function DashboardScreen() {
   const navigation = useNavigation<DashboardNavProp>();
   const [view, setView] = useState<'week' | 'month' | 'all'>('week');
   const [moodData, setMoodData] = useState<number[]>([]);
   const [energyData, setEnergyData] = useState<number[]>([]);
-  const [hasCheckedInToday, setHasCheckedInToday] = useState<boolean>(true);
+  const [hasCheckedInToday, setHasCheckedInToday] = useState(true);
+  const [profileComplete, setProfileComplete] = useState(false);
+  const [pulseAnim] = useState(new Animated.Value(1));
 
+  // 🔄 Pulse animation for CTA
   useEffect(() => {
-    const fetchCheckIns = async () => {
-      try {
-        const user = auth.currentUser;
-        if (!user) return;
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.08,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  }, []);
 
-        const q = query(
-          collection(db, 'users', user.uid, 'checkIns'), // ✅ fixed path
-          orderBy('timestamp', 'desc')
-        );
-        
-        const snapshot = await getDocs(q);
+  // ✅ Fetch profile completion + check-ins
+  useEffect(() => {
+    const fetchData = async () => {
+      const user = auth.currentUser;
+      if (!user) return;
 
-        let entries: CheckInEntry[] = snapshot.docs.map(doc => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            mood: data.mood ?? 0,
-            energy: data.energy ?? 0,
-            timestamp: data.timestamp?.toDate() || new Date(0),
-          };
-        });
+      // check-ins
+      const checkInQuery = query(
+        collection(db, 'users', user.uid, 'checkIns'),
+        orderBy('timestamp', 'desc')
+      );
+      const snapshot = await getDocs(checkInQuery);
 
-        const today = new Date();
-        if (!entries[0] || entries[0].timestamp.toDateString() !== today.toDateString()) {
-          setHasCheckedInToday(false);
-        }
+      let entries = snapshot.docs.map((doc) => {
+        const data = doc.data();
+        return {
+          mood: data.mood ?? 0,
+          energy: data.energy ?? 0,
+          timestamp: data.timestamp?.toDate() || new Date(0),
+        };
+      });
 
-        if (view === 'week') entries = entries.slice(0, 7);
-        else if (view === 'month') entries = entries.slice(0, 30);
-
-        entries.reverse();
-        setMoodData(entries.map(e => e.mood));
-        setEnergyData(entries.map(e => e.energy));
-      } catch (err) {
-        console.error(err);
+      const today = new Date();
+      if (!entries[0] || entries[0].timestamp.toDateString() !== today.toDateString()) {
+        setHasCheckedInToday(false);
       }
+
+      if (view === 'week') entries = entries.slice(0, 7);
+      else if (view === 'month') entries = entries.slice(0, 30);
+
+      entries.reverse();
+      setMoodData(entries.map(e => e.mood));
+      setEnergyData(entries.map(e => e.energy));
+
+      // profile status
+      const profileSnap = await getDoc(doc(db, 'users', user.uid));
+      const profile = profileSnap.data();
+      setProfileComplete(profile?.profileComplete ?? false);
     };
 
-    fetchCheckIns();
+    fetchData();
   }, [view]);
 
   const QuickViews = () => (
@@ -107,6 +128,18 @@ const DashboardScreen: React.FC = () => {
           <View style={styles.reminderCard}>
             <Text style={styles.reminderText}>Don't forget to check in today!</Text>
           </View>
+        )}
+
+        {/* 🔴 CTA for incomplete profile */}
+        {!profileComplete && (
+          <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+            <Pressable
+              style={[styles.outlinedButton, styles.pulsing]}
+              onPress={() => navigation.navigate('Profile')}
+            >
+              <Text style={styles.buttonText}>🧠 Complete Profile</Text>
+            </Pressable>
+          </Animated.View>
         )}
 
         <View style={styles.section}>
@@ -141,30 +174,26 @@ const DashboardScreen: React.FC = () => {
           <Text style={styles.sectionText}>Personalized fitness & recovery tips coming soon.</Text>
         </View>
 
-        <Pressable
-          style={styles.outlinedButton}
-          onPress={() => navigation.navigate('MealPlan')}
-        >
-          <Text style={styles.buttonText}>Generate Meal Plan</Text>
-        </Pressable>
+        {/* ✅ Conditional Unlocks */}
+        {profileComplete && (
+          <>
+            <Pressable style={styles.outlinedButton} onPress={() => navigation.navigate('MealPlan')}>
+              <Text style={styles.buttonText}>Generate Meal Plan</Text>
+            </Pressable>
 
-        <Pressable
-          style={styles.outlinedButton}
-          onPress={() => navigation.navigate('WorkoutDetail')}
-        >
-          <Text style={styles.buttonText}>Generate Workout</Text>
-        </Pressable>
+            <Pressable style={styles.outlinedButton} onPress={() => navigation.navigate('WorkoutDetail')}>
+              <Text style={styles.buttonText}>Generate Workout</Text>
+            </Pressable>
+          </>
+        )}
 
-        <Pressable
-          style={styles.outlinedButton}
-          onPress={() => navigation.navigate('WorkoutHistory')}
-        >
+        <Pressable style={styles.outlinedButton} onPress={() => navigation.navigate('WorkoutHistory')}>
           <Text style={styles.buttonText}>📚 View Workout History</Text>
         </Pressable>
       </ScrollView>
     </LinearGradient>
   );
-};
+}
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
@@ -233,11 +262,6 @@ const styles = StyleSheet.create({
     borderColor: '#d32f2f',
     borderRadius: 10,
     backgroundColor: '#2a2a2a',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
   },
   buttonText: {
     color: '#fff',
@@ -250,6 +274,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#388e3c',
     borderColor: '#388e3c',
   },
+  pulsing: {
+    borderColor: '#4fc3f7',
+  },
 });
 
-export default DashboardScreen;
