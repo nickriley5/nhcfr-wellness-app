@@ -38,6 +38,7 @@ export default function DashboardScreen() {
   const [energyData, setEnergyData] = useState<number[]>([]);
   const [hasCheckedInToday, setHasCheckedInToday] = useState(true);
   const [profileComplete, setProfileComplete] = useState(false);
+  const [completionPercent, setCompletionPercent] = useState(0);
   const [pulseAnim] = useState(new Animated.Value(1));
 
   // 🔄 Pulse animation for CTA
@@ -93,10 +94,24 @@ export default function DashboardScreen() {
       setEnergyData(entries.map(e => e.energy));
 
       // profile status
-      const profileSnap = await getDoc(doc(db, 'users', user.uid));
-      const profile = profileSnap.data();
-      setProfileComplete(profile?.profileComplete ?? false);
-    };
+     const profileSnap = await getDoc(doc(db, 'users', user.uid));
+const profile = profileSnap.data();
+
+const completionFields = [
+  profile?.fullName,
+  profile?.dob,
+  profile?.height,
+  profile?.weight,
+  profile?.profilePicture,
+  profile?.bodyFatPct,
+];
+const percent = Math.round(
+  (completionFields.filter(Boolean).length / completionFields.length) * 100
+);
+
+setCompletionPercent(percent);
+setProfileComplete(percent >= 80);
+};
 
     fetchData();
   }, [view]);
@@ -131,7 +146,7 @@ export default function DashboardScreen() {
         )}
 
         {/* 🔴 CTA for incomplete profile */}
-        {!profileComplete && (
+        {completionPercent < 80 && (
           <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
             <Pressable
               style={[styles.outlinedButton, styles.pulsing]}
@@ -145,15 +160,17 @@ export default function DashboardScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Mood & Energy Trends</Text>
           <View style={styles.toggleGroup}>
-            {(['week', 'month', 'all'] as const).map(key => (
-              <Pressable
-                key={key}
-                style={[styles.toggleButton, view === key && styles.toggleActive]}
-                onPress={() => setView(key)}
-              >
-                <Text style={styles.toggleText}>{key.charAt(0).toUpperCase() + key.slice(1)}</Text>
-              </Pressable>
-            ))}
+            {(['week', 'month', 'all'] as const).map((key: 'week' | 'month' | 'all') => (
+  <Pressable
+    key={key}
+    style={[styles.toggleButton, view === key && styles.toggleActive]}
+    onPress={() => setView(key)}
+  >
+    <Text style={styles.toggleText}>
+      {key.charAt(0).toUpperCase() + key.slice(1)}
+    </Text>
+  </Pressable>
+))}
           </View>
           <MoodEnergyChart moodData={moodData} energyData={energyData} />
         </View>
