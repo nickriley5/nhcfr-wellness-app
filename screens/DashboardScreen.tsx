@@ -25,6 +25,9 @@ import {
 } from 'firebase/firestore';
 import { TabParamList, RootStackParamList } from '../App';
 import MoodEnergyChart from '../components/MoodEnergyChart';
+import MealGoalsModal from '../components/MealGoalsModal';
+import PerformanceGoalsModal from '../components/PerformanceGoalsModal';
+import EnvironmentCalendarModal from '../components/EnvironmentCalendarModal';
 
 type DashboardNavProp = CompositeNavigationProp<
   BottomTabNavigationProp<TabParamList, 'Dashboard'>,
@@ -40,8 +43,11 @@ export default function DashboardScreen() {
   const [profileComplete, setProfileComplete] = useState(false);
   const [completionPercent, setCompletionPercent] = useState(0);
   const [pulseAnim] = useState(new Animated.Value(1));
+  const [showMealModal, setShowMealModal] = useState(false);
+  const [showWorkoutModal, setShowWorkoutModal] = useState(false);
+  const [showCalendarModal, setShowCalendarModal] = useState(false);
+  const [currentWeight, setCurrentWeight] = useState(180);
 
-  // 🔄 Pulse animation for CTA
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
@@ -59,13 +65,11 @@ export default function DashboardScreen() {
     ).start();
   }, []);
 
-  // ✅ Fetch profile completion + check-ins
   useEffect(() => {
     const fetchData = async () => {
       const user = auth.currentUser;
       if (!user) return;
 
-      // check-ins
       const checkInQuery = query(
         collection(db, 'users', user.uid, 'checkIns'),
         orderBy('timestamp', 'desc')
@@ -93,25 +97,25 @@ export default function DashboardScreen() {
       setMoodData(entries.map(e => e.mood));
       setEnergyData(entries.map(e => e.energy));
 
-      // profile status
-     const profileSnap = await getDoc(doc(db, 'users', user.uid));
-const profile = profileSnap.data();
+      const profileSnap = await getDoc(doc(db, 'users', user.uid));
+      const profile = profileSnap.data();
+      if (!profile) return;
 
-const completionFields = [
-  profile?.fullName,
-  profile?.dob,
-  profile?.height,
-  profile?.weight,
-  profile?.profilePicture,
-  profile?.bodyFatPct,
-];
-const percent = Math.round(
-  (completionFields.filter(Boolean).length / completionFields.length) * 100
-);
+      const completionFields = [
+        profile?.fullName,
+        profile?.dob,
+        profile?.height,
+        profile?.weight,
+        profile?.profilePicture,
+        profile?.bodyFatPct,
+      ];
+      const percent = Math.round(
+        (completionFields.filter(Boolean).length / completionFields.length) * 100
+      );
 
-setCompletionPercent(percent);
-setProfileComplete(percent >= 80);
-};
+      setCompletionPercent(percent);
+      setCurrentWeight(Number(profile?.weight) || 180);
+    };
 
     fetchData();
   }, [view]);
@@ -145,7 +149,6 @@ setProfileComplete(percent >= 80);
           </View>
         )}
 
-        {/* 🔴 CTA for incomplete profile */}
         {completionPercent < 80 && (
           <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
             <Pressable
@@ -161,16 +164,16 @@ setProfileComplete(percent >= 80);
           <Text style={styles.sectionTitle}>Mood & Energy Trends</Text>
           <View style={styles.toggleGroup}>
             {(['week', 'month', 'all'] as const).map((key: 'week' | 'month' | 'all') => (
-  <Pressable
-    key={key}
-    style={[styles.toggleButton, view === key && styles.toggleActive]}
-    onPress={() => setView(key)}
-  >
-    <Text style={styles.toggleText}>
-      {key.charAt(0).toUpperCase() + key.slice(1)}
-    </Text>
-  </Pressable>
-))}
+              <Pressable
+                key={key}
+                style={[styles.toggleButton, view === key && styles.toggleActive]}
+                onPress={() => setView(key)}
+              >
+                <Text style={styles.toggleText}>
+                  {key.charAt(0).toUpperCase() + key.slice(1)}
+                </Text>
+              </Pressable>
+            ))}
           </View>
           <MoodEnergyChart moodData={moodData} energyData={energyData} />
         </View>
@@ -191,15 +194,18 @@ setProfileComplete(percent >= 80);
           <Text style={styles.sectionText}>Personalized fitness & recovery tips coming soon.</Text>
         </View>
 
-        {/* ✅ Conditional Unlocks */}
-        {profileComplete && (
+        {completionPercent >= 80 && (
           <>
-            <Pressable style={styles.outlinedButton} onPress={() => navigation.navigate('MealPlan')}>
+            <Pressable style={styles.outlinedButton} onPress={() => setShowMealModal(true)}>
               <Text style={styles.buttonText}>Generate Meal Plan</Text>
             </Pressable>
 
-            <Pressable style={styles.outlinedButton} onPress={() => navigation.navigate('WorkoutDetail')}>
+            <Pressable style={styles.outlinedButton} onPress={() => setShowWorkoutModal(true)}>
               <Text style={styles.buttonText}>Generate Workout</Text>
+            </Pressable>
+
+            <Pressable style={styles.outlinedButton} onPress={() => setShowCalendarModal(true)}>
+              <Text style={styles.buttonText}>📅 Set My Weekly Schedule</Text>
             </Pressable>
           </>
         )}
@@ -208,6 +214,24 @@ setProfileComplete(percent >= 80);
           <Text style={styles.buttonText}>📚 View Workout History</Text>
         </Pressable>
       </ScrollView>
+
+      <MealGoalsModal
+        visible={showMealModal}
+        currentWeight={currentWeight}
+        onClose={() => setShowMealModal(false)}
+        onSaved={() => setShowMealModal(false)}
+      />
+
+      <PerformanceGoalsModal
+        visible={showWorkoutModal}
+        onClose={() => setShowWorkoutModal(false)}
+        onSaved={() => setShowWorkoutModal(false)}
+      />
+
+      <EnvironmentCalendarModal
+        visible={showCalendarModal}
+        onClose={() => setShowCalendarModal(false)}
+      />
     </LinearGradient>
   );
 }
@@ -295,4 +319,3 @@ const styles = StyleSheet.create({
     borderColor: '#4fc3f7',
   },
 });
-
