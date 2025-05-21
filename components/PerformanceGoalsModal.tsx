@@ -10,11 +10,12 @@ import {
 } from 'react-native';
 import { doc, updateDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase';
+import { PerformanceGoals } from '../utils/programBuilder';
 
 interface PerformanceGoalsModalProps {
   visible: boolean;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (goals: PerformanceGoals) => void;
 }
 
 const goals = ['Lose Fat', 'Maintain', 'Build Muscle'] as const;
@@ -41,7 +42,7 @@ const PerformanceGoalsModal: React.FC<PerformanceGoalsModalProps> = ({ visible, 
     );
   };
 
-  const isComplete = goalType && duration && trainingStyle && experienceLevel;
+  const isComplete = goalType && duration && trainingStyle && experienceLevel && frequency;
 
   const savePreferences = async () => {
     const uid = auth.currentUser?.uid;
@@ -61,7 +62,15 @@ const PerformanceGoalsModal: React.FC<PerformanceGoalsModalProps> = ({ visible, 
           },
         },
       });
-      onSaved();
+
+      // Extract numeric value from frequency string like "4x/week"
+      const daysPerWeek = parseInt(frequency.split('x')[0]);
+
+      onSaved({
+        focus: [trainingStyle.toLowerCase()],
+        daysPerWeek,
+        includeFireground: firegroundReady,
+      });
     } catch (err) {
       console.error('Error saving performance goals:', err);
     } finally {

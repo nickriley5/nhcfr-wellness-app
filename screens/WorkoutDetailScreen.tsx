@@ -29,6 +29,7 @@ import { RootStackParamList } from '../App';
 import PRCelebration from '../components/PRCelebration';
 import Toast from '../components/Toast';
 import { RouteProp } from '@react-navigation/native';
+import { checkAndAdjustRestDays } from '../utils/performanceMonitor';
 
 const WorkoutDetailScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -135,6 +136,8 @@ const WorkoutDetailScreen: React.FC = () => {
 
 // Save it to Firestore
 await setDoc(doc(db, 'users', uid, 'workoutLogs', workoutId), logData);
+
+await checkAndAdjustRestDays(uid);
 
 
     try {

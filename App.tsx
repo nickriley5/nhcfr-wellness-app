@@ -25,9 +25,7 @@ import PRTrackerScreen from './screens/PRTrackerScreen';
 import AdaptWorkoutScreen from './screens/AdaptWorkoutScreen';
 import GoalsScreen from './screens/GoalsScreen';
 import EditProfileScreen from './screens/EditProfileScreen';
-
-
-
+import ProgramPreviewScreen from './screens/ProgramPreviewScreen';
 
 // Auth context
 import { AuthProvider, useAuth } from './providers/AuthProvider';
@@ -66,6 +64,7 @@ export type RootStackParamList = {
   Profile: undefined;
   Goals: undefined;
   EditProfile: undefined;
+  ProgramPreview: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -154,6 +153,7 @@ const AppNavigator = () => {
             <Stack.Screen name="AdaptWorkout" component={AdaptWorkoutScreen} />
             <Stack.Screen name="Goals" component={GoalsScreen} />
             <Stack.Screen name="EditProfile" component={EditProfileScreen} />
+            <Stack.Screen name="ProgramPreview" component={ProgramPreviewScreen} />
           </>
         ) : (
           <Stack.Screen name="ProfileSetup" component={ProfileSetupScreen} />

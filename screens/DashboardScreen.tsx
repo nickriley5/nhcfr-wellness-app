@@ -22,31 +22,34 @@ import {
   getDocs,
   orderBy,
   query,
+  setDoc,
 } from 'firebase/firestore';
 import { TabParamList, RootStackParamList } from '../App';
 import MoodEnergyChart from '../components/MoodEnergyChart';
 import MealGoalsModal from '../components/MealGoalsModal';
 import PerformanceGoalsModal from '../components/PerformanceGoalsModal';
 import EnvironmentCalendarModal from '../components/EnvironmentCalendarModal';
-
-type DashboardNavProp = CompositeNavigationProp<
-  BottomTabNavigationProp<TabParamList, 'Dashboard'>,
-  NativeStackNavigationProp<RootStackParamList>
->;
+import { generateProgramFromGoals } from '../utils/programGenerator';
 
 export default function DashboardScreen() {
-  const navigation = useNavigation<DashboardNavProp>();
+  const navigation = useNavigation<
+    CompositeNavigationProp<
+      BottomTabNavigationProp<TabParamList, 'Dashboard'>,
+      NativeStackNavigationProp<RootStackParamList>
+    >
+  >();
+
   const [view, setView] = useState<'week' | 'month' | 'all'>('week');
   const [moodData, setMoodData] = useState<number[]>([]);
   const [energyData, setEnergyData] = useState<number[]>([]);
   const [hasCheckedInToday, setHasCheckedInToday] = useState(true);
-  const [profileComplete, setProfileComplete] = useState(false);
   const [completionPercent, setCompletionPercent] = useState(0);
   const [pulseAnim] = useState(new Animated.Value(1));
   const [showMealModal, setShowMealModal] = useState(false);
   const [showWorkoutModal, setShowWorkoutModal] = useState(false);
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [currentWeight, setCurrentWeight] = useState(180);
+  const [programExists, setProgramExists] = useState(false);
 
   useEffect(() => {
     Animated.loop(
@@ -70,32 +73,26 @@ export default function DashboardScreen() {
       const user = auth.currentUser;
       if (!user) return;
 
+      const programSnap = await getDoc(doc(db, 'users', user.uid, 'program', 'active'));
+      setProgramExists(programSnap.exists());
+
       const checkInQuery = query(
         collection(db, 'users', user.uid, 'checkIns'),
         orderBy('timestamp', 'desc')
       );
       const snapshot = await getDocs(checkInQuery);
-
-      let entries = snapshot.docs.map((doc) => {
-        const data = doc.data();
-        return {
-          mood: data.mood ?? 0,
-          energy: data.energy ?? 0,
-          timestamp: data.timestamp?.toDate() || new Date(0),
-        };
-      });
+      const entries = snapshot.docs.map(doc => doc.data());
 
       const today = new Date();
-      if (!entries[0] || entries[0].timestamp.toDateString() !== today.toDateString()) {
+      if (!entries[0] || new Date(entries[0].timestamp?.toDate()).toDateString() !== today.toDateString()) {
         setHasCheckedInToday(false);
       }
 
-      if (view === 'week') entries = entries.slice(0, 7);
-      else if (view === 'month') entries = entries.slice(0, 30);
-
-      entries.reverse();
-      setMoodData(entries.map(e => e.mood));
-      setEnergyData(entries.map(e => e.energy));
+      const limited =
+        view === 'week' ? entries.slice(0, 7) : view === 'month' ? entries.slice(0, 30) : entries;
+      limited.reverse();
+      setMoodData(limited.map(e => e.mood ?? 0));
+      setEnergyData(limited.map(e => e.energy ?? 0));
 
       const profileSnap = await getDoc(doc(db, 'users', user.uid));
       const profile = profileSnap.data();
@@ -163,15 +160,13 @@ export default function DashboardScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Mood & Energy Trends</Text>
           <View style={styles.toggleGroup}>
-            {(['week', 'month', 'all'] as const).map((key: 'week' | 'month' | 'all') => (
+            {(['week', 'month', 'all'] as const).map((key) => (
               <Pressable
                 key={key}
                 style={[styles.toggleButton, view === key && styles.toggleActive]}
                 onPress={() => setView(key)}
               >
-                <Text style={styles.toggleText}>
-                  {key.charAt(0).toUpperCase() + key.slice(1)}
-                </Text>
+                <Text style={styles.toggleText}>{key.charAt(0).toUpperCase() + key.slice(1)}</Text>
               </Pressable>
             ))}
           </View>
@@ -200,12 +195,18 @@ export default function DashboardScreen() {
               <Text style={styles.buttonText}>Generate Meal Plan</Text>
             </Pressable>
 
-            <Pressable style={styles.outlinedButton} onPress={() => setShowWorkoutModal(true)}>
-              <Text style={styles.buttonText}>Generate Workout</Text>
-            </Pressable>
+            {!programExists ? (
+              <Pressable style={styles.outlinedButton} onPress={() => setShowWorkoutModal(true)}>
+                <Text style={styles.buttonText}>🛠 Generate Program</Text>
+              </Pressable>
+            ) : (
+              <Pressable style={styles.outlinedButton} onPress={() => navigation.navigate('ProgramPreview')}>
+                <Text style={styles.buttonText}>📆 View Full Program</Text>
+              </Pressable>
+            )}
 
             <Pressable style={styles.outlinedButton} onPress={() => setShowCalendarModal(true)}>
-              <Text style={styles.buttonText}>📅 Set My Weekly Schedule</Text>
+              <Text style={styles.buttonText}>🗓 Set My Weekly Schedule</Text>
             </Pressable>
           </>
         )}
@@ -225,7 +226,31 @@ export default function DashboardScreen() {
       <PerformanceGoalsModal
         visible={showWorkoutModal}
         onClose={() => setShowWorkoutModal(false)}
-        onSaved={() => setShowWorkoutModal(false)}
+        onSaved={async (goals) => {
+          setShowWorkoutModal(false);
+          const uid = auth.currentUser?.uid;
+          if (!uid) return;
+
+          try {
+            const program = await generateProgramFromGoals({
+              focus: Array.isArray(goals.focus) ? goals.focus : [goals.focus],
+              daysPerWeek: goals.daysPerWeek,
+              includeFireground: goals.includeFireground,
+            });
+
+            await setDoc(doc(db, 'users', uid, 'program', 'active'), {
+              ...goals,
+              startDate: new Date().toISOString(),
+              currentDay: 1,
+              days: program,
+            });
+
+            setProgramExists(true);
+          } catch (err) {
+            console.error('Program generation failed:', err);
+            alert('There was an issue generating your workout program.');
+          }
+        }}
       />
 
       <EnvironmentCalendarModal
