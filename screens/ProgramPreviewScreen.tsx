@@ -27,10 +27,16 @@ const ProgramPreviewScreen = () => {
         const snapshot = await getDoc(docRef);
         if (snapshot.exists()) {
           const data = snapshot.data();
-          setProgram(data.days || []);
+          if (data && Array.isArray(data.days)) {
+            setProgram(data.days as ProgramDay[]);
+          } else {
+            console.warn('⚠️ No "days" array found in program data.');
+          }
+        } else {
+          console.warn('⚠️ Program document not found.');
         }
       } catch (err) {
-        console.error('Error fetching program:', err);
+        console.error('❌ Error fetching program:', err);
       } finally {
         setLoading(false);
       }
@@ -66,11 +72,15 @@ const ProgramPreviewScreen = () => {
         {program.map((day, index) => (
           <View key={index} style={styles.dayCard}>
             <Text style={styles.dayTitle}>{day.title}</Text>
-            {day.exercises.map((ex: any, i: number) => (
-              <Text key={i} style={styles.exercise}>
-                • {ex.name} — {ex.sets} x {ex.reps}
-              </Text>
-            ))}
+            {Array.isArray(day.exercises) && day.exercises.length > 0 ? (
+              day.exercises.map((ex: any, i: number) => (
+                <Text key={i} style={styles.exercise}>
+                  • {ex.name} — {ex.sets ?? '?'} x {ex.reps ?? '?'}
+                </Text>
+              ))
+            ) : (
+              <Text style={styles.exercise}>⚠️ No exercises listed.</Text>
+            )}
           </View>
         ))}
         <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
