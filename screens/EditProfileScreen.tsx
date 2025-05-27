@@ -11,7 +11,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
 import { auth, db } from '../firebase';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import Toast from '../components/Toast';
 
 const EditProfileScreen = () => {
@@ -47,26 +47,25 @@ const EditProfileScreen = () => {
   const handleSave = async () => {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
-  
+
     try {
-      await updateDoc(doc(db, 'users', uid), {
+      await setDoc(doc(db, 'users', uid), {
         fullName,
         sex,
         dob,
         height,
         weight,
-      });
-  
-      setShowToast(true); // ✅ Trigger toast
-  
+      }, { merge: true });
+
+      setShowToast(true);
+
       setTimeout(() => {
-        navigation.goBack(); // ✅ Delay navigation so toast can show
+        navigation.goBack();
       }, 1200);
-    } catch (err) {
-      console.error('Profile update failed:', err);
+    } catch (err: any) {
+      console.log('Profile update failed:', err.message || err.toString());
     }
   };
-  
 
   if (loading) {
     return (

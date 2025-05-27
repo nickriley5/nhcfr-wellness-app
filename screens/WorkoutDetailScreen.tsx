@@ -19,6 +19,7 @@ import {
   orderBy,
   query,
   Timestamp,
+  updateDoc,
 } from 'firebase/firestore';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import LinearGradient from 'react-native-linear-gradient';
@@ -123,22 +124,21 @@ const WorkoutDetailScreen: React.FC = () => {
 
     const now = new Date();
     const workoutId = now.toISOString().replace(/[:.]/g, '-');
-    
+
     const logData = {
-      dayTitle: dayTitle, // KEEP THIS CLEAN – don't include time here
-      completedAt: Timestamp.fromDate(now), // Save actual DateTime object
+      dayTitle: dayTitle,
+      completedAt: Timestamp.fromDate(now),
       exercises: exercises.map((ex, exIndex) => ({
         name: ex.name,
         sets: progress[exIndex],
       })),
     };
-    
 
-// Save it to Firestore
-await setDoc(doc(db, 'users', uid, 'workoutLogs', workoutId), logData);
-
-await checkAndAdjustRestDays(uid);
-
+    await setDoc(doc(db, 'users', uid, 'workoutLogs', workoutId), logData);
+    await updateDoc(doc(db, 'users', uid, 'program', 'active'), {
+      currentDay: incrementDay,
+    });
+    await checkAndAdjustRestDays(uid);
 
     try {
       const prRef = collection(db, 'users', uid, 'workoutLogs');
@@ -181,6 +181,12 @@ await checkAndAdjustRestDays(uid);
       console.error('Error saving workout or checking PRs:', error);
       alert('Failed to save workout.');
     }
+  };
+
+  const incrementDay = async (transaction: any, docRef: any) => {
+    const docSnap = await transaction.get(docRef);
+    const currentDay = docSnap.data()?.currentDay || 1;
+    transaction.update(docRef, { currentDay: currentDay + 1 });
   };
 
   if (loading) {
@@ -279,18 +285,15 @@ await checkAndAdjustRestDays(uid);
         </Pressable>
 
         <Pressable
-  style={[styles.saveButton, styles.secondaryButton]}
-  onPress={() =>
-    navigation.navigate('Main', {
-      screen: 'MainTabs',
-      params: { screen: 'Workout' },
-    })
-  }
->
-  <Ionicons name="arrow-back" size={20} color="#fff" style={{ marginRight: 8 }} />
-  <Text style={styles.buttonText}>Back to Workout Hub</Text>
-</Pressable>
-
+          style={[styles.saveButton, styles.secondaryButton]}
+          onPress={() => navigation.navigate('Main', {
+            screen: 'MainTabs',
+            params: { screen: 'Workout' },
+          })}
+        >
+          <Ionicons name="arrow-back" size={20} color="#fff" style={{ marginRight: 8 }} />
+          <Text style={styles.buttonText}>Back to Workout Hub</Text>
+        </Pressable>
 
         {showPR && (
           <PRCelebration visible={showPR} messages={prMessages} onClose={() => setShowPR(false)} />

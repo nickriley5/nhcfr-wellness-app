@@ -11,9 +11,12 @@ import {
 } from 'react-native';
 import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
 import { getApp } from 'firebase/app';
+import { getFirestore, doc, setDoc, serverTimestamp } from 'firebase/firestore';
 
 export default function RegisterScreen({ navigation }: any) {
   const auth = getAuth(getApp());
+  const db = getFirestore(getApp());
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -23,33 +26,31 @@ export default function RegisterScreen({ navigation }: any) {
       Alert.alert('Missing Fields', 'Please enter both email and password.');
       return;
     }
+
     setLoading(true);
 
     try {
-      await createUserWithEmailAndPassword(auth, email.trim(), password);
-      // on success, navigate or do whatever your flow needs:
-      navigation.replace('ProfileSetup');
+      const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
+      const uid = userCredential.user.uid;
+
+      // ✅ Create user doc with default fields
+      await setDoc(doc(db, 'users', uid), {
+        email: email.trim(),
+        profileComplete: false,
+        createdAt: serverTimestamp(),
+      }, { merge: true });
+
+      navigation.replace('Main');
     } catch (err: any) {
-      // Network error
       if (err.code === 'auth/network-request-failed') {
-        Alert.alert(
-          'Network Error',
-          'Unable to reach server. Please check your internet connection and try again.'
-        );
-      }
-      // Existing account
-      else if (err.code === 'auth/email-already-in-use') {
+        Alert.alert('Network Error', 'Check your connection and try again.');
+      } else if (err.code === 'auth/email-already-in-use') {
         Alert.alert('Email Taken', 'That email is already registered. Please log in instead.');
-      }
-      // Weak password
-      else if (err.code === 'auth/weak-password') {
+      } else if (err.code === 'auth/weak-password') {
         Alert.alert('Weak Password', 'Password should be at least 6 characters.');
-      }
-      // Invalid email
-      else if (err.code === 'auth/invalid-email') {
+      } else if (err.code === 'auth/invalid-email') {
         Alert.alert('Invalid Email', 'Please enter a valid email address.');
-      }
-      else {
+      } else {
         console.error(err);
         Alert.alert('Registration Error', err.message || 'Something went wrong.');
       }

@@ -11,7 +11,7 @@ import LinearGradient from 'react-native-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { auth, db } from '../firebase';
 import { doc, getDoc } from 'firebase/firestore';
-import { ProgramDay } from '../utils/programBuilder';
+import { ProgramDay } from '../utils/buildProgramFromGoals';
 
 const ProgramPreviewScreen = () => {
   const navigation = useNavigation();
@@ -62,12 +62,14 @@ const ProgramPreviewScreen = () => {
   return (
     <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.screen}>
       <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.title}>📆 Your 4-Week Training Program</Text>
+        <Text style={styles.title}>📆 Your Training Program</Text>
         {program.map((day, index) => (
           <View key={index} style={styles.dayCard}>
             <Text style={styles.dayTitle}>{day.title}</Text>
-            {day.exercises.map((ex, i) => (
-              <Text key={i} style={styles.exercise}>• {ex.name}</Text>
+            {day.exercises.map((ex: any, i: number) => (
+              <Text key={i} style={styles.exercise}>
+                • {ex.name} — {ex.sets} x {ex.reps}
+              </Text>
             ))}
           </View>
         ))}

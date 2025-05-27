@@ -1,32 +1,56 @@
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { getFullExerciseLibrary } from './exerciseLibrary';
-import { buildProgramFromGoals, PerformanceGoals } from './programBuilder'; // <- FIXED THIS LINE
+import { buildProgramFromGoals, PerformanceGoals } from './buildProgramFromGoals';
 
-// Existing function (generate from stored profile)
+// 🔁 Generate from stored user profile in Firestore
 export async function generateProgram(uid: string) {
   const profileRef = doc(db, 'users', uid);
   const profileSnap = await getDoc(profileRef);
   const userData = profileSnap.data();
 
-  if (!userData?.performanceGoals) {
-    throw new Error('No performance goals found.');
+  const storedGoals = userData?.preferences?.performance;
+
+  if (
+    !storedGoals ||
+    !storedGoals.focus ||
+    !storedGoals.daysPerWeek ||
+    !storedGoals.duration ||
+    !storedGoals.goalType ||
+    !storedGoals.experienceLevel ||
+    !storedGoals.equipment
+  ) {
+    throw new Error('Missing or incomplete performance goals in profile.');
   }
 
-  const exerciseLibrary = await getFullExerciseLibrary();
-  const program = buildProgramFromGoals(userData.performanceGoals, exerciseLibrary);
+  const goals: PerformanceGoals = {
+    focus: Array.isArray(storedGoals.focus) ? storedGoals.focus : [storedGoals.focus],
+    daysPerWeek: parseInt(storedGoals.frequency?.split('x')[0] || '3'),
+    durationWeeks: parseInt(storedGoals.duration.split(' ')[0]),
+    includeFireground: storedGoals.firegroundReady,
+    goalType: storedGoals.goalType,
+    experienceLevel: storedGoals.experienceLevel,
+    equipment: storedGoals.equipment || [],
+  };
 
-  return program;
+  const exerciseLibrary = await getFullExerciseLibrary();
+  return buildProgramFromGoals(goals, exerciseLibrary);
 }
 
-// NEW function (generate from passed-in goals object)
+// 🆕 Generate from passed-in goals object (used in modal)
 export async function generateProgramFromGoals(goals: PerformanceGoals) {
-  if (!goals || !goals.focus || !goals.daysPerWeek) {
-    throw new Error('Invalid goals object provided.');
+  if (
+    !goals ||
+    !goals.focus ||
+    !goals.daysPerWeek ||
+    !goals.durationWeeks ||
+    !goals.goalType ||
+    !goals.experienceLevel ||
+    !goals.equipment
+  ) {
+    throw new Error('Invalid or incomplete goals object.');
   }
 
   const exerciseLibrary = await getFullExerciseLibrary();
-  const program = buildProgramFromGoals(goals, exerciseLibrary);
-
-  return program;
+  return buildProgramFromGoals(goals, exerciseLibrary);
 }

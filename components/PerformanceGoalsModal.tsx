@@ -8,9 +8,10 @@ import {
   ScrollView,
   Switch,
 } from 'react-native';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase';
-import { PerformanceGoals } from '../utils/programBuilder';
+import { PerformanceGoals } from '../utils/buildProgramFromGoals';
+import { generateProgramFromGoals } from '../utils/programGenerator';
 
 interface PerformanceGoalsModalProps {
   visible: boolean;
@@ -48,7 +49,9 @@ const PerformanceGoalsModal: React.FC<PerformanceGoalsModalProps> = ({ visible, 
     const uid = auth.currentUser?.uid;
     if (!uid || !isComplete) return;
     setSaving(true);
+
     try {
+      // Save preferences to user doc
       await updateDoc(doc(db, 'users', uid), {
         preferences: {
           performance: {
@@ -63,14 +66,29 @@ const PerformanceGoalsModal: React.FC<PerformanceGoalsModalProps> = ({ visible, 
         },
       });
 
-      // Extract numeric value from frequency string like "4x/week"
       const daysPerWeek = parseInt(frequency.split('x')[0]);
+      const durationWeeks = parseInt(duration.split(' ')[0]);
 
-      onSaved({
-        focus: [trainingStyle.toLowerCase()],
-        daysPerWeek,
-        includeFireground: firegroundReady,
+      const performanceGoals: PerformanceGoals = {
+  focus: [trainingStyle.toLowerCase()],
+  daysPerWeek,
+  includeFireground: firegroundReady,
+  durationWeeks,
+  goalType: goalType as PerformanceGoals['goalType'],
+  experienceLevel: experienceLevel as PerformanceGoals['experienceLevel'],
+  equipment,
+};
+
+
+      const program = await generateProgramFromGoals(performanceGoals);
+
+      await setDoc(doc(db, 'users', uid, 'program', 'active'), {
+        ...program,
+        createdAt: new Date().toISOString(),
+        currentDay: 1,
       });
+
+      onSaved(performanceGoals);
     } catch (err) {
       console.error('Error saving performance goals:', err);
     } finally {
@@ -113,7 +131,9 @@ const PerformanceGoalsModal: React.FC<PerformanceGoalsModalProps> = ({ visible, 
             </View>
 
             <Pressable onPress={() => setShowAdvanced(!showAdvanced)}>
-              <Text style={styles.advancedToggle}>{showAdvanced ? 'Hide' : 'Show'} Equipment & Frequency</Text>
+              <Text style={styles.advancedToggle}>
+                {showAdvanced ? 'Hide' : 'Show'} Equipment & Frequency
+              </Text>
             </Pressable>
 
             {showAdvanced && (

@@ -30,118 +30,27 @@ const WorkoutScreen: React.FC = () => {
   const [selectedEquipment, setSelectedEquipment] = useState('None');
   const [selectedIntensity, setSelectedIntensity] = useState('Medium');
 
+  useEffect(() => {
+    const fetchProgram = async () => {
+      const uid = auth.currentUser?.uid;
+      if (!uid) return;
+
+      const docRef = doc(db, 'users', uid, 'program', 'active');
+      const docSnap = await getDoc(docRef);
+
+      if (docSnap.exists()) {
+        setCurrentProgram(docSnap.data());
+      }
+    };
+
+    fetchProgram();
+  }, []);
+
   const handleGenerateQuickWorkout = () => {
     Alert.alert(
       'Workout Generated',
       `Duration: ${selectedTime} min\nEquipment: ${selectedEquipment}\nIntensity: ${selectedIntensity}`
     );
-  };
-
-  useEffect(() => {
-    const fetchProgram = async () => {
-      const uid = auth.currentUser?.uid;
-      if (!uid) return;
-  
-      const docRef = doc(db, 'users', uid, 'program', 'active'); // ✅ matches your rules
-      const docSnap = await getDoc(docRef);
-  
-      if (docSnap.exists()) {
-        setCurrentProgram(docSnap.data());
-      }
-    };
-  
-    fetchProgram();
-  }, []);
- 
-
-  const generateProgram = async () => {
-    try {
-      setLoading(true);
-      const uid = auth.currentUser?.uid;
-      if (!uid) throw new Error('User not signed in');
-
-      const program = [
-        {
-          day: 1,
-          title: 'Upper Body Strength',
-          exercises: [
-            { name: 'Pushups', sets: 4, reps: 12 },
-            { name: 'Bent-over Rows', sets: 4, reps: 10 },
-            { name: 'Overhead Press', sets: 3, reps: 8 },
-          ],
-        },
-        {
-          day: 2,
-          title: 'Lower Body Strength',
-          exercises: [
-            { name: 'Goblet Squat', sets: 4, reps: 15 },
-            { name: 'Lunges', sets: 3, reps: 12 },
-            { name: 'Glute Bridge', sets: 3, reps: 20 },
-          ],
-        },
-        {
-          day: 3,
-          title: 'Conditioning & Core',
-          exercises: [
-            { name: 'Jump Rope', sets: 5, reps: '1 min' },
-            { name: 'Plank', sets: 3, reps: '1 min' },
-            { name: 'Mountain Climbers', sets: 3, reps: 40 },
-          ],
-        },
-        {
-          day: 4,
-          title: 'Active Recovery',
-          exercises: [
-            { name: 'Walking', sets: 1, reps: '20-30 mins' },
-            { name: 'Deep Breathing', sets: 1, reps: '5 mins' },
-          ],
-        },
-        {
-          day: 5,
-          title: 'Full Body Power',
-          exercises: [
-            { name: 'Kettlebell Swings', sets: 5, reps: 15 },
-            { name: 'Burpees', sets: 4, reps: 12 },
-            { name: 'Squat to Press', sets: 3, reps: 10 },
-          ],
-        },
-        {
-          day: 6,
-          title: 'Mobility & Flexibility',
-          exercises: [
-            { name: 'Hip Flexor Stretch', sets: 2, reps: '1 min/side' },
-            { name: 'Cat Cow', sets: 2, reps: 10 },
-            { name: 'Hamstring Stretch', sets: 2, reps: '1 min/side' },
-          ],
-        },
-        {
-          day: 7,
-          title: 'Rest Day',
-          exercises: [
-            { name: 'Full Rest', sets: 1, reps: 'Enjoy it' },
-          ],
-        },
-      ];
-
-      await setDoc(doc(db, 'users', uid, 'program', 'active'), {
-        createdAt: serverTimestamp(),
-        days: program,
-        currentDay: 1,
-        completedDays: [],
-      });   
-
-      Alert.alert('Success', 'Program generated!');
-      setCurrentProgram({
-        days: program,
-        currentDay: 1,
-        completedDays: [],
-      });
-    } catch (err) {
-      console.error(err);
-      Alert.alert('Error', 'Failed to generate program.');
-    } finally {
-      setLoading(false);
-    }
   };
 
   return (
@@ -207,39 +116,27 @@ const WorkoutScreen: React.FC = () => {
           </View>
         )}
 
-        {currentProgram && (
+        {currentProgram ? (
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Current Program</Text>
             <Text style={styles.cardText}>
               Day {currentProgram.currentDay}: {currentProgram.days[currentProgram.currentDay - 1].title}
             </Text>
-            <Pressable style={styles.button} onPress={() => navigation.navigate('WorkoutDetail', undefined)}>
+            <Pressable style={styles.button} onPress={() => navigation.navigate('WorkoutDetail')}>
               <Text style={styles.buttonText}>View Today's Workout</Text>
             </Pressable>
             <Pressable style={styles.button} onPress={() => navigation.navigate('AdaptWorkout')}>
-                  <Text style={styles.buttonText}>Adapt Today’s Workout</Text>
+              <Text style={styles.buttonText}>Adapt Today’s Workout</Text>
             </Pressable>
           </View>
-        )}
-
-        {!currentProgram && (
-          <Pressable style={styles.button} onPress={generateProgram}>
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <>
-                <Ionicons name="flash" size={20} color="#fff" style={styles.icon} />
-                <Text style={styles.buttonText}>Generate Program</Text>
-              </>
-            )}
-          </Pressable>
+        ) : (
+          <Text style={styles.subtitle}>Generate your program from the Dashboard to get started.</Text>
         )}
 
         <Pressable style={styles.button} onPress={() => navigation.navigate('ExerciseLibrary')}>
           <Ionicons name="book" size={20} color="#fff" style={styles.icon} />
           <Text style={styles.buttonText}>Explore Exercise Library</Text>
         </Pressable>
-
       </ScrollView>
     </LinearGradient>
   );

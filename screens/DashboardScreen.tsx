@@ -233,17 +233,26 @@ export default function DashboardScreen() {
 
           try {
             const program = await generateProgramFromGoals({
-              focus: Array.isArray(goals.focus) ? goals.focus : [goals.focus],
-              daysPerWeek: goals.daysPerWeek,
-              includeFireground: goals.includeFireground,
-            });
+  focus: Array.isArray(goals.focus) ? goals.focus : [goals.focus],
+  daysPerWeek: goals.daysPerWeek,
+  includeFireground: goals.includeFireground,
+  durationWeeks: goals.durationWeeks,
+  goalType: goals.goalType,
+  experienceLevel: goals.experienceLevel,
+  equipment: goals.equipment,
+});
+
+
 
             await setDoc(doc(db, 'users', uid, 'program', 'active'), {
-              ...goals,
-              startDate: new Date().toISOString(),
-              currentDay: 1,
-              days: program,
-            });
+  metadata: {
+    startDate: new Date().toISOString(),
+    currentDay: 1,
+  },
+  goals,
+  days: program,
+});
+
 
             setProgramExists(true);
           } catch (err) {

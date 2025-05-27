@@ -13,7 +13,6 @@ import DashboardScreen from './screens/DashboardScreen';
 import HomeScreen from './screens/HomeScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import LoginScreen from './screens/LoginScreen';
-import ProfileSetupScreen from './screens/ProfileSetupScreen';
 import RegisterScreen from './screens/RegisterScreen';
 import MealPlanScreen from './screens/MealPlanScreen';
 import CheckInScreen from './screens/CheckInScreen';
@@ -52,7 +51,6 @@ export type RootStackParamList = {
   Login: undefined;
   Register: undefined;
   Main: NavigatorScreenParams<RootDrawerParamList>;
-  ProfileSetup: undefined;
   CheckIn: undefined;
   WorkoutDetail: { adapt?: boolean; from?: string } | undefined;
   AdaptWorkout: undefined;
@@ -140,25 +138,21 @@ const AppNavigator = () => {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       {user ? (
-        profileComplete ? (
-          <>
-            <Stack.Screen name="Main" component={DrawerNavigation} />
-            <Stack.Screen name="CheckIn" component={CheckInScreen} />
-            <Stack.Screen name="WorkoutDetail" component={WorkoutDetailScreen} />
-            <Stack.Screen name="ExerciseLibrary" component={require('./screens/ExerciseLibraryScreen').default} />
-            <Stack.Screen name="ExerciseDetail" component={require('./screens/ExerciseDetailScreen').default} />
-            <Stack.Screen name="WorkoutHistory" component={WorkoutHistoryScreen} />
-            <Stack.Screen name="ProgressChart" component={ProgressChartScreen} />
-            <Stack.Screen name="PRTracker" component={PRTrackerScreen} options={{ headerShown: false }} />
-            <Stack.Screen name="AdaptWorkout" component={AdaptWorkoutScreen} />
-            <Stack.Screen name="Goals" component={GoalsScreen} />
-            <Stack.Screen name="EditProfile" component={EditProfileScreen} />
-            <Stack.Screen name="ProgramPreview" component={ProgramPreviewScreen} />
-          </>
-        ) : (
-          <Stack.Screen name="ProfileSetup" component={ProfileSetupScreen} />
-        )
-      ) : (
+  <>
+    <Stack.Screen name="Main" component={DrawerNavigation} />
+    <Stack.Screen name="CheckIn" component={CheckInScreen} />
+    <Stack.Screen name="WorkoutDetail" component={WorkoutDetailScreen} />
+    <Stack.Screen name="ExerciseLibrary" component={require('./screens/ExerciseLibraryScreen').default} />
+    <Stack.Screen name="ExerciseDetail" component={require('./screens/ExerciseDetailScreen').default} />
+    <Stack.Screen name="WorkoutHistory" component={WorkoutHistoryScreen} />
+    <Stack.Screen name="ProgressChart" component={ProgressChartScreen} />
+    <Stack.Screen name="PRTracker" component={PRTrackerScreen} options={{ headerShown: false }} />
+    <Stack.Screen name="AdaptWorkout" component={AdaptWorkoutScreen} />
+    <Stack.Screen name="Goals" component={GoalsScreen} />
+    <Stack.Screen name="EditProfile" component={EditProfileScreen} />
+    <Stack.Screen name="ProgramPreview" component={ProgramPreviewScreen} />
+  </>
+) : (
         <>
           <Stack.Screen name="Login">
             {() => (
