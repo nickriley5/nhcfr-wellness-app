@@ -1,3 +1,4 @@
+// DashboardScreen.tsx
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -6,7 +7,6 @@ import {
   Pressable,
   ScrollView,
   Animated,
-  ActivityIndicator,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import {
@@ -23,6 +23,7 @@ import {
   getDocs,
   orderBy,
   query,
+  setDoc,
 } from 'firebase/firestore';
 import { TabParamList, RootStackParamList } from '../App';
 import MoodEnergyChart from '../components/MoodEnergyChart';
@@ -33,7 +34,7 @@ import { generateProgramFromGoals } from '../utils/programGenerator';
 import { Exercise } from '../types';
 
 interface ProgramDay {
-  title: string;
+  title: string; // e.g. "Week 2 · Day 3"
   exercises: { name: string; sets: number; reps: number }[];
 }
 
@@ -45,6 +46,7 @@ export default function DashboardScreen() {
     >
   >();
 
+  // --- existing state ---
   const [view, setView] = useState<'week' | 'month' | 'all'>('week');
   const [moodData, setMoodData] = useState<number[]>([]);
   const [energyData, setEnergyData] = useState<number[]>([]);
@@ -57,9 +59,8 @@ export default function DashboardScreen() {
   const [currentWeight, setCurrentWeight] = useState(180);
   const [programExists, setProgramExists] = useState(false);
   const [exerciseLibrary, setExerciseLibrary] = useState<Exercise[]>([]);
-  const [loading, setLoading] = useState(true);
 
-  // New state for today's workout snapshot:
+  // --- NEW: today’s workout data ---
   const [todayWorkout, setTodayWorkout] = useState<ProgramDay | null>(null);
 
   useEffect(() => {
@@ -84,35 +85,41 @@ export default function DashboardScreen() {
       const user = auth.currentUser;
       if (!user) return;
 
-      // 1) Active program
-      const progRef = doc(db, 'users', user.uid, 'program', 'active');
-      const progSnap = await getDoc(progRef);
-      setProgramExists(progSnap.exists());
+      // — load program & “today” snippet —
+      const programSnap = await getDoc(
+        doc(db, 'users', user.uid, 'program', 'active')
+      );
+      setProgramExists(programSnap.exists());
 
-      if (progSnap.exists()) {
-        const progData = progSnap.data() as any;
-        const idx = (progData.metadata?.currentDay || 1) - 1;
-        const day: ProgramDay = progData.days[idx];
-        setTodayWorkout(day);
+      if (programSnap.exists()) {
+        const prog = programSnap.data() as any;
+        const days = (prog.days as ProgramDay[]) || [];
+        const idx = Math.max(0, (prog.metadata?.currentDay || 1) - 1);
+
+        if (days[idx]) {
+          setTodayWorkout(days[idx]);
+        } else {
+          setTodayWorkout(null);
+        }
+      } else {
+        setTodayWorkout(null);
       }
 
-      // 2) Check-ins
+      // — your existing check-in, profile & library loading —
       const checkInQuery = query(
         collection(db, 'users', user.uid, 'checkIns'),
         orderBy('timestamp', 'desc')
       );
-      const entriesSnap = await getDocs(checkInQuery);
-      const entries = entriesSnap.docs.map((d) => d.data());
-      const today = new Date();
+      const snapshot = await getDocs(checkInQuery);
+      const entries = snapshot.docs.map((d) => d.data());
+      const todayDate = new Date().toDateString();
       if (
         !entries[0] ||
         new Date(entries[0].timestamp?.toDate()).toDateString() !==
-          today.toDateString()
+          todayDate
       ) {
         setHasCheckedInToday(false);
       }
-
-      // 3) Mood/Energy
       const limited =
         view === 'week'
           ? entries.slice(0, 7)
@@ -123,7 +130,6 @@ export default function DashboardScreen() {
       setMoodData(limited.map((e) => e.mood ?? 0));
       setEnergyData(limited.map((e) => e.energy ?? 0));
 
-      // 4) Profile & weight
       const profileSnap = await getDoc(doc(db, 'users', user.uid));
       const profile = profileSnap.data();
       if (profile) {
@@ -142,68 +148,49 @@ export default function DashboardScreen() {
         setCurrentWeight(Number(profile.weight) || 180);
       }
 
-      // 5) Exercise library
       const librarySnap = await getDocs(collection(db, 'exercises'));
       setExerciseLibrary(librarySnap.docs.map((d) => d.data() as Exercise));
-
-      setLoading(false);
     };
 
     fetchData();
   }, [view]);
 
-  if (loading) {
+  // --- NEW QuickViews that uses todayWorkout ---
+  const QuickViews = () => {
+    const title = todayWorkout?.title || 'No program';
+    const list =
+      todayWorkout?.exercises
+        .slice(0, 3)
+        .map((ex) => ex.name)
+        .join(', ') || 'Rest day!';
     return (
-      <View style={styles.loader}>
-        <ActivityIndicator size="large" color="#d32f2f" />
+      <View style={styles.quickContainer}>
+        <View style={styles.quickCard}>
+          <Text style={styles.quickTitle}>🍽️ Next Meal</Text>
+          <Text style={styles.quickDetail}>
+            Grilled chicken, rice, broccoli
+          </Text>
+        </View>
+
+        <Pressable
+          style={styles.quickCard}
+          onPress={() => navigation.navigate('WorkoutDetail')}
+        >
+          <Text style={styles.quickTitle}>🏋️ {title}</Text>
+          <Text style={styles.quickDetail}>{list}</Text>
+          <Text style={styles.quickHint}>Tap to view full workout</Text>
+        </Pressable>
       </View>
     );
-  }
-
-  const QuickViews = () => (
-    <View style={styles.quickContainer}>
-      {/* Next Meal */}
-      <View style={styles.quickCard}>
-        <Text style={styles.quickTitle}>🍽️ Next Meal</Text>
-        <Text style={styles.quickDetail}>Grilled chicken, rice, broccoli</Text>
-      </View>
-
-      {/* Today's Workout Snapshot */}
-      <Pressable
-        style={styles.quickCard}
-        onPress={() =>
-          navigation.navigate('WorkoutDetail', {
-            adapt: false,
-          })
-        }
-      >
-        <Text style={styles.quickTitle}>🏋️ Today's Workout</Text>
-        {todayWorkout ? (
-          <>
-            <Text style={styles.quickDetail}>{todayWorkout.title}</Text>
-            {todayWorkout.exercises.slice(0, 2).map((ex, i) => (
-              <Text key={i} style={styles.quickHint}>
-                • {ex.name} ({ex.sets}×{ex.reps})
-              </Text>
-            ))}
-            {todayWorkout.exercises.length > 2 && (
-              <Text style={styles.quickHint}>
-                …and {todayWorkout.exercises.length - 2} more
-              </Text>
-            )}
-          </>
-        ) : (
-          <Text style={styles.quickDetail}>No workout scheduled</Text>
-        )}
-      </Pressable>
-    </View>
-  );
+  };
 
   return (
     <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.header}>Your Dashboard</Text>
-        <Text style={styles.subheader}>Train for duty. Fuel for life. 🔥</Text>
+        <Text style={styles.subheader}>
+          Train for duty. Fuel for life. 🔥
+        </Text>
 
         {!hasCheckedInToday && (
           <View style={styles.reminderCard}>
@@ -224,7 +211,6 @@ export default function DashboardScreen() {
           </Animated.View>
         )}
 
-        {/* Mood & Energy */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Mood & Energy Trends</Text>
           <View style={styles.toggleGroup}>
@@ -286,7 +272,9 @@ export default function DashboardScreen() {
               style={styles.outlinedButton}
               onPress={() => setShowCalendarModal(true)}
             >
-              <Text style={styles.buttonText}>🗓 Set My Weekly Schedule</Text>
+              <Text style={styles.buttonText}>
+                🗓 Set My Weekly Schedule
+              </Text>
             </Pressable>
           </>
         )}
@@ -299,23 +287,54 @@ export default function DashboardScreen() {
         </Pressable>
       </ScrollView>
 
+      {/* modals below unchanged */}
       <MealGoalsModal
         visible={showMealModal}
         currentWeight={currentWeight}
         onClose={() => setShowMealModal(false)}
         onSaved={() => setShowMealModal(false)}
       />
-
       <PerformanceGoalsModal
         visible={showWorkoutModal}
         onClose={() => setShowWorkoutModal(false)}
         onSaved={async (goals) => {
           setShowWorkoutModal(false);
-          /* ...generate program... */
+          const uid = auth.currentUser?.uid;
+          if (!uid) return;
+          try {
+            const program = await generateProgramFromGoals(
+              {
+                focus: Array.isArray(goals.focus)
+                  ? goals.focus
+                  : [goals.focus],
+                daysPerWeek: goals.daysPerWeek,
+                includeFireground: goals.includeFireground,
+                durationWeeks: goals.durationWeeks,
+                goalType: goals.goalType,
+                experienceLevel: goals.experienceLevel,
+                equipment: goals.equipment,
+              },
+              exerciseLibrary
+            );
+            await setDoc(
+              doc(db, 'users', uid, 'program', 'active'),
+              {
+                metadata: {
+                  startDate: new Date().toISOString(),
+                  currentDay: 1,
+                },
+                goals,
+                days: program,
+              }
+            );
+            setProgramExists(true);
+          } catch (err) {
+            console.error('Program generation failed:', err);
+            alert('There was an issue generating your workout program.');
+          }
         }}
         fullExerciseLibrary={exerciseLibrary}
       />
-
       <EnvironmentCalendarModal
         visible={showCalendarModal}
         onClose={() => setShowCalendarModal(false)}
@@ -326,7 +345,6 @@ export default function DashboardScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  loader: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   content: { padding: 24, alignItems: 'center' },
   header: {
     fontSize: 26,
