@@ -30,6 +30,7 @@ import MealGoalsModal from '../components/MealGoalsModal';
 import PerformanceGoalsModal from '../components/PerformanceGoalsModal';
 import EnvironmentCalendarModal from '../components/EnvironmentCalendarModal';
 import { generateProgramFromGoals } from '../utils/programGenerator';
+import { Exercise } from '../types';
 
 export default function DashboardScreen() {
   const navigation = useNavigation<
@@ -50,6 +51,7 @@ export default function DashboardScreen() {
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [currentWeight, setCurrentWeight] = useState(180);
   const [programExists, setProgramExists] = useState(false);
+  const [exerciseLibrary, setExerciseLibrary] = useState<Exercise[]>([]);
 
   useEffect(() => {
     Animated.loop(
@@ -112,6 +114,10 @@ export default function DashboardScreen() {
 
       setCompletionPercent(percent);
       setCurrentWeight(Number(profile?.weight) || 180);
+
+      const librarySnap = await getDocs(collection(db, 'exercises'));
+      const library = librarySnap.docs.map((doc) => doc.data() as Exercise);
+      setExerciseLibrary(library);
     };
 
     fetchData();
@@ -232,7 +238,7 @@ export default function DashboardScreen() {
           if (!uid) return;
 
           try {
-            const program = await generateProgramFromGoals({
+           const program = await generateProgramFromGoals({
   focus: Array.isArray(goals.focus) ? goals.focus : [goals.focus],
   daysPerWeek: goals.daysPerWeek,
   includeFireground: goals.includeFireground,
@@ -240,19 +246,19 @@ export default function DashboardScreen() {
   goalType: goals.goalType,
   experienceLevel: goals.experienceLevel,
   equipment: goals.equipment,
-});
+}, exerciseLibrary);
 
+console.log('🧠 Generated Program:', JSON.stringify(program, null, 2));
 
 
             await setDoc(doc(db, 'users', uid, 'program', 'active'), {
-  metadata: {
-    startDate: new Date().toISOString(),
-    currentDay: 1,
-  },
-  goals,
-  days: program,
-});
-
+              metadata: {
+                startDate: new Date().toISOString(),
+                currentDay: 1,
+              },
+              goals,
+              days: program,
+            });
 
             setProgramExists(true);
           } catch (err) {
@@ -260,6 +266,7 @@ export default function DashboardScreen() {
             alert('There was an issue generating your workout program.');
           }
         }}
+        fullExerciseLibrary={exerciseLibrary}
       />
 
       <EnvironmentCalendarModal

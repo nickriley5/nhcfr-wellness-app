@@ -2,6 +2,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { getFullExerciseLibrary } from './exerciseLibrary';
 import { buildProgramFromGoals, PerformanceGoals } from './buildProgramFromGoals';
+import { Exercise } from '../types/Exercise';
 
 // 🔁 Generate from stored user profile in Firestore
 export async function generateProgram(uid: string) {
@@ -38,7 +39,10 @@ export async function generateProgram(uid: string) {
 }
 
 // 🆕 Generate from passed-in goals object (used in modal)
-export async function generateProgramFromGoals(goals: PerformanceGoals) {
+export async function generateProgramFromGoals(
+  goals: PerformanceGoals,
+  exerciseLibrary: Exercise[]
+) {
   if (
     !goals ||
     !goals.focus ||
@@ -51,6 +55,6 @@ export async function generateProgramFromGoals(goals: PerformanceGoals) {
     throw new Error('Invalid or incomplete goals object.');
   }
 
-  const exerciseLibrary = await getFullExerciseLibrary();
   return buildProgramFromGoals(goals, exerciseLibrary);
 }
+

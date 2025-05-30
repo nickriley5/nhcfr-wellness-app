@@ -1,15 +1,19 @@
 export interface Exercise {
   id: string;
   name: string;
-  description: string;
-  category: string;
-  focusArea: string;
+  description?: string;
+  category?: string;
+  focusArea?: string;
   equipment: string;
-  coachingNotes: string;
-  swapOptions: string[];
+  coachingNotes?: string;
+  swapOptions?: string[];
   tags: string[];
   goalTags: string[];
-  videoUrl: string;
-  thumbnailUri: string;
+  videoUrl?: string;
+  thumbnailUri?: string;
   level: string;
+  sets?: number;
+  reps?: number;
+  isTimed?: boolean;
+  timePerSet?: number;
 }

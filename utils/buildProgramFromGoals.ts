@@ -1,25 +1,8 @@
 import { Timestamp } from 'firebase/firestore';
-
-export interface Exercise {
-  id: string;
-  name: string;
-  description?: string;
-  category?: string;
-  focusArea?: string;
-  equipment: string;
-  coachingNotes?: string;
-  swapOptions?: string[];
-  tags: string[];
-  goalTags: string[];
-  videoUrl?: string;
-  thumbnailUri?: string;
-  level: string;
-  sets?: number;
-  reps?: number;
-}
+import { Exercise } from '../types/Exercise';
 
 export interface PerformanceGoals {
-  focus: string[]; // ['strength', 'mobility']
+  focus: string[];
   daysPerWeek: number;
   includeFireground: boolean;
   durationWeeks: number;
@@ -34,131 +17,249 @@ export interface ProgramDay {
   exercises: Exercise[];
 }
 
+const TrackTemplates: Record<string, Record<string, string[]>> = {
+  'Build Muscle': {
+    Beginner: ['Full Body', 'Push', 'Pull', 'Legs', 'Core + Mobility'],
+    Intermediate: ['Push', 'Pull', 'Legs', 'Core', 'Mobility'],
+    Advanced: ['Upper', 'Lower', 'Push', 'Pull', 'Legs', 'Fireground', 'Recovery'],
+  },
+  'Lose Fat': {
+    Beginner: ['Full Body Circuit', 'Cardio + Core', 'Mobility'],
+    Intermediate: ['Conditioning', 'Strength Circuit', 'Fireground', 'Core + Mobility'],
+    Advanced: ['Conditioning', 'Fireground', 'Core + Mobility', 'Strength Circuit', 'MetCon'],
+  },
+  Maintain: {
+    Beginner: ['Full Body', 'Core + Mobility', 'Mobility'],
+    Intermediate: ['Strength', 'Mobility', 'Core', 'Fireground'],
+    Advanced: ['Push + Core', 'Pull + Mobility', 'Fireground', 'Legs', 'Conditioning'],
+  },
+};
+
 export function buildProgramFromGoals(
   goals: PerformanceGoals,
   fullLibrary: Exercise[],
   startDate = new Date()
 ): ProgramDay[] {
   const {
-    daysPerWeek,
     durationWeeks,
-    focus,
-    includeFireground,
+    daysPerWeek,
     goalType,
     experienceLevel,
     equipment,
+    includeFireground,
   } = goals;
 
-  const totalDays = daysPerWeek * durationWeeks;
-  const program: ProgramDay[] = [];
+  const totalDays = durationWeeks * daysPerWeek;
+  let trackSplit = [
+    ...(TrackTemplates[goalType]?.[experienceLevel] || ['Full Body']),
+  ];
 
-  const workoutSplit = generateSplit(daysPerWeek, goalType, includeFireground);
+  // 1) Inject Fireground
+  if (includeFireground && !trackSplit.includes('Fireground')) {
+    trackSplit.splice(1, 0, 'Fireground');
+  }
+
+  // 2) Trim to exactly daysPerWeek
+  if (trackSplit.length > daysPerWeek) {
+    trackSplit = trackSplit.slice(0, daysPerWeek);
+  }
+
+  const program: ProgramDay[] = [];
   let currentDate = new Date(startDate);
 
   for (let i = 0; i < totalDays; i++) {
-    const title = workoutSplit[i % workoutSplit.length];
+    const weekNumber = Math.floor(i / daysPerWeek) + 1;
+    let dayTitle = trackSplit[i % daysPerWeek];
 
-    let filteredLibrary = fullLibrary.filter((ex) => {
-      const matchesGoal = focus.some((tag) => ex.goalTags.includes(tag));
-      const matchesEquipment = ex.equipment === 'Bodyweight' || equipment.includes(ex.equipment);
-      const isFiregroundCompatible = includeFireground || !ex.tags.includes('fireground');
-      const matchesSplit = getTagsForTitle(title).some((tag) => ex.tags.includes(tag));
-      return matchesGoal && matchesEquipment && isFiregroundCompatible && matchesSplit;
-    });
-
-    if (filteredLibrary.length === 0) {
-      console.warn(`⚠️ No exercises matched for "${title}". Falling back to equipment-only filter.`);
-      filteredLibrary = fullLibrary.filter((ex) =>
-        ex.equipment === 'Bodyweight' || equipment.includes(ex.equipment)
-      );
+    // 3) Last day of each block → Mobility & Recovery
+    if (daysPerWeek <= 4 && i % daysPerWeek === daysPerWeek - 1) {
+      dayTitle = 'Mobility & Recovery';
     }
 
-    const exercises = getShuffledExercises(filteredLibrary, experienceLevel, goalType);
+    const tags = getTagsFromTitle(dayTitle);
+    const exercises = getSmartExercises(
+      tags,
+      fullLibrary,
+      equipment,
+      goalType,
+      experienceLevel,
+      dayTitle
+    );
 
-    console.log(`✅ Exercises for "${title}":`, exercises.map((ex) => ex.name));
+    const progressedExercises = exercises.map((ex) =>
+      applyProgression(
+        {
+          ...ex,
+          sets: ex.sets ?? 3,
+          reps: ex.reps ?? 10,
+        },
+        goalType,
+        experienceLevel,
+        weekNumber
+      )
+    );
+
+    const formattedTitle = `Week ${weekNumber}: ${getWorkoutTitle(
+      dayTitle,
+      goalType
+    )}`;
 
     program.push({
-      title,
+      title: formattedTitle,
       date: Timestamp.fromDate(new Date(currentDate)),
-      exercises,
+      exercises: progressedExercises,
     });
 
     currentDate.setDate(currentDate.getDate() + 1);
   }
 
-  console.log('✅ Final Program:', program);
-
   return program;
 }
 
-function generateSplit(daysPerWeek: number, goalType: string, includeFireground: boolean): string[] {
-  const split: string[] = [];
-
-  if (goalType === 'Build Muscle') {
-    split.push('Upper Body Strength', 'Lower Body Strength');
-    if (daysPerWeek >= 4) split.push('Full Body Strength');
-    if (includeFireground) split.push('Fireground Conditioning');
-    if (daysPerWeek >= 5) split.push('Mobility & Recovery');
-  } else if (goalType === 'Lose Fat') {
-    split.push('MetCon Circuit', 'Conditioning + Core');
-    if (includeFireground) split.push('Fireground Burner');
-    split.push('Mobility & Recovery');
-    if (daysPerWeek >= 5) split.push('Full Body Conditioning');
-  } else {
-    // Maintain
-    split.push('Full Body Strength', 'Mobility & Core');
-    if (includeFireground) split.push('Fireground Hybrid');
-    if (daysPerWeek >= 5) split.push('Cardio & Mobility');
-  }
-
-  return split;
+function getTagsFromTitle(title: string): string[] {
+  const map: Record<string, string[]> = {
+    Push: ['push', 'press', 'chest', 'triceps'],
+    Pull: ['pull', 'back', 'biceps', 'row', 'deadlift', 'chin', 'pull-up'],
+    Legs: ['legs', 'quads', 'glutes', 'hinge', 'squat'],
+    Core: ['core', 'ab'],
+    Mobility: ['mobility', 'stretch'],
+    Fireground: ['full'], // special-cased below
+    'Mobility & Recovery': ['mobility', 'stretch'],
+    'Full Body': ['full'],
+    'Full Body Circuit': ['full', 'conditioning'],
+    Conditioning: ['conditioning', 'cardio'],
+    Recovery: ['mobility', 'stretch'],
+    'Core + Mobility': ['core', 'mobility'],
+    'Strength Circuit': ['strength', 'full'],
+    'Cardio + Core': ['cardio', 'core'],
+    MetCon: ['conditioning', 'full'],
+    Strength: ['strength'],
+    Upper: ['upper', 'push', 'pull'],
+    Lower: ['lower', 'legs'],
+    'Push + Core': ['push', 'core'],
+    'Pull + Mobility': ['pull', 'mobility'],
+  };
+  return map[title] || ['full'];
 }
 
-function getTagsForTitle(title: string): string[] {
-  if (title.includes('Upper')) return ['upper', 'push', 'pull'];
-  if (title.includes('Lower')) return ['lower', 'legs', 'hinge'];
-  if (title.includes('Fireground')) return ['fireground'];
-  if (title.includes('Mobility')) return ['mobility'];
-  if (title.includes('Conditioning') || title.includes('MetCon')) return ['conditioning', 'core'];
-  return ['full', 'strength', 'durability'];
+function getWorkoutTitle(dayTitle: string, goalType: string): string {
+  if (dayTitle.includes('Mobility') || dayTitle.includes('Recovery'))
+    return 'Mobility & Recovery';
+  if (goalType === 'Lose Fat') return dayTitle;
+  return `${dayTitle} – ${goalType}`;
 }
 
-function getShuffledExercises(
-  pool: Exercise[],
-  experience: PerformanceGoals['experienceLevel'],
-  goalType: PerformanceGoals['goalType']
+function getSmartExercises(
+  tags: string[],
+  library: Exercise[],
+  equipment: string[],
+  goal: string,
+  level: string,
+  dayTitle: string
 ): Exercise[] {
-  if (pool.length === 0) return [];
+  const MAX_EX = 8;
 
-  const shuffled = shuffleArray(pool);
-  const count = 5;
+  // equipment check: based on ex.category (may be undefined)
+  const allowed = equipment.map((e) => e.toLowerCase());
+  const isEquipmentAllowed = (ex: Exercise): boolean => {
+    const cat = ex.category?.toLowerCase() ?? '';
+    if (cat.includes('only')) {
+      // e.g. "dumbbell only" → require matching equipment
+      return allowed.some((eq) => cat.includes(eq.replace(/s$/, '')));
+    }
+    return true;
+  };
 
-  return shuffled.slice(0, count).map((ex) => ({
-    ...ex,
-    sets: getDefaultSets(goalType, experience),
-    reps: getDefaultReps(goalType, experience),
-  }));
-}
-
-function getDefaultSets(goal: string, level: string): number {
-  const base = goal === 'Build Muscle' ? 4 : goal === 'Lose Fat' ? 3 : 3;
-  const mod = level === 'Advanced' ? 1 : level === 'Beginner' ? -1 : 0;
-  return Math.max(2, base + mod);
-}
-
-function getDefaultReps(goal: string, level: string): number {
-  if (goal === 'Build Muscle') return 8;
-  if (goal === 'Lose Fat') return 16;
-  if (goal === 'Maintain') return 10;
-  if (goal === 'Fireground') return 60;
-  return 10;
-}
-
-function shuffleArray<T>(arr: T[]): T[] {
-  const array = [...arr];
-  for (let i = array.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [array[i], array[j]] = [array[j], array[i]];
+  // 1) Fireground day → only Fireground Readiness drills
+  if (dayTitle === 'Fireground') {
+    const candidates = library.filter(
+      (ex) =>
+        ex.category === 'Fireground Readiness' &&
+        isEquipmentAllowed(ex)
+    );
+    if (candidates.length > 0) {
+      return shuffleArray(candidates).slice(0, MAX_EX);
+    }
+    // fallback → full-body/conditioning moves
+    const fallback = library.filter((ex) =>
+      (ex.tags
+        ?.map((t: string) => t.toLowerCase())
+        .includes('full') ||
+        ex.goalTags
+          ?.map((g: string) => g.toLowerCase())
+          .some((g) => ['conditioning', 'strength'].includes(g))) &&
+      isEquipmentAllowed(ex)
+    );
+    return shuffleArray(fallback).slice(0, MAX_EX);
   }
-  return array;
+
+  // 2) Normal days
+  // a) strict: tags + equipment + goal
+  let filtered = library.filter((ex) => {
+    const tagMatch = tags.some((tag) =>
+      ex.tags?.map((t: string) => t.toLowerCase()).includes(tag.toLowerCase())
+    );
+    const equipMatch = isEquipmentAllowed(ex);
+    const goalMatch =
+      ex.goalTags
+        ?.map((g: string) => g.toLowerCase())
+        .includes(goal.toLowerCase()) ||
+      ex.goalTags?.includes('strength');
+    return tagMatch && equipMatch && goalMatch;
+  });
+
+  // b) relax goal if too few
+  if (filtered.length < 3) {
+    filtered = library.filter((ex) => {
+      const tagMatch = tags.some((tag) =>
+        ex.tags?.map((t: string) => t.toLowerCase()).includes(tag.toLowerCase())
+      );
+      return tagMatch && isEquipmentAllowed(ex);
+    });
+  }
+
+  // c) fallback → any full-body or name match
+  if (filtered.length === 0) {
+    filtered = library.filter(
+      (ex) =>
+        (ex.tags
+          ?.map((t: string) => t.toLowerCase())
+          .includes('full') ||
+          tags.some((tag) =>
+            ex.name.toLowerCase().includes(tag.toLowerCase())
+          )) &&
+        isEquipmentAllowed(ex)
+    );
+  }
+
+  return shuffleArray(filtered).slice(0, MAX_EX);
+}
+
+function applyProgression(
+  exercise: Exercise,
+  goal: string,
+  experience: string,
+  week: number
+): Exercise {
+  const sets = exercise.sets ?? 3;
+  let reps = exercise.reps ?? 10;
+
+  if (goal === 'Build Muscle') reps += week;
+  if (goal === 'Lose Fat') reps = Math.max(12, reps + week);
+  if (goal === 'Maintain') reps = 8;
+
+  return {
+    ...exercise,
+    sets,
+    reps,
+  };
+}
+
+function shuffleArray<T>(array: T[]): T[] {
+  const arr = [...array];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
 }
