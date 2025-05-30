@@ -19,7 +19,8 @@ import {
   orderBy,
   query,
   Timestamp,
-  updateDoc,
+  writeBatch,
+  increment,
 } from 'firebase/firestore';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import LinearGradient from 'react-native-linear-gradient';
@@ -32,20 +33,38 @@ import Toast from '../components/Toast';
 import { RouteProp } from '@react-navigation/native';
 import { checkAndAdjustRestDays } from '../utils/performanceMonitor';
 
+// Types for raw vs. enriched exercises
+interface RawExercise {
+  name: string;
+  videoUri?: string;
+  videoUrl?: string;
+  sets?: number;
+  reps?: number;
+  repsOrTime?: number;
+  type?: 'reps' | 'time';
+}
+interface EnrichedExercise extends RawExercise {
+  videoUri: string;
+  setsCount: number;
+  repsCount: number;
+}
+
+type WorkoutDetailRoute = RouteProp<RootStackParamList, 'WorkoutDetail'>;
+
 const WorkoutDetailScreen: React.FC = () => {
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const route = useRoute<RouteProp<RootStackParamList, 'WorkoutDetail'>>();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList, 'WorkoutDetail'>>();
+  const route = useRoute<WorkoutDetailRoute>();
   const fromAdapt = route.params?.adapt ?? false;
 
-  const [loading, setLoading] = useState(true);
-  const [dayTitle, setDayTitle] = useState('');
-  const [exercises, setExercises] = useState<any[]>([]);
-  const [progress, setProgress] = useState<any[][]>([]);
-  const [lastSession, setLastSession] = useState<Record<string, any[]> | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [dayTitle, setDayTitle] = useState<string>('');
+  const [exercises, setExercises] = useState<EnrichedExercise[]>([]);
+  const [progress, setProgress] = useState<{ reps: string; weight: string }[][]>([]);
+  const [lastSession, setLastSession] = useState<Record<string, { reps: string; weight: string }[]> | null>(null);
   const [playingIndex, setPlayingIndex] = useState<number | null>(null);
-  const [showPR, setShowPR] = useState(false);
+  const [showPR, setShowPR] = useState<boolean>(false);
   const [prMessages, setPRMessages] = useState<string[]>([]);
-  const [showToast, setShowToast] = useState(false);
+  const [showToast, setShowToast] = useState<boolean>(false);
 
   useEffect(() => {
     const fetchWorkout = async () => {
@@ -53,48 +72,49 @@ const WorkoutDetailScreen: React.FC = () => {
         const uid = auth.currentUser?.uid;
         if (!uid) return;
 
-        const docRef = doc(db, 'users', uid, 'program', 'active');
-        const docSnap = await getDoc(docRef);
+        // Load active program
+        const progRef = doc(db, 'users', uid, 'program', 'active');
+        const progSnap = await getDoc(progRef);
+        if (!progSnap.exists()) throw new Error('No active program');
+        const progData: any = progSnap.data();
 
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          const today = data.currentDay - 1;
-          const raw = data.days[today].exercises;
+        const idx = (progData.currentDay || 1) - 1;
+        const day = progData.days[idx];
+        setDayTitle(day.title);
 
-          const enriched = raw.map((ex: any) => ({
-            ...ex,
-            videoUri: 'https://www.w3schools.com/html/mov_bbb.mp4',
-          }));
+        // Enrich raw exercises
+        const enriched = (day.exercises as RawExercise[]).map((ex: RawExercise): EnrichedExercise => ({
+          ...ex,
+          videoUri: ex.videoUri || ex.videoUrl || 'https://www.w3schools.com/html/mov_bbb.mp4',
+          setsCount: ex.sets ?? 3,
+          repsCount: ex.reps ?? ex.repsOrTime ?? 10,
+        }));
 
-          setDayTitle(data.days[today].title);
-          setExercises(enriched);
+        setExercises(enriched);
+        setProgress(
+          enriched.map(ex =>
+            Array.from({ length: ex.setsCount }, () => ({ reps: '', weight: '' }))
+          )
+        );
 
-          const initialProgress = enriched.map((ex: any) =>
-            Array.from({ length: Number(ex.sets || 3) }, () => ({ reps: '', weight: '' }))
-          );
-
-          setProgress(initialProgress);
-
-          const logRef = collection(db, 'users', uid, 'workoutLogs');
-          const q = query(logRef, orderBy('completedAt', 'desc'));
-          const logsSnap = await getDocs(q);
-
-          const latest = logsSnap.docs[0]?.data();
-          if (latest) {
-            const lastData: Record<string, any[]> = {};
-            latest.exercises.forEach((ex: any) => {
-              lastData[ex.name] = ex.sets;
-            });
-            setLastSession(lastData);
-          }
+        // Load last session for comparison
+        const logsRef = collection(db, 'users', uid, 'workoutLogs');
+        const logsQ = query(logsRef, orderBy('completedAt', 'desc'));
+        const logsSnap = await getDocs(logsQ);
+        const lastData: Record<string, { reps: string; weight: string }[]> = {};
+        const latest = logsSnap.docs[0]?.data();
+        if (latest) {
+          (latest.exercises as any[]).forEach((ex: any) => {
+            lastData[ex.name] = ex.sets;
+          });
         }
-      } catch (err) {
-        console.error(err);
+        setLastSession(lastData);
+      } catch (e) {
+        console.error(e);
       } finally {
         setLoading(false);
       }
     };
-
     fetchWorkout();
   }, []);
 
@@ -111,82 +131,62 @@ const WorkoutDetailScreen: React.FC = () => {
     });
   };
 
-  const isExerciseComplete = (sets: any[]) =>
-    sets.every(set => set.reps && set.weight);
+  const isComplete = (sets: { reps: string; weight: string }[]) =>
+    sets.every(s => s.reps && s.weight);
 
-  const togglePlay = (index: number) => {
+  const togglePlay = (index: number) =>
     setPlayingIndex(prev => (prev === index ? null : index));
-  };
 
   const saveWorkoutProgress = async () => {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
 
     const now = new Date();
-    const workoutId = now.toISOString().replace(/[:.]/g, '-');
-
-    const logData = {
-      dayTitle: dayTitle,
+    const id = now.toISOString().replace(/[:.]/g, '-');
+    const log = {
+      dayTitle,
       completedAt: Timestamp.fromDate(now),
-      exercises: exercises.map((ex, exIndex) => ({
-        name: ex.name,
-        sets: progress[exIndex],
-      })),
+      exercises: exercises.map((ex, i) => ({ name: ex.name, sets: progress[i] })),
     };
 
-    await setDoc(doc(db, 'users', uid, 'workoutLogs', workoutId), logData);
-    await updateDoc(doc(db, 'users', uid, 'program', 'active'), {
-      currentDay: incrementDay,
-    });
-    await checkAndAdjustRestDays(uid);
-
     try {
-      const prRef = collection(db, 'users', uid, 'workoutLogs');
-      const snapshot = await getDocs(prRef);
+      // Batch: write log + increment day
+      const batch = writeBatch(db);
+      batch.set(doc(db, 'users', uid, 'workoutLogs', id), log);
+      batch.update(doc(db, 'users', uid, 'program', 'active'), { currentDay: increment(1) });
+      await batch.commit();
 
-      const currentPRs: Record<string, number> = {};
+      await checkAndAdjustRestDays(uid);
 
-      snapshot.forEach(doc => {
-        const data = doc.data();
-        data.exercises.forEach((ex: any) => {
-          ex.sets.forEach((set: any) => {
-            const weight = parseFloat(set.weight);
-            if (!isNaN(weight)) {
-              if (!currentPRs[ex.name] || weight > currentPRs[ex.name]) {
-                currentPRs[ex.name] = weight;
-              }
-            }
-          });
-        });
+      // PR detection
+      const allLogs = await getDocs(collection(db, 'users', uid, 'workoutLogs'));
+      const PRs: Record<string, number> = {};
+      allLogs.forEach(d => {
+        const data: any = d.data();
+        (data.exercises as any[]).forEach(ex =>
+          ex.sets.forEach((s: any) => {
+            const w = parseFloat(s.weight);
+            if (!isNaN(w)) PRs[ex.name] = Math.max(PRs[ex.name] || 0, w);
+          })
+        );
       });
+      const newPRs: string[] = [];
+      log.exercises.forEach(ex =>
+        ex.sets.forEach((s: any) => {
+          const w = parseFloat(s.weight);
+          if (!isNaN(w) && w > (PRs[ex.name] || 0)) newPRs.push(`${ex.name}: ${w} lbs`);
+        })
+      );
 
       setShowToast(true);
-
-      const newPRs: string[] = [];
-
-      logData.exercises.forEach((ex: any) => {
-        ex.sets.forEach((set: any) => {
-          const weight = parseFloat(set.weight);
-          if (!isNaN(weight) && weight > (currentPRs[ex.name] || 0)) {
-            newPRs.push(`${ex.name}: ${weight} lbs`);
-          }
-        });
-      });
-
-      if (newPRs.length > 0) {
+      if (newPRs.length) {
         setPRMessages(newPRs);
         setShowPR(true);
       }
-    } catch (error) {
-      console.error('Error saving workout or checking PRs:', error);
-      alert('Failed to save workout.');
+    } catch (e) {
+      console.error(e);
+      alert('Failed to save workout');
     }
-  };
-
-  const incrementDay = async (transaction: any, docRef: any) => {
-    const docSnap = await transaction.get(docRef);
-    const currentDay = docSnap.data()?.currentDay || 1;
-    transaction.update(docRef, { currentDay: currentDay + 1 });
   };
 
   if (loading) {
@@ -202,36 +202,37 @@ const WorkoutDetailScreen: React.FC = () => {
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>{dayTitle}</Text>
 
-        {exercises.map((ex, exIndex) => {
-          const sets = progress[exIndex];
-          const complete = isExerciseComplete(sets);
-          const isPlaying = playingIndex === exIndex;
-          const last = lastSession?.[ex.name];
+        {exercises.map((ex, i) => {
+          const sets = progress[i];
+          const complete = isComplete(sets);
+          const last = lastSession?.[ex.name] ?? [];
+          const playing = playingIndex === i;
 
           return (
-            <View
-              key={exIndex}
-              style={[styles.card, complete && styles.cardComplete]}
-            >
+            <View key={i} style={[styles.card, complete && styles.cardComplete]}>
               <View style={styles.cardHeader}>
                 <Text style={[styles.cardTitle, complete && styles.cardTitleComplete]}>
                   {ex.name}
                 </Text>
-                <Pressable onPress={() => navigation.navigate('ProgressChart', { exerciseName: ex.name })}>
+                <Pressable
+                  onPress={() =>
+                    navigation.navigate('ProgressChart', { exerciseName: ex.name })
+                  }
+                >
                   <Ionicons name="stats-chart" size={20} color="#4fc3f7" />
                 </Pressable>
               </View>
 
               <Text style={styles.recommendation}>
-                Recommended: {ex.sets} sets × {ex.reps} reps
+                Recommended: {ex.setsCount}×{ex.repsCount}{' '}
+                {ex.type === 'time' ? 'sec' : 'reps'}
               </Text>
 
-              <TouchableOpacity onPress={() => togglePlay(exIndex)} style={styles.videoBox}>
-                {isPlaying ? (
+              <TouchableOpacity onPress={() => togglePlay(i)} style={styles.videoBox}>
+                {playing ? (
                   <Video
                     source={{ uri: ex.videoUri }}
                     style={styles.video}
-                    resizeMode="cover"
                     controls
                     paused={false}
                     onEnd={() => setPlayingIndex(null)}
@@ -244,37 +245,34 @@ const WorkoutDetailScreen: React.FC = () => {
                 )}
               </TouchableOpacity>
 
-              {sets.map((set, setIndex) => {
-                const lastSet = last?.[setIndex];
-                return (
-                  <View key={setIndex} style={styles.setBlock}>
-                    <View style={styles.setRow}>
-                      <Text style={styles.setLabel}>Set {setIndex + 1}:</Text>
-                      <TextInput
-                        style={styles.input}
-                        placeholder="reps"
-                        placeholderTextColor="#777"
-                        keyboardType="numeric"
-                        value={set.reps}
-                        onChangeText={text => handleInputChange(exIndex, setIndex, 'reps', text)}
-                      />
-                      <TextInput
-                        style={styles.input}
-                        placeholder="(lbs)"
-                        placeholderTextColor="#777"
-                        keyboardType="numeric"
-                        value={set.weight}
-                        onChangeText={text => handleInputChange(exIndex, setIndex, 'weight', text)}
-                      />
-                    </View>
-                    {lastSet && (
-                      <Text style={styles.lastWorkoutText}>
-                        Last: {lastSet.reps} reps @ {lastSet.weight} lbs
-                      </Text>
-                    )}
+              {sets.map((s, si) => (
+                <View key={si} style={styles.setBlock}>
+                  <View style={styles.setRow}>
+                    <Text style={styles.setLabel}>Set {si + 1}:</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="reps"
+                      placeholderTextColor="#777"
+                      keyboardType="numeric"
+                      value={s.reps}
+                      onChangeText={t => handleInputChange(i, si, 'reps', t)}
+                    />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="(lbs)"
+                      placeholderTextColor="#777"
+                      keyboardType="numeric"
+                      value={s.weight}
+                      onChangeText={t => handleInputChange(i, si, 'weight', t)}
+                    />
                   </View>
-                );
-              })}
+                  {last[si] && (
+                    <Text style={styles.lastWorkoutText}>
+                      Last: {last[si].reps} reps @ {last[si].weight} lbs
+                    </Text>
+                  )}
+                </View>
+              ))}
             </View>
           );
         })}
@@ -286,23 +284,27 @@ const WorkoutDetailScreen: React.FC = () => {
 
         <Pressable
           style={[styles.saveButton, styles.secondaryButton]}
-          onPress={() => navigation.navigate('Main', {
-            screen: 'MainTabs',
-            params: { screen: 'Workout' },
-          })}
+          onPress={() =>
+            navigation.navigate('Main', {
+              screen: 'MainTabs',
+              params: { screen: 'Workout' },
+            })
+          }
         >
           <Ionicons name="arrow-back" size={20} color="#fff" style={{ marginRight: 8 }} />
           <Text style={styles.buttonText}>Back to Workout Hub</Text>
         </Pressable>
 
         {showPR && (
-          <PRCelebration visible={showPR} messages={prMessages} onClose={() => setShowPR(false)} />
+          <PRCelebration
+            visible={showPR}
+            messages={prMessages}
+            onClose={() => setShowPR(false)}
+          />
         )}
       </ScrollView>
 
-      {showToast && (
-        <Toast message="Workout saved successfully!" onClose={() => setShowToast(false)} />
-      )}
+      {showToast && <Toast message="Workout saved successfully!" onClose={() => setShowToast(false)} />}
     </LinearGradient>
   );
 };
