@@ -15,61 +15,93 @@ import { RootStackParamList } from '../App';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { auth, db } from '../firebase';
 import { doc, getDoc } from 'firebase/firestore';
-import { Timestamp } from 'firebase/firestore';
+import type { ProgramDay } from '../utils/types';
 
-interface ProgramDay {
-  title: string;
-  date: Timestamp;
-  exercises: { name: string; sets: number; reps: number }[];
+interface StoredState {
+  currentDayIndex: number;
 }
 
-interface StoredProgram {
-  days: ProgramDay[];
-  currentDay: number;
-}
+const formatExerciseName = (id: string): string => {
+  return id
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase()); // capitalize each word
+};
+
 
 const WorkoutScreen: React.FC = () => {
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const navigation =
+    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+
   const [loading, setLoading] = useState(true);
-  const [currentProgram, setCurrentProgram] = useState<StoredProgram | null>(null);
+  const [state, setState] = useState<StoredState | null>(null);
+  const [days, setDays] = useState<ProgramDay[]>([]);
   const [weeksArr, setWeeksArr] = useState<ProgramDay[][]>([]);
   const [selectedWeekIdx, setSelectedWeekIdx] = useState(0);
   const [selectedDayIdx, setSelectedDayIdx] = useState(0);
   const [showFullSchedule, setShowFullSchedule] = useState(false);
 
+  /* ───────── 1. LOAD PROGRAM ───────── */
   useEffect(() => {
     (async () => {
       const uid = auth.currentUser?.uid;
       if (!uid) return;
+
       try {
         const snap = await getDoc(doc(db, 'users', uid, 'program', 'active'));
-        if (snap.exists()) setCurrentProgram(snap.data() as StoredProgram);
+        if (snap.exists()) {
+          const data = snap.data();
+          setState({ currentDayIndex: data.metadata.currentDay - 1 });
+          setDays(data.days as ProgramDay[]);
+        }
+      } catch (err) {
+        console.error('Error loading program:', err);
       } finally {
         setLoading(false);
       }
     })();
   }, []);
 
+  /* ───────── 2. BUILD weeksArr ───────── */
   useEffect(() => {
-    if (!currentProgram) return;
+    if (!state || days.length === 0) return;
+
     const map: Record<number, ProgramDay[]> = {};
-    currentProgram.days.forEach(day => {
-      const m = day.title.match(/^Week (\d+)/);
-      const wk = m ? +m[1] : 1;
-      (map[wk] ||= []).push(day);
+    days.forEach((d) => {
+      const wk =
+        // prefer explicit field
+        // @ts-ignore (if you haven’t typed week yet)
+        d.week !== undefined ? d.week - 1
+        // fallback to “Week X” in title
+        : parseInt(d.title.match(/Week\s+(\d+)/)?.[1] ?? '1', 10) - 1;
+
+      (map[wk] ||= []).push(d);
     });
+
     const weeks = Object.keys(map)
-      .map(n => +n)
+      .map(Number)
       .sort((a, b) => a - b)
-      .map(n => map[n]);
+      .map((wk) =>
+        [...map[wk]].sort(
+          (a, b) =>
+            // @ts-ignore (if you haven’t typed day yet)
+            ((a.day ?? 0) as number) - ((b.day ?? 0) as number),
+        ),
+      );
+
     setWeeksArr(weeks);
 
-    const idx = currentProgram.currentDay - 1;
-    const perWeek = weeks[0]?.length || 1;
-    setSelectedWeekIdx(Math.floor(idx / perWeek));
-    setSelectedDayIdx(idx % perWeek);
-  }, [currentProgram]);
+    /* Position cursor on current day */
+    let remaining = state.currentDayIndex;
+    let w = 0;
+    while (w < weeks.length && remaining >= weeks[w].length) {
+      remaining -= weeks[w].length;
+      w++;
+    }
+    setSelectedWeekIdx(Math.min(w, weeks.length - 1));
+    setSelectedDayIdx(Math.max(0, remaining));
+  }, [state, days]);
 
+  /* ───────── 3. RENDER ───────── */
   if (loading) {
     return (
       <View style={styles.loader}>
@@ -78,17 +110,17 @@ const WorkoutScreen: React.FC = () => {
     );
   }
 
-  if (!currentProgram) {
+  if (!state || days.length === 0) {
     return (
       <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
         <View style={styles.content}>
-          <Text style={styles.title}>🏋️‍♂️ Workout Hub</Text>
-          <Text style={styles.subtitle}>No program found.</Text>
+          <Text style={styles.title}>🏋️ Workout Hub</Text>
+          <Text style={styles.subtitle}>No active program.</Text>
           <Pressable
             style={styles.generateButton}
-            onPress={() => navigation.navigate('ProgramPreview')}
+            onPress={() => navigation.navigate('ProgramList')}
           >
-            <Text style={styles.buttonText}>Generate Program</Text>
+            <Text style={styles.buttonText}>Choose a Program</Text>
           </Pressable>
         </View>
       </LinearGradient>
@@ -100,28 +132,21 @@ const WorkoutScreen: React.FC = () => {
 
   return (
     <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
-      {/* Header */}
+      {/* HEADER */}
       <View style={styles.header}>
         <Text style={styles.title}>Your Program</Text>
         <View style={styles.headerIcons}>
           <Pressable onPress={() => setShowFullSchedule(true)} style={styles.iconButton}>
             <Ionicons name="calendar-outline" size={24} color="#d32f2f" />
           </Pressable>
-          <Pressable
-            onPress={() => navigation.navigate('ExerciseLibrary')}
-            style={styles.iconButton}
-          >
+          <Pressable onPress={() => navigation.navigate('ExerciseLibrary')} style={styles.iconButton}>
             <Ionicons name="book-outline" size={24} color="#d32f2f" />
           </Pressable>
         </View>
       </View>
 
-      {/* Week Tabs */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.weekTabs}
-      >
+      {/* WEEK TABS */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.weekTabs}>
         {weeksArr.map((_, wi) => (
           <Pressable
             key={wi}
@@ -136,44 +161,91 @@ const WorkoutScreen: React.FC = () => {
         ))}
       </ScrollView>
 
-      {/* Day Tabs */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.dayTabs}
-      >
+      {/* DAY TABS */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dayTabs}>
         {daysThisWeek.map((_, di) => (
           <Pressable
             key={di}
             style={[styles.dayTab, selectedDayIdx === di && styles.dayTabSelected]}
             onPress={() => setSelectedDayIdx(di)}
           >
-            <Text style={styles.dayTabText}>
-              Day {selectedWeekIdx * daysThisWeek.length + di + 1}
-            </Text>
+            <Text style={styles.dayTabText}>Day {di + 1}</Text>
           </Pressable>
         ))}
       </ScrollView>
 
-      {/* Today’s Workout Preview */}
+      {/* WORKOUT PREVIEW */}
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.cardTitle}>{today?.title}</Text>
-        {today?.exercises.map((ex, idx) => (
-          <View key={idx} style={styles.exerciseRow}>
-            <Text style={styles.exerciseName}>{ex.name}</Text>
-            <Text style={styles.exerciseSets}>{ex.sets}×{ex.reps}</Text>
-          </View>
-        ))}
+        {today ? (
+          <>
+            <Text style={styles.cardTitle}>{today.title}</Text>
 
-        <Pressable
-          style={styles.detailButton}
-          onPress={() => navigation.navigate('WorkoutDetail')}
-        >
-          <Text style={styles.detailButtonText}>Start Workout</Text>
-        </Pressable>
+            {/* Warm-up */}
+            <Text style={styles.sectionHeader}>Warm-up</Text>
+            {today.warmup.map((blk, i) => (
+              <View
+                key={`wu-${i}`}
+                style={[
+                  styles.exerciseRow,
+                  i % 2 === 1 ? styles.rowAlt : undefined, // ✅ no “0” anymore
+                ]}
+              >
+                <Text style={styles.exerciseName}>{formatExerciseName(blk.id)}</Text>
+                <Text style={styles.exerciseSets}>{blk.repsOrDuration}</Text>
+              </View>
+            ))}
+
+            {/* Main exercises */}
+            <Text style={styles.sectionHeader}>Exercises</Text>
+            {today.exercises.map((blk, i) => (
+              <View
+                key={`ex-${i}`}
+                style={[
+                  styles.exerciseRow,
+                  i % 2 === 1 ? styles.rowAlt : undefined,
+                ]}
+              >
+                <Text style={styles.exerciseName}>{formatExerciseName(blk.id)}</Text>
+                <Text style={styles.exerciseSets}>{blk.repsOrDuration}</Text>
+              </View>
+            ))}
+
+            {/* Cool-down */}
+            <Text style={styles.sectionHeader}>Cool-down</Text>
+            {today.cooldown.map((blk, i) => (
+              <View
+                key={`cd-${i}`}
+                style={[
+                  styles.exerciseRow,
+                  i % 2 === 1 ? styles.rowAlt : undefined,
+                ]}
+              >
+                <Text style={styles.exerciseName}>{formatExerciseName(blk.id)}</Text>
+                <Text style={styles.exerciseSets}>{blk.repsOrDuration}</Text>
+              </View>
+            ))}
+
+            {/* Start workout */}
+            <Pressable
+  style={styles.detailButton}
+  onPress={() =>
+    navigation.navigate('WorkoutDetail', {
+      day: today,
+      weekIdx: selectedWeekIdx,
+      dayIdx: selectedDayIdx,
+    })
+  }
+>
+  <Text style={styles.detailButtonText}>Start Workout</Text>
+</Pressable>
+
+          </>
+        ) : (
+          <Text style={styles.subtitle}>No workout for this day.</Text>
+        )}
       </ScrollView>
 
-      {/* Full Schedule Modal */}
+      {/* FULL-SCHEDULE MODAL */}
       <Modal visible={showFullSchedule} animationType="slide">
         <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
           <View style={styles.modalHeader}>
@@ -182,12 +254,15 @@ const WorkoutScreen: React.FC = () => {
               <Ionicons name="close-circle" size={28} color="#d32f2f" />
             </Pressable>
           </View>
+
           <ScrollView contentContainerStyle={styles.content}>
             {weeksArr.map((week, wi) => (
               <View key={wi} style={styles.weekBlock}>
                 <Text style={styles.weekHeader}>Week {wi + 1}</Text>
                 {week.map((day, di) => (
-                  <Text key={di} style={styles.dayItem}>{day.title}</Text>
+                  <Text key={di} style={styles.dayItem}>
+                    {day.title}
+                  </Text>
                 ))}
               </View>
             ))}
@@ -198,9 +273,11 @@ const WorkoutScreen: React.FC = () => {
   );
 };
 
+/* ───────── STYLES ───────── */
 const styles = StyleSheet.create({
   container: { flex: 1 },
   loader: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -210,59 +287,99 @@ const styles = StyleSheet.create({
   headerIcons: { flexDirection: 'row' },
   iconButton: { marginLeft: 12 },
 
-  weekTabs: { paddingHorizontal: 8 },
-  weekTab: {
-    padding: 10,
-    marginHorizontal: 4,
-    borderRadius: 6,
-    backgroundColor: '#333',
-  },
-  weekTabSelected: { backgroundColor: '#d32f2f' },
-  weekTabText: { color: '#fff', fontWeight: '600' },
+  // WEEK TABS CONTAINER
+weekTabs: {
+  paddingHorizontal: 12,
+  paddingTop: 10, // more top padding
+  paddingBottom: 6,
+},
 
-  dayTabs: { paddingHorizontal: 8 },
-  dayTab: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    margin: 4,
-    borderRadius: 6,
-    backgroundColor: '#333',
-  },
-  dayTabSelected: { backgroundColor: '#d32f2f' },
-  dayTabText: { color: '#fff' },
+weekTab: {
+  paddingVertical: 12, // increased height
+  paddingHorizontal: 26, // even wider
+  marginRight: 12,
+  marginBottom: 10,
+  borderRadius: 20,
+  backgroundColor: '#333',
+  minWidth: 120,
+  minHeight: 45,
+  alignItems: 'center',
+},
+weekTabSelected: {
+  backgroundColor: '#d32f2f',
+  borderWidth: 1,
+  borderColor: '#fff',
+},
+weekTabText: {
+  color: '#fff',
+  fontWeight: '700',
+  fontSize: 16, // slightly larger
+},
 
-  content: { padding: 16 },
+dayTabs: {
+  paddingHorizontal: 12,
+  paddingBottom: 10,
+  paddingTop: 4,
+  marginTop: 2,
+},
+
+dayTab: {
+  paddingVertical: 10, // increased height
+  paddingHorizontal: 24,
+  marginRight: 12,
+  marginBottom: 8,
+  borderRadius: 20,
+  backgroundColor: '#333',
+  minWidth: 100,
+  minHeight: 45,
+  alignItems: 'center',
+},
+dayTabSelected: {
+  backgroundColor: '#d32f2f',
+  borderWidth: 1,
+  borderColor: '#fff',
+},
+dayTabText: {
+  color: '#fff',
+  fontWeight: '700',
+  fontSize: 15,
+},
+
+
+  // CONTENT BELOW PILLS
+  content: { padding: 16, paddingBottom: 24 },
   title: { fontSize: 24, fontWeight: '700', color: '#d32f2f' },
   subtitle: { fontSize: 16, color: '#ccc', marginVertical: 12 },
-
   cardTitle: { fontSize: 20, fontWeight: '600', color: '#fff', marginBottom: 12 },
+
+  sectionHeader: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#d32f2f',
+    marginTop: 20,
+    marginBottom: 6,
+    borderBottomWidth: 2,
+    borderBottomColor: '#d32f2f',
+  },
+
   exerciseRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingVertical: 8,
-    borderBottomColor: '#444',
-    borderBottomWidth: 1,
+    paddingHorizontal: 6,
   },
+  rowAlt: { backgroundColor: 'rgba(255,255,255,0.05)' },
   exerciseName: { color: '#fff', fontSize: 16 },
   exerciseSets: { color: '#ccc', fontSize: 16 },
 
   detailButton: {
-    marginTop: 20,
+    marginTop: 24,
     backgroundColor: '#d32f2f',
-    padding: 12,
-    borderRadius: 8,
+    padding: 14,
+    borderRadius: 10,
     alignItems: 'center',
   },
-  detailButtonText: { color: '#fff', fontWeight: '700' },
-
-  generateButton: {
-    marginTop: 20,
-    alignSelf: 'center',
-    backgroundColor: '#d32f2f',
-    padding: 12,
-    borderRadius: 8,
-  },
-  buttonText: { color: '#fff', fontWeight: '700' },
+  detailButtonText: { color: '#fff', fontWeight: '700', fontSize: 16 },
 
   modalHeader: {
     flexDirection: 'row',
@@ -273,6 +390,16 @@ const styles = StyleSheet.create({
   weekBlock: { marginBottom: 16 },
   weekHeader: { fontSize: 18, color: '#d32f2f', fontWeight: '600' },
   dayItem: { color: '#fff', marginLeft: 12, marginVertical: 2 },
+
+  generateButton: {
+    marginTop: 20,
+    alignSelf: 'center',
+    backgroundColor: '#d32f2f',
+    padding: 12,
+    borderRadius: 8,
+  },
+  buttonText: { color: '#fff', fontWeight: '700' },
 });
+
 
 export default WorkoutScreen;

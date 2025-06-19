@@ -1,157 +1,151 @@
-import React, { useEffect, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  ActivityIndicator,
-  Pressable,
-} from 'react-native';
-import LinearGradient from 'react-native-linear-gradient';
-import { useNavigation } from '@react-navigation/native';
+import React from 'react';
+import { View, Text, Pressable, StyleSheet, ScrollView } from 'react-native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../App';
+import { PROGRAM_TEMPLATES } from '../utils/ProgramTemplates';
+import Ionicons from 'react-native-vector-icons/Ionicons';
+
 import { auth, db } from '../firebase';
-import { doc, getDoc } from 'firebase/firestore';
-import { ProgramDay } from '../utils/buildProgramFromGoals';
+import { doc, setDoc, Timestamp } from 'firebase/firestore';
 
-const ProgramPreviewScreen = () => {
-  const navigation = useNavigation();
-  const [program, setProgram] = useState<ProgramDay[] | null>(null);
-  const [loading, setLoading] = useState(true);
+type ProgramDay = {
+  week: number;
+  day: number;
+  title: string;
+};
 
-  useEffect(() => {
-    const fetchProgram = async () => {
+const ProgramPreviewScreen: React.FC = () => {
+  const navigation =
+    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const route = useRoute<RouteProp<RootStackParamList, 'ProgramPreview'>>();
+  const { programId } = route.params;
+
+  /* -------------------------------------------------------------------- */
+  /* look up program template locally                                     */
+  /* -------------------------------------------------------------------- */
+  const program = PROGRAM_TEMPLATES.find((p) => p.id === programId);
+
+  if (!program) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.error}>Program not found</Text>
+      </View>
+    );
+  }
+
+  /* -------------------------------------------------------------------- */
+  /* save full program + metadata to Firestore and move to Workout tab    */
+  /* -------------------------------------------------------------------- */
+  const handleStartProgram = async () => {
+    try {
       const uid = auth.currentUser?.uid;
-      if (!uid) return;
-      try {
-        const docRef = doc(db, 'users', uid, 'program', 'active');
-        const snapshot = await getDoc(docRef);
-        if (snapshot.exists()) {
-          const data = snapshot.data();
-          if (data && Array.isArray(data.days)) {
-            setProgram(data.days as ProgramDay[]);
-          } else {
-            console.warn('⚠️ No "days" array found in program data.');
-          }
-        } else {
-          console.warn('⚠️ Program document not found.');
-        }
-      } catch (err) {
-        console.error('❌ Error fetching program:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
+      if (!uid) throw new Error('User not authenticated');
 
-    fetchProgram();
-  }, []);
+      await setDoc(
+        doc(db, 'users', uid, 'program', 'active'),
+        {
+          programId: program.id,
+          metadata: {
+            currentDay: 1,
+            startDate: Timestamp.now(),
+          },
+          days: program.days,
+        },
+        { merge: false }
+      );
 
-  if (loading) {
-    return (
-      <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.screen}>
-        <ActivityIndicator size="large" color="#4fc3f7" />
-        <Text style={styles.loadingText}>Loading Program...</Text>
-      </LinearGradient>
-    );
-  }
+      navigation.navigate('Main', {
+        screen: 'MainTabs',
+        params: { screen: 'Workout' },
+      });
+    } catch (err) {
+      console.error('Error starting program:', err);
+      alert('There was an issue starting the program.');
+    }
+  };
 
-  if (!program || program.length === 0) {
-    return (
-      <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.screen}>
-        <Text style={styles.message}>No program found. Please generate one first.</Text>
-        <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
-          <Text style={styles.backText}>⬅ Back to Dashboard</Text>
-        </Pressable>
-      </LinearGradient>
-    );
-  }
-
+  /* -------------------------------------------------------------------- */
+  /* UI                                                                   */
+  /* -------------------------------------------------------------------- */
   return (
-    <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.title}>📆 Your Training Program</Text>
-        {program.map((day, index) => (
-          <View key={index} style={styles.dayCard}>
-            <Text style={styles.dayTitle}>{day.title}</Text>
-            {Array.isArray(day.exercises) && day.exercises.length > 0 ? (
-              day.exercises.map((ex: any, i: number) => (
-                <Text key={i} style={styles.exercise}>
-                  • {ex.name} — {ex.sets ?? '?'} x {ex.reps ?? '?'}
-                </Text>
-              ))
-            ) : (
-              <Text style={styles.exercise}>⚠️ No exercises listed.</Text>
-            )}
-          </View>
-        ))}
-        <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
-          <Text style={styles.backText}>⬅ Back to Dashboard</Text>
-        </Pressable>
-      </ScrollView>
-    </LinearGradient>
+    <ScrollView style={styles.container}>
+      <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
+        <Ionicons name="chevron-back" size={24} color="#fff" />
+        <Text style={styles.backText}>Back</Text>
+      </Pressable>
+
+      <Text style={styles.title}>{program.name}</Text>
+      <Text style={styles.description}>{program.description}</Text>
+      <Text style={styles.meta}>
+        {program.durationWeeks} weeks · {program.daysPerWeek} days / week
+      </Text>
+
+      <Text style={styles.section}>Weekly overview</Text>
+      {program.days.slice(0, 7).map((day: ProgramDay, idx) => (
+        <View key={idx} style={styles.dayCard}>
+          <Text style={styles.dayTitle}>
+            Week {day.week} · Day {day.day}
+          </Text>
+          <Text style={styles.dayDesc}>{day.title}</Text>
+        </View>
+      ))}
+
+      <Pressable style={styles.startButton} onPress={handleStartProgram}>
+        <Text style={styles.startButtonText}>Start this program</Text>
+      </Pressable>
+    </ScrollView>
   );
 };
 
+export default ProgramPreviewScreen;
+
+/* ---------------------------------------------------------------------- */
+/* styles                                                                 */
+/* ---------------------------------------------------------------------- */
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
   container: {
-    padding: 24,
-    paddingBottom: 40,
-  },
-  title: {
-    fontSize: 24,
-    color: '#fff',
-    fontWeight: '700',
-    marginBottom: 24,
-    textAlign: 'center',
-  },
-  loadingText: {
-    marginTop: 12,
-    color: '#ccc',
-    fontSize: 16,
-  },
-  message: {
-    color: '#aaa',
-    fontSize: 16,
-    textAlign: 'center',
-    paddingHorizontal: 32,
-    marginBottom: 20,
-  },
-  dayCard: {
-    backgroundColor: '#1e1e2e',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 6,
-  },
-  dayTitle: {
-    fontSize: 18,
-    color: '#4fc3f7',
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  exercise: {
-    color: '#ccc',
-    fontSize: 14,
-    marginBottom: 4,
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingTop: 40,
+    backgroundColor: '#0E0E0E',
   },
   backButton: {
-    marginTop: 20,
-    alignSelf: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    backgroundColor: '#2a2a2a',
-    borderRadius: 8,
-    borderColor: '#4fc3f7',
-    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
   },
-  backText: {
-    color: '#4fc3f7',
-    fontSize: 16,
+  backText: { color: '#FFF', fontSize: 16, marginLeft: 4 },
+  title: { fontSize: 26, fontWeight: 'bold', color: '#FFF', marginBottom: 8 },
+  description: { fontSize: 16, color: '#CCC', marginBottom: 8 },
+  meta: { fontSize: 14, color: '#777', marginBottom: 16 },
+  section: {
+    fontSize: 18,
+    color: '#FFF',
+    marginBottom: 8,
+    marginTop: 16,
     fontWeight: '600',
   },
+  dayCard: {
+    backgroundColor: '#1C1C1C',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 10,
+  },
+  dayTitle: { fontSize: 14, color: '#FFF', fontWeight: '600' },
+  dayDesc: { fontSize: 13, color: '#AAA' },
+  startButton: {
+    backgroundColor: '#FF3C38',
+    paddingVertical: 14,
+    borderRadius: 10,
+    marginTop: 24,
+    marginBottom: 48,
+  },
+  startButtonText: {
+    color: '#FFF',
+    fontWeight: '600',
+    textAlign: 'center',
+    fontSize: 16,
+  },
+  error: { padding: 24, color: 'red', fontSize: 16 },
 });
-
-export default ProgramPreviewScreen;

@@ -13,7 +13,6 @@ import { auth, db } from '../firebase';
 import {
   doc,
   getDoc,
-  setDoc,
   collection,
   getDocs,
   orderBy,
@@ -21,174 +20,229 @@ import {
   Timestamp,
   writeBatch,
   increment,
+  limit,
 } from 'firebase/firestore';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import LinearGradient from 'react-native-linear-gradient';
 import Video from 'react-native-video';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
 import PRCelebration from '../components/PRCelebration';
 import Toast from '../components/Toast';
-import { RouteProp } from '@react-navigation/native';
 import { checkAndAdjustRestDays } from '../utils/performanceMonitor';
+import type { ExerciseBlock } from '../utils/types';
 
-// Types for raw vs. enriched exercises
-interface RawExercise {
-  name: string;
-  videoUri?: string;
+/* ───────── helpers ───────── */
+const pretty = (id: string) =>
+  id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+const parseRepsFromString = (str?: string): number | null => {
+  if (!str) return null;
+  const m = str.match(/\d+/);
+  return m ? parseInt(m[0]) : null;
+};
+
+/* ───────── types ───────── */
+interface FirestoreExercise {
+  name?: string;
   videoUrl?: string;
   sets?: number;
   reps?: number;
   repsOrTime?: number;
   type?: 'reps' | 'time';
 }
-interface EnrichedExercise extends RawExercise {
+
+interface EnrichedExercise {
+  id: string;
+  name: string;
   videoUri: string;
-  setsCount: number;
+  setsCount: number;  // used only for main section
   repsCount: number;
+  rpe: number;
+  type: 'reps' | 'time';
 }
 
 type WorkoutDetailRoute = RouteProp<RootStackParamList, 'WorkoutDetail'>;
 
+/* ───────── component ───────── */
 const WorkoutDetailScreen: React.FC = () => {
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList, 'WorkoutDetail'>>();
-  const route = useRoute<WorkoutDetailRoute>();
-  const fromAdapt = route.params?.adapt ?? false;
+  const navigation =
+    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { params } = useRoute<WorkoutDetailRoute>();
+  const { day, weekIdx, dayIdx } = params;
 
-  const [loading, setLoading] = useState<boolean>(true);
-  const [dayTitle, setDayTitle] = useState<string>('');
-  const [exercises, setExercises] = useState<EnrichedExercise[]>([]);
-  const [progress, setProgress] = useState<{ reps: string; weight: string }[][]>([]);
-  const [lastSession, setLastSession] = useState<Record<string, { reps: string; weight: string }[]> | null>(null);
-  const [playingIndex, setPlayingIndex] = useState<number | null>(null);
-  const [showPR, setShowPR] = useState<boolean>(false);
-  const [prMessages, setPRMessages] = useState<string[]>([]);
-  const [showToast, setShowToast] = useState<boolean>(false);
+  /* ── state ── */
+  const [loading, setLoading] = useState(true);
+  const [warmup, setWarmup] = useState<EnrichedExercise[]>([]);
+  const [main, setMain] = useState<EnrichedExercise[]>([]);
+  const [cooldown, setCooldown] = useState<EnrichedExercise[]>([]);
+  const [progress, setProgress] = useState<{ reps: string; weight: string }[][]>(
+    [],
+  );
+  const [lastSession, setLastSession] = useState<
+    Record<string, { reps: string; weight: string }[]>
+  >({});
+  const [playing, setPlaying] = useState<string | null>(null);
+  const [showPR, setShowPR] = useState(false);
+  const [prMsgs, setPrMsgs] = useState<string[]>([]);
+  const [showToast, setShowToast] = useState(false);
 
-  useEffect(() => {
-    const fetchWorkout = async () => {
-      try {
-        const uid = auth.currentUser?.uid;
-        if (!uid) return;
+  /* ── enrich a block with Firestore meta ── */
+  const enrich = async (blk: ExerciseBlock): Promise<EnrichedExercise> => {
+    const snap = await getDoc(doc(db, 'exercises', blk.id));
+    const data = snap.exists() ? (snap.data() as FirestoreExercise) : {};
+    return {
+      id: blk.id,
+      name: data.name ?? pretty(blk.id),
+      videoUri: data.videoUrl && data.videoUrl.trim() !== '' 
+  ? data.videoUrl 
+  : 'https://www.w3schools.com/html/mov_bbb.mp4',
 
-        // Load active program
-        const progRef = doc(db, 'users', uid, 'program', 'active');
-        const progSnap = await getDoc(progRef);
-        if (!progSnap.exists()) throw new Error('No active program');
-        const progData: any = progSnap.data();
-
-        const idx = (progData.currentDay || 1) - 1;
-        const day = progData.days[idx];
-        setDayTitle(day.title);
-
-        // Enrich raw exercises
-        const enriched = (day.exercises as RawExercise[]).map((ex: RawExercise): EnrichedExercise => ({
-          ...ex,
-          videoUri: ex.videoUri || ex.videoUrl || 'https://www.w3schools.com/html/mov_bbb.mp4',
-          setsCount: ex.sets ?? 3,
-          repsCount: ex.reps ?? ex.repsOrTime ?? 10,
-        }));
-
-        setExercises(enriched);
-        setProgress(
-          enriched.map(ex =>
-            Array.from({ length: ex.setsCount }, () => ({ reps: '', weight: '' }))
-          )
-        );
-
-        // Load last session for comparison
-        const logsRef = collection(db, 'users', uid, 'workoutLogs');
-        const logsQ = query(logsRef, orderBy('completedAt', 'desc'));
-        const logsSnap = await getDocs(logsQ);
-        const lastData: Record<string, { reps: string; weight: string }[]> = {};
-        const latest = logsSnap.docs[0]?.data();
-        if (latest) {
-          (latest.exercises as any[]).forEach((ex: any) => {
-            lastData[ex.name] = ex.sets;
-          });
-        }
-        setLastSession(lastData);
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setLoading(false);
-      }
+      setsCount: data.sets ?? blk.sets ?? 3,
+      repsCount: data.reps ?? parseRepsFromString(blk.repsOrDuration) ?? 8,
+      rpe: blk.rpe,
+      type:
+        data.type ??
+        (blk.repsOrDuration.toLowerCase().includes('sec') ? 'time' : 'reps'),
     };
-    fetchWorkout();
-  }, []);
-
-  const handleInputChange = (
-    exIndex: number,
-    setIndex: number,
-    field: 'reps' | 'weight',
-    value: string
-  ) => {
-    setProgress(prev => {
-      const updated = [...prev];
-      updated[exIndex][setIndex][field] = value;
-      return updated;
-    });
   };
 
-  const isComplete = (sets: { reps: string; weight: string }[]) =>
-    sets.every(s => s.reps && s.weight);
+  /* ── fetch & build all three sections ── */
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const [w, m, c] = await Promise.all([
+          Promise.all(day.warmup.map(enrich)),
+          Promise.all(day.exercises.map(enrich)),
+          Promise.all(day.cooldown.map(enrich)),
+        ]);
 
-  const togglePlay = (index: number) =>
-    setPlayingIndex(prev => (prev === index ? null : index));
+        /* init progress for main only */
+        const progInit = m.map(ex =>
+          Array.from({ length: ex.setsCount }).map(() => ({
+            reps: '',
+            weight: '',
+          })),
+        );
 
-  const saveWorkoutProgress = async () => {
+        /* last-session lookup for PR hints */
+        const uid = auth.currentUser?.uid;
+        const last: Record<
+          string,
+          { reps: string; weight: string }[]
+        > = {};
+        if (uid) {
+          for (const ex of m) {
+            const q = await getDocs(
+              query(
+                collection(db, 'users', uid, 'workoutLogs'),
+                orderBy('completedAt', 'desc'),
+                limit(5),
+              ),
+            );
+            for (const d of q.docs) {
+              const dat: any = d.data();
+              const hit = dat.exercises.find((e: any) => e.name === ex.id);
+              if (hit) {
+                last[ex.id] = hit.sets;
+                break;
+              }
+            }
+          }
+        }
+
+        if (alive) {
+          setWarmup(w);
+          setMain(m);
+          setCooldown(c);
+          setProgress(progInit);
+          setLastSession(last);
+          setLoading(false);
+        }
+      } catch (err) {
+        console.error(err);
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [day]);
+
+  /* ── helpers ── */
+  const updateInput = (
+    exIdx: number,
+    setIdx: number,
+    field: 'reps' | 'weight',
+    val: string,
+  ) =>
+    setProgress(p => {
+      const n = [...p];
+      n[exIdx][setIdx][field] = val;
+      return n;
+    });
+
+  const setsDone = (arr: { reps: string; weight: string }[]) =>
+    arr.every(s => s.reps && s.weight);
+
+  const togglePlay = (id: string) =>
+    setPlaying(prev => (prev === id ? null : id));
+
+  /* ── save workout ── */
+  const saveWorkout = async () => {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
 
-    const now = new Date();
-    const id = now.toISOString().replace(/[:.]/g, '-');
+    const now = Timestamp.now();
+    const logId = Date.now().toString();
+
     const log = {
-      dayTitle,
-      completedAt: Timestamp.fromDate(now),
-      exercises: exercises.map((ex, i) => ({ name: ex.name, sets: progress[i] })),
+      dayTitle: day.title,
+      weekIdx,
+      dayIdx,
+      completedAt: now,
+      exercises: main.map((ex, i) => ({
+        name: ex.id,
+        sets: progress[i],
+      })),
     };
 
     try {
-      // Batch: write log + increment day
       const batch = writeBatch(db);
-      batch.set(doc(db, 'users', uid, 'workoutLogs', id), log);
-      batch.update(doc(db, 'users', uid, 'program', 'active'), { currentDay: increment(1) });
+      batch.set(doc(db, 'users', uid, 'workoutLogs', logId), log);
+      batch.update(doc(db, 'users', uid, 'program', 'active'), {
+        currentDay: increment(1),
+      });
       await batch.commit();
-
       await checkAndAdjustRestDays(uid);
 
-      // PR detection
-      const allLogs = await getDocs(collection(db, 'users', uid, 'workoutLogs'));
-      const PRs: Record<string, number> = {};
-      allLogs.forEach(d => {
-        const data: any = d.data();
-        (data.exercises as any[]).forEach(ex =>
-          ex.sets.forEach((s: any) => {
-            const w = parseFloat(s.weight);
-            if (!isNaN(w)) PRs[ex.name] = Math.max(PRs[ex.name] || 0, w);
-          })
-        );
-      });
-      const newPRs: string[] = [];
-      log.exercises.forEach(ex =>
-        ex.sets.forEach((s: any) => {
-          const w = parseFloat(s.weight);
-          if (!isNaN(w) && w > (PRs[ex.name] || 0)) newPRs.push(`${ex.name}: ${w} lbs`);
-        })
+      /* PR detection */
+      const prs: Record<string, number> = {};
+      main.forEach((ex, i) =>
+        progress[i].forEach(s => {
+          const w = Number(s.weight);
+          if (!isNaN(w)) prs[ex.id] = Math.max(prs[ex.id] || 0, w);
+        }),
+      );
+      const newMsgs = Object.entries(prs).map(
+        ([k, v]) => `${pretty(k)}: ${v} lbs`,
       );
 
       setShowToast(true);
-      if (newPRs.length) {
-        setPRMessages(newPRs);
+      if (newMsgs.length) {
+        setPrMsgs(newMsgs);
         setShowPR(true);
       }
+      navigation.goBack();
     } catch (e) {
       console.error(e);
-      alert('Failed to save workout');
+      alert('Could not save workout.');
     }
   };
 
+  /* ── UI ── */
   if (loading) {
     return (
       <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
@@ -197,118 +251,152 @@ const WorkoutDetailScreen: React.FC = () => {
     );
   }
 
-  return (
-    <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.title}>{dayTitle}</Text>
+  const Section = ({
+    title,
+    list,
+    trackSets,
+  }: {
+    title: string;
+    list: EnrichedExercise[];
+    trackSets?: boolean;
+  }) => (
+    <>
+      <Text style={styles.sectionHeader}>{title}</Text>
+      {list.map((ex, i) => {
+        const done = trackSets ? setsDone(progress[i]) : false;
+        const last = lastSession[ex.id] ?? [];
+        const play = playing === ex.id;
 
-        {exercises.map((ex, i) => {
-          const sets = progress[i];
-          const complete = isComplete(sets);
-          const last = lastSession?.[ex.name] ?? [];
-          const playing = playingIndex === i;
-
-          return (
-            <View key={i} style={[styles.card, complete && styles.cardComplete]}>
-              <View style={styles.cardHeader}>
-                <Text style={[styles.cardTitle, complete && styles.cardTitleComplete]}>
-                  {ex.name}
-                </Text>
+        return (
+          <View key={ex.id} style={[styles.card, done && styles.cardDone]}>
+            <View style={styles.cardHeader}>
+              <Text
+                style={[styles.cardTitle, done && styles.cardTitleDone]}>
+                {ex.name}
+              </Text>
+              {trackSets && (
                 <Pressable
                   onPress={() =>
-                    navigation.navigate('ProgressChart', { exerciseName: ex.name })
-                  }
-                >
+                    navigation.navigate('ProgressChart', {
+                      exerciseName: ex.id,
+                    })
+                  }>
                   <Ionicons name="stats-chart" size={20} color="#4fc3f7" />
                 </Pressable>
-              </View>
+              )}
+            </View>
 
-              <Text style={styles.recommendation}>
-                Recommended: {ex.setsCount}×{ex.repsCount}{' '}
-                {ex.type === 'time' ? 'sec' : 'reps'}
-              </Text>
+            <Text style={styles.recommend}>
+              {ex.setsCount}×{ex.repsCount}{' '}
+              {ex.type === 'time' ? 'sec' : 'reps'} • RPE {ex.rpe}
+            </Text>
 
-              <TouchableOpacity onPress={() => togglePlay(i)} style={styles.videoBox}>
-                {playing ? (
+            {!!ex.videoUri && (
+              <TouchableOpacity
+                onPress={() => togglePlay(ex.id)}
+                style={styles.videoBox}>
+                {play ? (
                   <Video
                     source={{ uri: ex.videoUri }}
                     style={styles.video}
                     controls
                     paused={false}
-                    onEnd={() => setPlayingIndex(null)}
+                    onEnd={() => setPlaying(null)}
                   />
                 ) : (
                   <View style={styles.playOverlay}>
-                    <Ionicons name="play-circle-outline" size={42} color="#fff" />
+                    <Ionicons
+                      name="play-circle-outline"
+                      size={42}
+                      color="#fff"
+                    />
                     <Text style={styles.playText}>Play Video</Text>
                   </View>
                 )}
               </TouchableOpacity>
+            )}
 
-              {sets.map((s, si) => (
+            {trackSets &&
+              progress[i].map((s, si) => (
                 <View key={si} style={styles.setBlock}>
                   <View style={styles.setRow}>
-                    <Text style={styles.setLabel}>Set {si + 1}:</Text>
+                    <Text style={styles.setLabel}>Set {si + 1}</Text>
                     <TextInput
                       style={styles.input}
                       placeholder="reps"
                       placeholderTextColor="#777"
                       keyboardType="numeric"
                       value={s.reps}
-                      onChangeText={t => handleInputChange(i, si, 'reps', t)}
+                      onChangeText={t => updateInput(i, si, 'reps', t)}
                     />
                     <TextInput
                       style={styles.input}
-                      placeholder="(lbs)"
+                      placeholder="lbs"
                       placeholderTextColor="#777"
                       keyboardType="numeric"
                       value={s.weight}
-                      onChangeText={t => handleInputChange(i, si, 'weight', t)}
+                      onChangeText={t => updateInput(i, si, 'weight', t)}
                     />
                   </View>
                   {last[si] && (
-                    <Text style={styles.lastWorkoutText}>
+                    <Text style={styles.lastTxt}>
                       Last: {last[si].reps} reps @ {last[si].weight} lbs
                     </Text>
                   )}
                 </View>
               ))}
-            </View>
-          );
-        })}
+          </View>
+        );
+      })}
+    </>
+  );
 
-        <Pressable style={styles.saveButton} onPress={saveWorkoutProgress}>
+  return (
+    <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
+      <ScrollView contentContainerStyle={styles.content}>
+        <Text style={styles.title}>{day.title}</Text>
+
+        {/* WARM-UP */}
+        <Section title="Warm-up" list={warmup} />
+
+        {/* MAIN */}
+        <Section title="Exercises" list={main} trackSets />
+
+        {/* COOL-DOWN */}
+        <Section title="Cool-down" list={cooldown} />
+
+        <Pressable style={styles.saveBtn} onPress={saveWorkout}>
           <Ionicons name="save" size={20} color="#fff" style={{ marginRight: 8 }} />
-          <Text style={styles.buttonText}>Save Workout</Text>
+          <Text style={styles.btnTxt}>Save Workout</Text>
         </Pressable>
 
         <Pressable
-          style={[styles.saveButton, styles.secondaryButton]}
-          onPress={() =>
-            navigation.navigate('Main', {
-              screen: 'MainTabs',
-              params: { screen: 'Workout' },
-            })
-          }
-        >
+          style={[styles.saveBtn, styles.backBtn]}
+          onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={20} color="#fff" style={{ marginRight: 8 }} />
-          <Text style={styles.buttonText}>Back to Workout Hub</Text>
+          <Text style={styles.btnTxt}>Back</Text>
         </Pressable>
 
         {showPR && (
           <PRCelebration
             visible={showPR}
-            messages={prMessages}
+            messages={prMsgs}
             onClose={() => setShowPR(false)}
           />
         )}
       </ScrollView>
 
-      {showToast && <Toast message="Workout saved successfully!" onClose={() => setShowToast(false)} />}
+      {showToast && (
+        <Toast
+          message="Workout saved successfully!"
+          onClose={() => setShowToast(false)}
+        />
+      )}
     </LinearGradient>
   );
 };
 
+/* ───────── styles ───────── */
 const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { padding: 24 },
@@ -319,45 +407,44 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     textAlign: 'center',
   },
+
+  sectionHeader: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#d32f2f',
+    marginTop: 18,
+    marginBottom: 8,
+    borderBottomWidth: 2,
+    borderBottomColor: '#d32f2f',
+  },
+
+  /* card */
   card: {
     backgroundColor: '#2a2a2a',
     borderRadius: 10,
     padding: 16,
     marginBottom: 16,
   },
-  cardComplete: {
-    opacity: 0.6,
-    borderColor: '#4caf50',
-    borderWidth: 1,
-  },
+  cardDone: { opacity: 0.6, borderColor: '#4caf50', borderWidth: 1 },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 8,
   },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  cardTitleComplete: {
-    textDecorationLine: 'line-through',
-    color: '#aaa',
-  },
-  recommendation: {
+  cardTitle: { fontSize: 18, fontWeight: '600', color: '#fff' },
+  cardTitleDone: { textDecorationLine: 'line-through', color: '#aaa' },
+  recommend: {
     color: '#aaa',
     fontSize: 13,
     marginBottom: 8,
     fontStyle: 'italic',
   },
+
+  /* sets */
   setBlock: { marginBottom: 6 },
-  setRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  setLabel: { color: '#ccc', width: 55 },
+  setRow: { flexDirection: 'row', alignItems: 'center' },
+  setLabel: { color: '#ccc', width: 60, marginRight: 8 },
   input: {
     backgroundColor: '#1e1e1e',
     color: '#fff',
@@ -367,14 +454,17 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     borderWidth: 1,
     borderColor: '#333',
+    marginRight: 6,
   },
-  lastWorkoutText: {
+  lastTxt: {
     color: '#999',
     fontSize: 12,
     fontStyle: 'italic',
-    marginLeft: 55,
+    marginLeft: 60,
     marginBottom: 4,
   },
+
+  /* video */
   videoBox: {
     width: '100%',
     aspectRatio: 16 / 9,
@@ -388,7 +478,9 @@ const styles = StyleSheet.create({
   video: { width: '100%', height: '100%' },
   playOverlay: { alignItems: 'center', justifyContent: 'center' },
   playText: { color: '#fff', fontSize: 14, marginTop: 4 },
-  saveButton: {
+
+  /* buttons */
+  saveBtn: {
     backgroundColor: '#2a2a2a',
     borderWidth: 1.5,
     borderColor: '#d32f2f',
@@ -400,15 +492,8 @@ const styles = StyleSheet.create({
     marginTop: 24,
     justifyContent: 'center',
   },
-  secondaryButton: {
-    marginTop: 12,
-    borderColor: '#888',
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
+  backBtn: { marginTop: 12, borderColor: '#888' },
+  btnTxt: { color: '#fff', fontSize: 16, fontWeight: '600' },
 });
 
 export default WorkoutDetailScreen;

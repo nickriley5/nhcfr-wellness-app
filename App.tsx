@@ -7,6 +7,8 @@ import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityI
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from './firebase';
+import type { ProgramDay } from './utils/types'; // or wherever it's defined
+
 
 // Screens
 import DashboardScreen from './screens/DashboardScreen';
@@ -24,6 +26,7 @@ import PRTrackerScreen from './screens/PRTrackerScreen';
 import AdaptWorkoutScreen from './screens/AdaptWorkoutScreen';
 import GoalsScreen from './screens/GoalsScreen';
 import EditProfileScreen from './screens/EditProfileScreen';
+import ProgramListScreen from './screens/ProgramListScreen';
 import ProgramPreviewScreen from './screens/ProgramPreviewScreen';
 
 // Auth context
@@ -52,7 +55,12 @@ export type RootStackParamList = {
   Register: undefined;
   Main: NavigatorScreenParams<RootDrawerParamList>;
   CheckIn: undefined;
-  WorkoutDetail: { adapt?: boolean; from?: string } | undefined;
+   WorkoutDetail: {
+    day: ProgramDay;
+    weekIdx: number;
+    dayIdx: number;
+    adapt?: boolean;
+  };
   AdaptWorkout: undefined;
   ExerciseLibrary: undefined;
   ExerciseDetail: { exerciseId: string };
@@ -62,7 +70,9 @@ export type RootStackParamList = {
   Profile: undefined;
   Goals: undefined;
   EditProfile: undefined;
-  ProgramPreview: undefined;
+  ProgramList: undefined;
+  ProgramSelection: undefined;
+  ProgramPreview: { programId: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -150,6 +160,7 @@ const AppNavigator = () => {
     <Stack.Screen name="AdaptWorkout" component={AdaptWorkoutScreen} />
     <Stack.Screen name="Goals" component={GoalsScreen} />
     <Stack.Screen name="EditProfile" component={EditProfileScreen} />
+    <Stack.Screen name="ProgramList" component={ProgramListScreen} />
     <Stack.Screen name="ProgramPreview" component={ProgramPreviewScreen} />
   </>
 ) : (

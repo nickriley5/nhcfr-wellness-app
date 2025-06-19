@@ -32,12 +32,13 @@ import PerformanceGoalsModal from '../components/PerformanceGoalsModal';
 import EnvironmentCalendarModal from '../components/EnvironmentCalendarModal';
 import { generateProgramFromGoals } from '../utils/programGenerator';
 import { Exercise } from '../types';
+import type { ProgramDay } from '../utils/types';
 
-interface ProgramDay {
-  title: string; // e.g. "Week 2 · Day 3"
-  exercises: { name: string; sets: number; reps: number }[];
-}
+/* ------------ helpers ------------ */
+const pretty = (id: string) =>
+  id.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
+/* ------------ component ------------ */
 export default function DashboardScreen() {
   const navigation = useNavigation<
     CompositeNavigationProp<
@@ -46,23 +47,29 @@ export default function DashboardScreen() {
     >
   >();
 
-  // --- existing state ---
+  /* ---------- state ---------- */
   const [view, setView] = useState<'week' | 'month' | 'all'>('week');
   const [moodData, setMoodData] = useState<number[]>([]);
   const [energyData, setEnergyData] = useState<number[]>([]);
   const [hasCheckedInToday, setHasCheckedInToday] = useState(true);
   const [completionPercent, setCompletionPercent] = useState(0);
   const [pulseAnim] = useState(new Animated.Value(1));
+
   const [showMealModal, setShowMealModal] = useState(false);
   const [showWorkoutModal, setShowWorkoutModal] = useState(false);
   const [showCalendarModal, setShowCalendarModal] = useState(false);
+
   const [currentWeight, setCurrentWeight] = useState(180);
   const [programExists, setProgramExists] = useState(false);
   const [exerciseLibrary, setExerciseLibrary] = useState<Exercise[]>([]);
 
-  // --- NEW: today’s workout data ---
-  const [todayWorkout, setTodayWorkout] = useState<ProgramDay | null>(null);
+  const [todayInfo, setTodayInfo] = useState<{
+    day: ProgramDay;
+    weekIdx: number;
+    dayIdx: number;
+  } | null>(null);
 
+  /* ---------- pulse animation ---------- */
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
@@ -80,43 +87,45 @@ export default function DashboardScreen() {
     ).start();
   }, []);
 
+  /* ---------- Firestore fetch ---------- */
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchAll = async () => {
       const user = auth.currentUser;
       if (!user) return;
 
-      // — load program & “today” snippet —
-      const programSnap = await getDoc(
+      /* --- active program --- */
+      const progSnap = await getDoc(
         doc(db, 'users', user.uid, 'program', 'active')
       );
-      setProgramExists(programSnap.exists());
+      setProgramExists(progSnap.exists());
 
-      if (programSnap.exists()) {
-        const prog = programSnap.data() as any;
-        const days = (prog.days as ProgramDay[]) || [];
-        const idx = Math.max(0, (prog.metadata?.currentDay || 1) - 1);
+      if (progSnap.exists()) {
+        const prog: any = progSnap.data();
+        const days: ProgramDay[] = prog.days || [];
+        const curDay = prog.metadata?.currentDay ?? 1;
+        const idx = Math.max(0, curDay - 1);
 
         if (days[idx]) {
-          setTodayWorkout(days[idx]);
-        } else {
-          setTodayWorkout(null);
-        }
-      } else {
-        setTodayWorkout(null);
-      }
+          setTodayInfo({
+            day: days[idx],
+            weekIdx: days[idx].week - 1,
+            dayIdx: days[idx].day - 1,
+          });
+        } else setTodayInfo(null);
+      } else setTodayInfo(null);
 
-      // — your existing check-in, profile & library loading —
-      const checkInQuery = query(
-        collection(db, 'users', user.uid, 'checkIns'),
-        orderBy('timestamp', 'desc')
+      /* --- check-ins --- */
+      const checkSnap = await getDocs(
+        query(
+          collection(db, 'users', user.uid, 'checkIns'),
+          orderBy('timestamp', 'desc')
+        )
       );
-      const snapshot = await getDocs(checkInQuery);
-      const entries = snapshot.docs.map((d) => d.data());
-      const todayDate = new Date().toDateString();
+      const entries = checkSnap.docs.map((d) => d.data());
+      const todayStr = new Date().toDateString();
       if (
         !entries[0] ||
-        new Date(entries[0].timestamp?.toDate()).toDateString() !==
-          todayDate
+        new Date(entries[0].timestamp?.toDate()).toDateString() !== todayStr
       ) {
         setHasCheckedInToday(false);
       }
@@ -130,8 +139,8 @@ export default function DashboardScreen() {
       setMoodData(limited.map((e) => e.mood ?? 0));
       setEnergyData(limited.map((e) => e.energy ?? 0));
 
-      const profileSnap = await getDoc(doc(db, 'users', user.uid));
-      const profile = profileSnap.data();
+      /* --- profile completion --- */
+      const profile = (await getDoc(doc(db, 'users', user.uid))).data();
       if (profile) {
         const fields = [
           profile.fullName,
@@ -141,65 +150,78 @@ export default function DashboardScreen() {
           profile.profilePicture,
           profile.bodyFatPct,
         ];
-        const pct = Math.round(
-          (fields.filter(Boolean).length / fields.length) * 100
+        setCompletionPercent(
+          Math.round((fields.filter(Boolean).length / fields.length) * 100)
         );
-        setCompletionPercent(pct);
         setCurrentWeight(Number(profile.weight) || 180);
       }
 
-      const librarySnap = await getDocs(collection(db, 'exercises'));
-      setExerciseLibrary(librarySnap.docs.map((d) => d.data() as Exercise));
+      /* --- exercise library for generator --- */
+      const libSnap = await getDocs(collection(db, 'exercises'));
+      setExerciseLibrary(libSnap.docs.map((d) => d.data() as Exercise));
     };
 
-    fetchData();
+    fetchAll();
   }, [view]);
 
-  // --- NEW QuickViews that uses todayWorkout ---
+  /* ---------- Quick Preview ---------- */
   const QuickViews = () => {
-    const title = todayWorkout?.title || 'No program';
-    const list =
-      todayWorkout?.exercises
-        .slice(0, 3)
-        .map((ex) => ex.name)
-        .join(', ') || 'Rest day!';
-    return (
-      <View style={styles.quickContainer}>
-        <View style={styles.quickCard}>
-          <Text style={styles.quickTitle}>🍽️ Next Meal</Text>
-          <Text style={styles.quickDetail}>
-            Grilled chicken, rice, broccoli
-          </Text>
-        </View>
+  const title = todayInfo?.day.title ?? 'No program';
+  const exercises = todayInfo?.day.exercises ?? [];
 
-        <Pressable
-          style={styles.quickCard}
-          onPress={() => navigation.navigate('WorkoutDetail')}
-        >
-          <Text style={styles.quickTitle}>🏋️ {title}</Text>
-          <Text style={styles.quickDetail}>{list}</Text>
-          <Text style={styles.quickHint}>Tap to view full workout</Text>
-        </Pressable>
+  return (
+    <View style={styles.quickContainer}>
+      {/* Meal preview */}
+      <View style={styles.quickCard}>
+        <Text style={styles.quickTitle}>🍽️ Next Meal</Text>
+        <Text style={styles.quickDetail}>Grilled chicken, rice, broccoli</Text>
       </View>
-    );
-  };
 
+      {/* Workout preview */}
+      <Pressable
+        style={styles.quickCard}
+        disabled={!todayInfo}
+        onPress={() => {
+          if (!todayInfo) return;
+          navigation.navigate('WorkoutDetail', {
+            day: todayInfo.day,
+            weekIdx: todayInfo.weekIdx,
+            dayIdx: todayInfo.dayIdx,
+          });
+        }}
+      >
+        <Text style={styles.quickTitle}>🏋️ {title}</Text>
+
+        {exercises.length === 0 ? (
+          <Text style={styles.restDay}>Rest day 💆‍♂️</Text>
+        ) : (
+          exercises.slice(0, 3).map((blk, idx) => (
+            <Text key={blk.id} style={styles.exerciseLine}>
+              • {pretty(blk.id)}
+            </Text>
+          ))
+        )}
+
+        <Text style={styles.quickHint}>Tap to view full workout</Text>
+      </Pressable>
+    </View>
+  );
+};
+
+
+  /* ---------- render ---------- */
   return (
     <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.header}>Your Dashboard</Text>
-        <Text style={styles.subheader}>
-          Train for duty. Fuel for life. 🔥
-        </Text>
+        <Text style={styles.subheader}>Train for duty. Fuel for life. 🔥</Text>
 
+        {/* reminder + profile prompt */}
         {!hasCheckedInToday && (
           <View style={styles.reminderCard}>
-            <Text style={styles.reminderText}>
-              Don't forget to check in today!
-            </Text>
+            <Text style={styles.reminderText}>Don't forget to check in today!</Text>
           </View>
         )}
-
         {completionPercent < 80 && (
           <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
             <Pressable
@@ -211,20 +233,21 @@ export default function DashboardScreen() {
           </Animated.View>
         )}
 
+        {/* trend chart */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Mood & Energy Trends</Text>
           <View style={styles.toggleGroup}>
-            {(['week', 'month', 'all'] as const).map((key) => (
+            {(['week', 'month', 'all'] as const).map((k) => (
               <Pressable
-                key={key}
+                key={k}
                 style={[
                   styles.toggleButton,
-                  view === key && styles.toggleActive,
+                  view === k && styles.toggleActive,
                 ]}
-                onPress={() => setView(key)}
+                onPress={() => setView(k)}
               >
                 <Text style={styles.toggleText}>
-                  {key.charAt(0).toUpperCase() + key.slice(1)}
+                  {k.charAt(0).toUpperCase() + k.slice(1)}
                 </Text>
               </Pressable>
             ))}
@@ -232,6 +255,7 @@ export default function DashboardScreen() {
           <MoodEnergyChart moodData={moodData} energyData={energyData} />
         </View>
 
+        {/* check-in button */}
         {!hasCheckedInToday && (
           <Pressable
             style={[styles.outlinedButton, styles.checkInButton]}
@@ -241,8 +265,10 @@ export default function DashboardScreen() {
           </Pressable>
         )}
 
+        {/* quick cards */}
         <QuickViews />
 
+        {/* AI Coach coming soon */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>💡 AI Coach</Text>
           <Text style={styles.sectionText}>
@@ -250,6 +276,7 @@ export default function DashboardScreen() {
           </Text>
         </View>
 
+        {/* main buttons */}
         {completionPercent >= 80 && (
           <>
             <Pressable
@@ -260,21 +287,32 @@ export default function DashboardScreen() {
             </Pressable>
 
             {!programExists && (
-              <Pressable
-                style={styles.outlinedButton}
-                onPress={() => setShowWorkoutModal(true)}
-              >
-                <Text style={styles.buttonText}>🛠 Generate Program</Text>
-              </Pressable>
+              <>
+                <Pressable
+                  style={styles.outlinedButton}
+                  onPress={() =>
+                    navigation
+                      .getParent<NativeStackNavigationProp<RootStackParamList>>()
+                      ?.navigate('ProgramList')
+                  }
+                >
+                  <Text style={styles.buttonText}>📋 View Training Programs</Text>
+                </Pressable>
+
+                <Pressable
+                  style={styles.outlinedButton}
+                  onPress={() => setShowWorkoutModal(true)}
+                >
+                  <Text style={styles.buttonText}>🛠 Generate Program</Text>
+                </Pressable>
+              </>
             )}
 
             <Pressable
               style={styles.outlinedButton}
               onPress={() => setShowCalendarModal(true)}
             >
-              <Text style={styles.buttonText}>
-                🗓 Set My Weekly Schedule
-              </Text>
+              <Text style={styles.buttonText}>🗓 Set My Weekly Schedule</Text>
             </Pressable>
           </>
         )}
@@ -287,13 +325,14 @@ export default function DashboardScreen() {
         </Pressable>
       </ScrollView>
 
-      {/* modals below unchanged */}
+      {/* ------------ Modals ------------ */}
       <MealGoalsModal
         visible={showMealModal}
         currentWeight={currentWeight}
         onClose={() => setShowMealModal(false)}
         onSaved={() => setShowMealModal(false)}
       />
+
       <PerformanceGoalsModal
         visible={showWorkoutModal}
         onClose={() => setShowWorkoutModal(false)}
@@ -304,9 +343,7 @@ export default function DashboardScreen() {
           try {
             const program = await generateProgramFromGoals(
               {
-                focus: Array.isArray(goals.focus)
-                  ? goals.focus
-                  : [goals.focus],
+                focus: Array.isArray(goals.focus) ? goals.focus : [goals.focus],
                 daysPerWeek: goals.daysPerWeek,
                 includeFireground: goals.includeFireground,
                 durationWeeks: goals.durationWeeks,
@@ -316,17 +353,16 @@ export default function DashboardScreen() {
               },
               exerciseLibrary
             );
-            await setDoc(
-              doc(db, 'users', uid, 'program', 'active'),
-              {
-                metadata: {
-                  startDate: new Date().toISOString(),
-                  currentDay: 1,
-                },
-                goals,
-                days: program,
-              }
-            );
+
+            await setDoc(doc(db, 'users', uid, 'program', 'active'), {
+              metadata: {
+                startDate: new Date().toISOString(),
+                currentDay: 1,
+              },
+              goals,
+              days: program,
+            });
+
             setProgramExists(true);
           } catch (err) {
             console.error('Program generation failed:', err);
@@ -335,6 +371,7 @@ export default function DashboardScreen() {
         }}
         fullExerciseLibrary={exerciseLibrary}
       />
+
       <EnvironmentCalendarModal
         visible={showCalendarModal}
         onClose={() => setShowCalendarModal(false)}
@@ -343,16 +380,14 @@ export default function DashboardScreen() {
   );
 }
 
+/* ------------ styles ------------ */
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   content: { padding: 24, alignItems: 'center' },
-  header: {
-    fontSize: 26,
-    fontWeight: '700',
-    color: '#d32f2f',
-    marginBottom: 4,
-  },
+
+  header: { fontSize: 26, fontWeight: '700', color: '#d32f2f', marginBottom: 4 },
   subheader: { fontSize: 16, color: '#ccc', marginBottom: 16 },
+
   reminderCard: {
     backgroundColor: '#2a2a2a',
     borderRadius: 12,
@@ -361,6 +396,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   reminderText: { color: '#ffd54f', textAlign: 'center' },
+
   section: { width: '100%', marginBottom: 24 },
   sectionTitle: {
     fontSize: 20,
@@ -370,6 +406,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   sectionText: { fontSize: 14, color: '#ccc', textAlign: 'center' },
+
   toggleGroup: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -385,6 +422,8 @@ const styles = StyleSheet.create({
   },
   toggleActive: { backgroundColor: '#d32f2f' },
   toggleText: { color: '#fff', fontSize: 14 },
+
+  /* quick cards */
   quickContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -398,14 +437,11 @@ const styles = StyleSheet.create({
     padding: 16,
     marginHorizontal: 4,
   },
-  quickTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#d32f2f',
-    marginBottom: 4,
-  },
+  quickTitle: { fontSize: 16, fontWeight: '600', color: '#d32f2f', marginBottom: 4 },
   quickDetail: { fontSize: 14, color: '#ccc' },
   quickHint: { fontSize: 12, color: '#aaa', marginTop: 6 },
+
+  /* buttons */
   outlinedButton: {
     width: '100%',
     paddingVertical: 14,
@@ -423,11 +459,19 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  checkInButton: {
-    backgroundColor: '#388e3c',
-    borderColor: '#388e3c',
-  },
-  pulsing: {
-    borderColor: '#4fc3f7',
-  },
+  checkInButton: { backgroundColor: '#388e3c', borderColor: '#388e3c' },
+  pulsing: { borderColor: '#4fc3f7' },
+  restDay: {
+  fontSize: 14,
+  color: '#888',
+  fontStyle: 'italic',
+  marginTop: 4,
+  marginBottom: 6,
+},
+
+exerciseLine: {
+  fontSize: 14,
+  color: '#ccc',
+  marginBottom: 2,
+},
 });
