@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+// screens/WorkoutDetailScreen.tsx
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,40 +9,40 @@ import {
   Pressable,
   TextInput,
   TouchableOpacity,
+  Modal,
 } from 'react-native';
+import LinearGradient from 'react-native-linear-gradient';
+import Ionicons from 'react-native-vector-icons/Ionicons';
+import Video from 'react-native-video';
+import Toast from '../components/Toast';
+import PRCelebration from '../components/PRCelebration';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../App';
 import { auth, db } from '../firebase';
 import {
+  collection,
   doc,
   getDoc,
-  collection,
   getDocs,
+  increment,
+  limit,
   orderBy,
   query,
   Timestamp,
   writeBatch,
-  increment,
-  limit,
 } from 'firebase/firestore';
-import Ionicons from 'react-native-vector-icons/Ionicons';
-import LinearGradient from 'react-native-linear-gradient';
-import Video from 'react-native-video';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../App';
-import PRCelebration from '../components/PRCelebration';
-import Toast from '../components/Toast';
 import { checkAndAdjustRestDays } from '../utils/performanceMonitor';
 import type { ExerciseBlock } from '../utils/types';
 
 /* ───────── helpers ───────── */
 const pretty = (id: string) =>
-  id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  id.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
-const parseRepsFromString = (str?: string): number | null => {
-  if (!str) return null;
-  const m = str.match(/\d+/);
-  return m ? parseInt(m[0]) : null;
-};
+const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
+const fmtTime = (sec: number) => `${pad(Math.floor(sec / 60))}:${pad(sec % 60)}`;
+const numFromStr = (s?: string) =>
+  s ? parseInt(s.match(/\d+/)?.[0] ?? '', 10) : undefined;
 
 /* ───────── types ───────── */
 interface FirestoreExercise {
@@ -57,12 +58,22 @@ interface EnrichedExercise {
   id: string;
   name: string;
   videoUri: string;
-  setsCount: number;  // used only for main section
-  repsCount: number;
+  setsCount: number;
+  repsCount: number; // seconds if type === 'time'
   rpe: number;
   type: 'reps' | 'time';
 }
 
+interface TimedStatus {
+  running: boolean;
+  seconds: number;
+  done: boolean;
+  mode: 'stopwatch' | 'countdown';
+  intervalId?: IntervalId;
+}
+
+/* ───────── util types ───────── */
+type IntervalId = ReturnType<typeof setInterval>;
 type WorkoutDetailRoute = RouteProp<RootStackParamList, 'WorkoutDetail'>;
 
 /* ───────── component ───────── */
@@ -72,43 +83,62 @@ const WorkoutDetailScreen: React.FC = () => {
   const { params } = useRoute<WorkoutDetailRoute>();
   const { day, weekIdx, dayIdx } = params;
 
-  /* ── state ── */
+  /* -------- loading -------- */
   const [loading, setLoading] = useState(true);
+
+  /* -------- data -------- */
   const [warmup, setWarmup] = useState<EnrichedExercise[]>([]);
   const [main, setMain] = useState<EnrichedExercise[]>([]);
   const [cooldown, setCooldown] = useState<EnrichedExercise[]>([]);
+
+  /* -------- inputs -------- */
   const [progress, setProgress] = useState<{ reps: string; weight: string }[][]>(
     [],
   );
   const [lastSession, setLastSession] = useState<
     Record<string, { reps: string; weight: string }[]>
   >({});
-  const [playing, setPlaying] = useState<string | null>(null);
-  const [showPR, setShowPR] = useState(false);
-  const [prMsgs, setPrMsgs] = useState<string[]>([]);
-  const [showToast, setShowToast] = useState(false);
 
-  /* ── enrich a block with Firestore meta ── */
+  /* -------- timers -------- */
+  const [elapsedSec, setElapsedSec] = useState(0);
+  const [workState, setWorkState] = useState<'idle' | 'running' | 'paused' | 'stopped'>('idle');
+  const globalTimer = useRef<IntervalId | null>(null);
+
+  // per-exercise timers  ➜  { exerciseId: TimedStatus[] }
+  const timedRef = useRef<Record<string, TimedStatus[]>>({});
+
+  /* -------- pop-ups -------- */
+  const [videoPlaying, setVideoPlaying] = useState<string | null>(null);
+  const [showToast, setShowToast] = useState(false);
+  const [nextUp, setNextUp] = useState<string | null>(null);
+  const [summaryVisible, setSummaryVisible] = useState(false);
+  const [prMsgs, setPrMsgs] = useState<string[]>([]);
+  const [showPR, setShowPR] = useState(false);
+
+  /* ── enrichment ── */
   const enrich = async (blk: ExerciseBlock): Promise<EnrichedExercise> => {
     const snap = await getDoc(doc(db, 'exercises', blk.id));
-    const data = snap.exists() ? (snap.data() as FirestoreExercise) : {};
+    const meta: FirestoreExercise = snap.exists() ? (snap.data() as any) : {};
     return {
       id: blk.id,
-      name: data.name ?? pretty(blk.id),
-      videoUri: data.videoUrl && data.videoUrl.trim() !== '' 
-  ? data.videoUrl 
-  : 'https://www.w3schools.com/html/mov_bbb.mp4',
-
-      setsCount: data.sets ?? blk.sets ?? 3,
-      repsCount: data.reps ?? parseRepsFromString(blk.repsOrDuration) ?? 8,
+      name: meta.name ?? pretty(blk.id),
+      videoUri:
+        meta.videoUrl && meta.videoUrl.trim()
+          ? meta.videoUrl
+          : 'https://www.w3schools.com/html/mov_bbb.mp4',
+      setsCount: meta.sets ?? blk.sets ?? 3,
+      repsCount: meta.reps ?? numFromStr(blk.repsOrDuration) ?? 8,
       rpe: blk.rpe,
       type:
-        data.type ??
-        (blk.repsOrDuration.toLowerCase().includes('sec') ? 'time' : 'reps'),
+        meta.type ??
+        (blk.repsOrDuration.toLowerCase().includes('sec') ||
+        blk.repsOrDuration.toLowerCase().includes('min')
+          ? 'time'
+          : 'reps'),
     };
   };
 
-  /* ── fetch & build all three sections ── */
+  /* ── fetch / initialise ── */
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -119,15 +149,31 @@ const WorkoutDetailScreen: React.FC = () => {
           Promise.all(day.cooldown.map(enrich)),
         ]);
 
-        /* init progress for main only */
-        const progInit = m.map(ex =>
+        /* progress */
+        const progInit = m.map((ex) =>
           Array.from({ length: ex.setsCount }).map(() => ({
             reps: '',
             weight: '',
           })),
         );
 
-        /* last-session lookup for PR hints */
+        /* timer state */
+        const timerInit: Record<string, TimedStatus[]> = {};
+        [...w, ...m, ...c].forEach((ex) => {
+          if (ex.type === 'time') {
+            timerInit[ex.id] = Array.from({ length: ex.setsCount }).map(
+              () => ({
+                running: false,
+                seconds: 0,
+                done: false,
+                mode: 'stopwatch',
+              }),
+            );
+          }
+        });
+        timedRef.current = timerInit;
+
+        /* last-session lookup */
         const uid = auth.currentUser?.uid;
         const last: Record<
           string,
@@ -143,8 +189,8 @@ const WorkoutDetailScreen: React.FC = () => {
               ),
             );
             for (const d of q.docs) {
-              const dat: any = d.data();
-              const hit = dat.exercises.find((e: any) => e.name === ex.id);
+              const data: any = d.data();
+              const hit = data.exercises.find((e: any) => e.name === ex.id);
               if (hit) {
                 last[ex.id] = hit.sets;
                 break;
@@ -168,89 +214,174 @@ const WorkoutDetailScreen: React.FC = () => {
     })();
     return () => {
       alive = false;
+      if (globalTimer.current) clearInterval(globalTimer.current);
     };
   }, [day]);
 
+  /* ── GLOBAL TIMER EFFECT ── */
+  useEffect(() => {
+    if (workState === 'running') {
+      globalTimer.current = setInterval(
+        () => setElapsedSec((s) => s + 1),
+        1000,
+      );
+    } else if (globalTimer.current) {
+      clearInterval(globalTimer.current);
+      globalTimer.current = null;
+    }
+  }, [workState]);
+
   /* ── helpers ── */
+  const formatDesc = (ex: EnrichedExercise) =>
+    ex.type === 'time'
+      ? `${ex.setsCount}×${
+          ex.repsCount % 60 === 0
+            ? `${ex.repsCount / 60} min`
+            : `${ex.repsCount} sec`
+        }`
+      : `${ex.setsCount}×${ex.repsCount} reps`;
+
   const updateInput = (
     exIdx: number,
     setIdx: number,
     field: 'reps' | 'weight',
     val: string,
   ) =>
-    setProgress(p => {
-      const n = [...p];
-      n[exIdx][setIdx][field] = val;
-      return n;
+    setProgress((p) => {
+      const next = [...p];
+      next[exIdx][setIdx][field] = val;
+      return next;
     });
 
   const setsDone = (arr: { reps: string; weight: string }[]) =>
-    arr.every(s => s.reps && s.weight);
+    arr.every((s) => s.reps && s.weight);
 
-  const togglePlay = (id: string) =>
-    setPlaying(prev => (prev === id ? null : id));
+  const toggleVideo = (id: string) =>
+    setVideoPlaying((prev) => (prev === id ? null : id));
 
-  /* ── save workout ── */
+  /* ── PER-SET TIMER HANDLERS ── */
+  const startTimedSet = (exId: string, setIdx: number, targetSec: number) => {
+    const status = timedRef.current[exId]?.[setIdx];
+    if (!status || status.running || status.done) return;
+
+    status.running = true;
+    status.seconds = status.mode === 'countdown' ? targetSec : 0;
+
+    const id = setInterval(() => {
+      if (!status.running) return; // safety
+
+      status.seconds =
+        status.mode === 'countdown'
+          ? status.seconds - 1
+          : status.seconds + 1;
+
+      // kick a re-render
+      setElapsedSec((s) => s);
+
+      if (status.mode === 'countdown' && status.seconds <= 0) {
+        clearInterval(status.intervalId as IntervalId);
+        status.running = false;
+        status.done = true;
+        markTimedSetComplete(exId, setIdx);
+      }
+    }, 1000) as IntervalId;
+
+    status.intervalId = id;
+  };
+
+  const toggleMode = (exId: string, setIdx: number) => {
+    const status = timedRef.current[exId]?.[setIdx];
+    if (!status || status.running) return;
+    status.mode = status.mode === 'stopwatch' ? 'countdown' : 'stopwatch';
+    setElapsedSec((s) => s); // force paint
+  };
+
+  const markTimedSetComplete = (exId: string, setIdx: number) => {
+    const exIndex = main.findIndex((e) => e.id === exId);
+    if (exIndex === -1) return;
+    setProgress((p) => {
+      const next = [...p];
+      next[exIndex][setIdx] = { reps: '✓', weight: '✓' };
+      return next;
+    });
+
+    // Toast next-up
+    const flat = [...warmup, ...main, ...cooldown];
+    const curIdx = flat.findIndex((e) => e.id === exId);
+    if (curIdx !== -1 && curIdx + 1 < flat.length) {
+      setNextUp(flat[curIdx + 1].name);
+      setTimeout(() => setNextUp(null), 3500);
+    }
+  };
+
+  /* ── SAVE ── */
   const saveWorkout = async () => {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
 
-    const now = Timestamp.now();
     const logId = Date.now().toString();
+    const payload = main.map((ex, i) => ({
+      name: ex.id,
+      sets: progress[i].map((s) => ({
+        reps: s.reps === '✓' ? ex.repsCount.toString() : s.reps,
+        weight: s.weight === '✓' ? '0' : s.weight,
+      })),
+    }));
 
     const log = {
       dayTitle: day.title,
       weekIdx,
       dayIdx,
-      completedAt: now,
-      exercises: main.map((ex, i) => ({
-        name: ex.id,
-        sets: progress[i],
-      })),
+      completedAt: Timestamp.now(),
+      elapsedSec,
+      exercises: payload,
     };
 
     try {
       const batch = writeBatch(db);
       batch.set(doc(db, 'users', uid, 'workoutLogs', logId), log);
-      batch.update(doc(db, 'users', uid, 'program', 'active'), {
-        currentDay: increment(1),
-      });
+      batch.update(
+        doc(db, 'users', uid, 'program', 'active'),
+        { currentDay: increment(1) },
+      );
       await batch.commit();
       await checkAndAdjustRestDays(uid);
 
-      /* PR detection */
+      // PR detection (simple)
       const prs: Record<string, number> = {};
       main.forEach((ex, i) =>
-        progress[i].forEach(s => {
+        progress[i].forEach((s) => {
           const w = Number(s.weight);
           if (!isNaN(w)) prs[ex.id] = Math.max(prs[ex.id] || 0, w);
         }),
       );
-      const newMsgs = Object.entries(prs).map(
+      const newPRs = Object.entries(prs).map(
         ([k, v]) => `${pretty(k)}: ${v} lbs`,
       );
 
       setShowToast(true);
-      if (newMsgs.length) {
-        setPrMsgs(newMsgs);
+      if (newPRs.length) {
+        setPrMsgs(newPRs);
         setShowPR(true);
       }
-      navigation.goBack();
+      setSummaryVisible(true);
     } catch (e) {
       console.error(e);
       alert('Could not save workout.');
     }
   };
 
-  /* ── UI ── */
-  if (loading) {
-    return (
-      <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
-        <ActivityIndicator size="large" color="#d32f2f" />
-      </LinearGradient>
-    );
-  }
+  /* ── SUMMARY CALCS ── */
+  const setsPlanned = useMemo(
+    () => main.reduce((sum, ex) => sum + ex.setsCount, 0),
+    [main],
+  );
+  const setsCompleted = useMemo(
+    () => progress.flat().filter((s) => s.reps || s.weight).length,
+    [progress],
+  );
 
+  /* ── SECTION COMPONENT ── */
   const Section = ({
     title,
     list,
@@ -262,16 +393,22 @@ const WorkoutDetailScreen: React.FC = () => {
   }) => (
     <>
       <Text style={styles.sectionHeader}>{title}</Text>
-      {list.map((ex, i) => {
-        const done = trackSets ? setsDone(progress[i]) : false;
+      {list.map((ex, exIdx) => {
+        const finished = trackSets ? setsDone(progress[exIdx]) : false;
         const last = lastSession[ex.id] ?? [];
-        const play = playing === ex.id;
+        const videoOpen = videoPlaying === ex.id;
 
         return (
-          <View key={ex.id} style={[styles.card, done && styles.cardDone]}>
+          <View
+            key={ex.id}
+            style={[styles.card, finished && styles.cardDone]}>
+            {/* header */}
             <View style={styles.cardHeader}>
               <Text
-                style={[styles.cardTitle, done && styles.cardTitleDone]}>
+                style={[
+                  styles.cardTitle,
+                  finished && styles.cardTitleDone,
+                ]}>
                 {ex.name}
               </Text>
               {trackSets && (
@@ -281,27 +418,31 @@ const WorkoutDetailScreen: React.FC = () => {
                       exerciseName: ex.id,
                     })
                   }>
-                  <Ionicons name="stats-chart" size={20} color="#4fc3f7" />
+                  <Ionicons
+                    name="stats-chart"
+                    size={20}
+                    color="#4fc3f7"
+                  />
                 </Pressable>
               )}
             </View>
 
             <Text style={styles.recommend}>
-              {ex.setsCount}×{ex.repsCount}{' '}
-              {ex.type === 'time' ? 'sec' : 'reps'} • RPE {ex.rpe}
+              {formatDesc(ex)} • RPE {ex.rpe}
             </Text>
 
+            {/* video */}
             {!!ex.videoUri && (
               <TouchableOpacity
-                onPress={() => togglePlay(ex.id)}
+                onPress={() => toggleVideo(ex.id)}
                 style={styles.videoBox}>
-                {play ? (
+                {videoOpen ? (
                   <Video
                     source={{ uri: ex.videoUri }}
                     style={styles.video}
                     controls
                     paused={false}
-                    onEnd={() => setPlaying(null)}
+                    onEnd={() => setVideoPlaying(null)}
                   />
                 ) : (
                   <View style={styles.playOverlay}>
@@ -316,80 +457,228 @@ const WorkoutDetailScreen: React.FC = () => {
               </TouchableOpacity>
             )}
 
+            {/* sets */}
             {trackSets &&
-              progress[i].map((s, si) => (
-                <View key={si} style={styles.setBlock}>
-                  <View style={styles.setRow}>
-                    <Text style={styles.setLabel}>Set {si + 1}</Text>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="reps"
-                      placeholderTextColor="#777"
-                      keyboardType="numeric"
-                      value={s.reps}
-                      onChangeText={t => updateInput(i, si, 'reps', t)}
-                    />
-                    <TextInput
-                      style={styles.input}
-                      placeholder="lbs"
-                      placeholderTextColor="#777"
-                      keyboardType="numeric"
-                      value={s.weight}
-                      onChangeText={t => updateInput(i, si, 'weight', t)}
-                    />
+              Array.from({ length: ex.setsCount }).map((_, si) => {
+                if (ex.type === 'time') {
+                  const t = timedRef.current[ex.id][si];
+                  return (
+                    <View key={si} style={styles.setBlock}>
+                      <View style={styles.setRow}>
+                        <Text style={styles.setLabel}>Set {si + 1}</Text>
+                        <Text style={styles.timerDigits}>
+                          {fmtTime(
+                            t.mode === 'countdown'
+                              ? Math.max(0, t.seconds)
+                              : t.seconds,
+                          )}
+                        </Text>
+                        <Pressable
+                          onPress={() =>
+                            startTimedSet(ex.id, si, ex.repsCount)
+                          }>
+                          <Ionicons
+                            name={
+                              t.running ? 'pause-circle' : 'play-circle'
+                            }
+                            size={28}
+                            color="#4caf50"
+                          />
+                        </Pressable>
+                        <Pressable
+                          onPress={() => toggleMode(ex.id, si)}
+                          style={{ marginLeft: 6 }}>
+                          <Ionicons
+                            name="swap-horizontal"
+                            size={22}
+                            color="#fff"
+                          />
+                        </Pressable>
+                      </View>
+                      {t.done && (
+                        <Text style={styles.lastTxt}>Done ✔</Text>
+                      )}
+                    </View>
+                  );
+                }
+
+                // normal reps/weight
+                const set = progress[exIdx][si];
+                return (
+                  <View key={si} style={styles.setBlock}>
+                    <View style={styles.setRow}>
+                      <Text style={styles.setLabel}>Set {si + 1}</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="reps"
+                        placeholderTextColor="#777"
+                        keyboardType="numeric"
+                        value={set.reps}
+                        onChangeText={(t) =>
+                          updateInput(exIdx, si, 'reps', t)
+                        }
+                      />
+                      <TextInput
+                        style={styles.input}
+                        placeholder="lbs"
+                        placeholderTextColor="#777"
+                        keyboardType="numeric"
+                        value={set.weight}
+                        onChangeText={(t) =>
+                          updateInput(exIdx, si, 'weight', t)
+                        }
+                      />
+                    </View>
+                    {last[si] && (
+                      <Text style={styles.lastTxt}>
+                        Last: {last[si].reps} reps @ {last[si].weight} lbs
+                      </Text>
+                    )}
                   </View>
-                  {last[si] && (
-                    <Text style={styles.lastTxt}>
-                      Last: {last[si].reps} reps @ {last[si].weight} lbs
-                    </Text>
-                  )}
-                </View>
-              ))}
+                );
+              })}
           </View>
         );
       })}
     </>
   );
 
+  /* -------- render -------- */
+  if (loading) {
+    return (
+      <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
+        <ActivityIndicator size="large" color="#d32f2f" />
+      </LinearGradient>
+    );
+  }
+
+  /* bar colour */
+  const barColor =
+    workState === 'running'
+      ? '#2e7d32'
+      : workState === 'paused'
+      ? '#f9a825'
+      : workState === 'stopped'
+      ? '#c62828'
+      : '#333';
+
   return (
     <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>{day.title}</Text>
-
-        {/* WARM-UP */}
         <Section title="Warm-up" list={warmup} />
-
-        {/* MAIN */}
         <Section title="Exercises" list={main} trackSets />
-
-        {/* COOL-DOWN */}
         <Section title="Cool-down" list={cooldown} />
 
-        <Pressable style={styles.saveBtn} onPress={saveWorkout}>
-          <Ionicons name="save" size={20} color="#fff" style={{ marginRight: 8 }} />
+        <Pressable
+          style={styles.saveBtn}
+          onPress={saveWorkout}
+          disabled={workState === 'running'}>
+          <Ionicons
+            name="save"
+            size={20}
+            color="#fff"
+            style={{ marginRight: 8 }}
+          />
           <Text style={styles.btnTxt}>Save Workout</Text>
         </Pressable>
-
         <Pressable
           style={[styles.saveBtn, styles.backBtn]}
-          onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={20} color="#fff" style={{ marginRight: 8 }} />
+          onPress={() => navigation.goBack()}
+          disabled={workState === 'running'}>
+          <Ionicons
+            name="arrow-back"
+            size={20}
+            color="#fff"
+            style={{ marginRight: 8 }}
+          />
           <Text style={styles.btnTxt}>Back</Text>
         </Pressable>
-
-        {showPR && (
-          <PRCelebration
-            visible={showPR}
-            messages={prMsgs}
-            onClose={() => setShowPR(false)}
-          />
-        )}
       </ScrollView>
 
+      {/* FOOTER TIMER BAR */}
+      <View style={[styles.timerBar, { backgroundColor: barColor }]}>
+        <Text style={styles.timerMain}>{fmtTime(elapsedSec)}</Text>
+
+        {workState === 'idle' && (
+          <Pressable onPress={() => setWorkState('running')}>
+            <Ionicons name="play" size={32} color="#fff" />
+          </Pressable>
+        )}
+        {workState === 'running' && (
+          <>
+            <Pressable onPress={() => setWorkState('paused')}>
+              <Ionicons name="pause" size={32} color="#fff" />
+            </Pressable>
+            <Pressable
+              onPress={() => setWorkState('stopped')}
+              style={{ marginLeft: 12 }}>
+              <Ionicons name="stop" size={32} color="#fff" />
+            </Pressable>
+          </>
+        )}
+        {workState === 'paused' && (
+          <>
+            <Pressable onPress={() => setWorkState('running')}>
+              <Ionicons name="play" size={32} color="#fff" />
+            </Pressable>
+            <Pressable
+              onPress={() => setWorkState('stopped')}
+              style={{ marginLeft: 12 }}>
+              <Ionicons name="stop" size={32} color="#fff" />
+            </Pressable>
+          </>
+        )}
+      </View>
+
+      {/* SUMMARY MODAL */}
+      <Modal visible={summaryVisible} transparent animationType="fade">
+        <View style={styles.modalBackdrop}>
+          <View style={styles.summaryBox}>
+            <Text style={styles.summaryTitle}>Session Complete</Text>
+            <Text style={styles.summaryText}>
+              Total time: {fmtTime(elapsedSec)}
+            </Text>
+            <Text style={styles.summaryText}>
+              Sets: {setsCompleted}/{setsPlanned}
+            </Text>
+            {prMsgs.length > 0 && (
+              <>
+                <Text
+                  style={[
+                    styles.summaryText,
+                    { marginTop: 8, fontWeight: '700' },
+                  ]}>
+                  🔥 New PRs:
+                </Text>
+                {prMsgs.map((m) => (
+                  <Text key={m} style={styles.summaryText}>
+                    • {m}
+                  </Text>
+                ))}
+              </>
+            )}
+            <Pressable
+              style={[styles.saveBtn, { marginTop: 16 }]}
+              onPress={() => setSummaryVisible(false)}>
+              <Text style={styles.btnTxt}>Close</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      {/* toasts & celebrations */}
       {showToast && (
-        <Toast
-          message="Workout saved successfully!"
-          onClose={() => setShowToast(false)}
+        <Toast message="Workout saved!" onClose={() => setShowToast(false)} />
+      )}
+      {nextUp && (
+        <Toast message={`Next: ${nextUp}`} onClose={() => setNextUp(null)} />
+      )}
+      {showPR && (
+        <PRCelebration
+          visible={showPR}
+          messages={prMsgs}
+          onClose={() => setShowPR(false)}
         />
       )}
     </LinearGradient>
@@ -399,7 +688,7 @@ const WorkoutDetailScreen: React.FC = () => {
 /* ───────── styles ───────── */
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  content: { padding: 24 },
+  content: { padding: 24, paddingBottom: 120 }, // leave space for timer bar
   title: {
     fontSize: 22,
     fontWeight: '700',
@@ -407,7 +696,6 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     textAlign: 'center',
   },
-
   sectionHeader: {
     fontSize: 18,
     fontWeight: '700',
@@ -417,8 +705,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 2,
     borderBottomColor: '#d32f2f',
   },
-
-  /* card */
   card: {
     backgroundColor: '#2a2a2a',
     borderRadius: 10,
@@ -440,8 +726,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     fontStyle: 'italic',
   },
-
-  /* sets */
+  /* sets UI */
   setBlock: { marginBottom: 6 },
   setRow: { flexDirection: 'row', alignItems: 'center' },
   setLabel: { color: '#ccc', width: 60, marginRight: 8 },
@@ -463,7 +748,13 @@ const styles = StyleSheet.create({
     marginLeft: 60,
     marginBottom: 4,
   },
-
+  timerDigits: {
+    color: '#fff',
+    fontVariant: ['tabular-nums'],
+    marginRight: 8,
+    width: 60,
+    textAlign: 'center',
+  },
   /* video */
   videoBox: {
     width: '100%',
@@ -478,7 +769,6 @@ const styles = StyleSheet.create({
   video: { width: '100%', height: '100%' },
   playOverlay: { alignItems: 'center', justifyContent: 'center' },
   playText: { color: '#fff', fontSize: 14, marginTop: 4 },
-
   /* buttons */
   saveBtn: {
     backgroundColor: '#2a2a2a',
@@ -494,6 +784,45 @@ const styles = StyleSheet.create({
   },
   backBtn: { marginTop: 12, borderColor: '#888' },
   btnTxt: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  /* timer bar */
+  timerBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    paddingVertical: 10,
+  },
+  timerMain: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#fff',
+    fontVariant: ['tabular-nums'],
+    fontFamily: 'monospace',
+  },
+  /* summary */
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  summaryBox: {
+    backgroundColor: '#1e1e1e',
+    padding: 24,
+    borderRadius: 12,
+    width: '80%',
+  },
+  summaryTitle: {
+    fontSize: 20,
+    color: '#d32f2f',
+    fontWeight: '700',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  summaryText: { color: '#fff', textAlign: 'center', marginVertical: 2 },
 });
 
 export default WorkoutDetailScreen;
