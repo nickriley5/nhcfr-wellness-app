@@ -34,6 +34,9 @@ import {
 } from 'firebase/firestore';
 import { checkAndAdjustRestDays } from '../utils/performanceMonitor';
 import type { ExerciseBlock } from '../utils/types';
+import EnhancedTimerBar from '../components/EnhancedTimerBar';
+import CheckOffBlock from '../components/CheckOffBlock';
+
 
 /* ───────── helpers ───────── */
 const pretty = (id: string) =>
@@ -127,7 +130,12 @@ const WorkoutDetailScreen: React.FC = () => {
           ? meta.videoUrl
           : 'https://www.w3schools.com/html/mov_bbb.mp4',
       setsCount: meta.sets ?? blk.sets ?? 3,
-      repsCount: meta.reps ?? numFromStr(blk.repsOrDuration) ?? 8,
+      repsCount:
+  meta.reps ??
+  (blk.repsOrDuration.toLowerCase().includes('min')
+    ? (numFromStr(blk.repsOrDuration) ?? 1) * 60
+    : numFromStr(blk.repsOrDuration) ?? 8),
+
       rpe: blk.rpe,
       type:
         meta.type ??
@@ -566,9 +574,47 @@ const WorkoutDetailScreen: React.FC = () => {
     <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>{day.title}</Text>
-        <Section title="Warm-up" list={warmup} />
-        <Section title="Exercises" list={main} trackSets />
-        <Section title="Cool-down" list={cooldown} />
+        {/* WARM-UP – check-off style */}
+{/* WARM-UP – check-off style */}
+<View style={styles.section}>
+  <Text style={styles.sectionTitle}>Warm-up</Text>
+
+  {warmup.map((ex, idx) => (
+    <CheckOffBlock
+      key={ex.id}
+      id={ex.id}
+      name={ex.name}
+      sets={ex.setsCount}
+      repsOrDuration={formatDesc(ex).split('×')[1]}
+      videoUri={ex.videoUri}
+      isTimed={ex.type === 'time'}
+      seconds={ex.repsCount}
+    />
+  ))}
+</View>
+
+{/* MAIN WORK – leave this as is */}
+<Section title="Exercises" list={main} trackSets />
+
+{/* COOL-DOWN – check-off style */}
+<View style={styles.section}>
+  <Text style={styles.sectionTitle}>Cool-down</Text>
+
+  {cooldown.map((ex, idx) => (
+    <CheckOffBlock
+      key={ex.id}
+      id={ex.id}
+      name={ex.name}
+      sets={ex.setsCount}
+      repsOrDuration={formatDesc(ex).split('×')[1]}
+      videoUri={ex.videoUri}
+      isTimed={ex.type === 'time'}
+      seconds={ex.repsCount}
+    />
+  ))}
+</View>
+
+
 
         <Pressable
           style={styles.saveBtn}
@@ -596,40 +642,14 @@ const WorkoutDetailScreen: React.FC = () => {
         </Pressable>
       </ScrollView>
 
-      {/* FOOTER TIMER BAR */}
-      <View style={[styles.timerBar, { backgroundColor: barColor }]}>
-        <Text style={styles.timerMain}>{fmtTime(elapsedSec)}</Text>
+    <EnhancedTimerBar
+  seconds={elapsedSec}
+  state={workState}
+  onStart={() => setWorkState('running')}
+  onPause={() => setWorkState('paused')}
+  onStop={() => setWorkState('stopped')}
+/>
 
-        {workState === 'idle' && (
-          <Pressable onPress={() => setWorkState('running')}>
-            <Ionicons name="play" size={32} color="#fff" />
-          </Pressable>
-        )}
-        {workState === 'running' && (
-          <>
-            <Pressable onPress={() => setWorkState('paused')}>
-              <Ionicons name="pause" size={32} color="#fff" />
-            </Pressable>
-            <Pressable
-              onPress={() => setWorkState('stopped')}
-              style={{ marginLeft: 12 }}>
-              <Ionicons name="stop" size={32} color="#fff" />
-            </Pressable>
-          </>
-        )}
-        {workState === 'paused' && (
-          <>
-            <Pressable onPress={() => setWorkState('running')}>
-              <Ionicons name="play" size={32} color="#fff" />
-            </Pressable>
-            <Pressable
-              onPress={() => setWorkState('stopped')}
-              style={{ marginLeft: 12 }}>
-              <Ionicons name="stop" size={32} color="#fff" />
-            </Pressable>
-          </>
-        )}
-      </View>
 
       {/* SUMMARY MODAL */}
       <Modal visible={summaryVisible} transparent animationType="fade">
@@ -823,6 +843,17 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   summaryText: { color: '#fff', textAlign: 'center', marginVertical: 2 },
+  section: {
+  marginTop: 20,
+  paddingHorizontal: 16,
+},
+sectionTitle: {
+  fontSize: 18,
+  fontWeight: '600',
+  color: '#fff',
+  marginBottom: 10,
+},
+
 });
 
 export default WorkoutDetailScreen;
