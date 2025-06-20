@@ -10,6 +10,8 @@ import {
   TextInput,
   TouchableOpacity,
   Modal,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -36,6 +38,9 @@ import { checkAndAdjustRestDays } from '../utils/performanceMonitor';
 import type { ExerciseBlock } from '../utils/types';
 import EnhancedTimerBar from '../components/EnhancedTimerBar';
 import CheckOffBlock from '../components/CheckOffBlock';
+import VideoToggle from '../components/VideoToggle';
+
+type WorkoutSet = { reps: string; weight: string };
 
 
 /* ───────── helpers ───────── */
@@ -95,9 +100,15 @@ const WorkoutDetailScreen: React.FC = () => {
   const [cooldown, setCooldown] = useState<EnrichedExercise[]>([]);
 
   /* -------- inputs -------- */
-  const [progress, setProgress] = useState<{ reps: string; weight: string }[][]>(
-    [],
-  );
+ const [progress, setProgress] = useState<WorkoutSet[][]>(() =>
+  day.exercises.map((blk: ExerciseBlock) =>
+    Array.from({ length: blk.sets ?? 1 }).map(
+      () => ({ reps: '', weight: '' } as WorkoutSet)
+    )
+  )
+);
+
+
   const [lastSession, setLastSession] = useState<
     Record<string, { reps: string; weight: string }[]>
   >({});
@@ -249,17 +260,22 @@ const WorkoutDetailScreen: React.FC = () => {
         }`
       : `${ex.setsCount}×${ex.repsCount} reps`;
 
-  const updateInput = (
-    exIdx: number,
-    setIdx: number,
-    field: 'reps' | 'weight',
-    val: string,
-  ) =>
-    setProgress((p) => {
-      const next = [...p];
-      next[exIdx][setIdx][field] = val;
-      return next;
-    });
+const updateInput = (
+  exIdx: number,
+  setIdx: number,
+  field: 'reps' | 'weight',
+  val: string
+) => {
+  setProgress((prev) =>
+    prev.map((exerciseSets, i) =>
+      i === exIdx
+        ? exerciseSets.map((set, j) =>
+            j === setIdx ? { ...set, [field]: val } : set
+          )
+        : exerciseSets
+    )
+  );
+};
 
   const setsDone = (arr: { reps: string; weight: string }[]) =>
     arr.every((s) => s.reps && s.weight);
@@ -389,167 +405,163 @@ const WorkoutDetailScreen: React.FC = () => {
     [progress],
   );
 
-  /* ── SECTION COMPONENT ── */
-  const Section = ({
-    title,
-    list,
-    trackSets,
-  }: {
-    title: string;
-    list: EnrichedExercise[];
-    trackSets?: boolean;
-  }) => (
-    <>
-      <Text style={styles.sectionHeader}>{title}</Text>
-      {list.map((ex, exIdx) => {
-        const finished = trackSets ? setsDone(progress[exIdx]) : false;
-        const last = lastSession[ex.id] ?? [];
-        const videoOpen = videoPlaying === ex.id;
+/* ── SECTION COMPONENT ── */
+const Section = ({
+  title,
+  list,
+  trackSets,
+}: {
+  title: string;
+  list: EnrichedExercise[];
+  trackSets?: boolean;
+}) => (
+  <>
+    <Text style={styles.sectionHeader}>{title}</Text>
 
-        return (
-          <View
-            key={ex.id}
-            style={[styles.card, finished && styles.cardDone]}>
-            {/* header */}
-            <View style={styles.cardHeader}>
-              <Text
-                style={[
-                  styles.cardTitle,
-                  finished && styles.cardTitleDone,
-                ]}>
-                {ex.name}
-              </Text>
-              {trackSets && (
-                <Pressable
-                  onPress={() =>
-                    navigation.navigate('ProgressChart', {
-                      exerciseName: ex.id,
-                    })
-                  }>
-                  <Ionicons
-                    name="stats-chart"
-                    size={20}
-                    color="#4fc3f7"
-                  />
-                </Pressable>
-              )}
-            </View>
+    {list.map((ex, exIdx) => {
+      const isComplete =
+        trackSets && progress[exIdx]?.every((s) => s.reps && s.weight);
 
-            <Text style={styles.recommend}>
-              {formatDesc(ex)} • RPE {ex.rpe}
+      const last = lastSession[ex.id] ?? [];
+      const videoOpen = videoPlaying === ex.id;
+
+      return (
+        <View
+          key={ex.id}
+          style={[styles.card, isComplete && styles.cardDone]}>
+          {/* header */}
+          <View style={styles.cardHeader}>
+            <Text
+              style={[
+                styles.cardTitle,
+                isComplete && styles.cardTitleDone,
+              ]}>
+              {ex.name}
             </Text>
 
-            {/* video */}
-            {!!ex.videoUri && (
-              <TouchableOpacity
-                onPress={() => toggleVideo(ex.id)}
-                style={styles.videoBox}>
-                {videoOpen ? (
-                  <Video
-                    source={{ uri: ex.videoUri }}
-                    style={styles.video}
-                    controls
-                    paused={false}
-                    onEnd={() => setVideoPlaying(null)}
-                  />
-                ) : (
-                  <View style={styles.playOverlay}>
-                    <Ionicons
-                      name="play-circle-outline"
-                      size={42}
-                      color="#fff"
-                    />
-                    <Text style={styles.playText}>Play Video</Text>
-                  </View>
-                )}
-              </TouchableOpacity>
+            {trackSets && (
+              <Pressable
+                onPress={() =>
+                  navigation.navigate('ProgressChart', {
+                    exerciseName: ex.id,
+                  })
+                }>
+                <Ionicons name="stats-chart" size={20} color="#4fc3f7" />
+              </Pressable>
             )}
 
-            {/* sets */}
-            {trackSets &&
-              Array.from({ length: ex.setsCount }).map((_, si) => {
-                if (ex.type === 'time') {
-                  const t = timedRef.current[ex.id][si];
-                  return (
-                    <View key={si} style={styles.setBlock}>
-                      <View style={styles.setRow}>
-                        <Text style={styles.setLabel}>Set {si + 1}</Text>
-                        <Text style={styles.timerDigits}>
-                          {fmtTime(
-                            t.mode === 'countdown'
-                              ? Math.max(0, t.seconds)
-                              : t.seconds,
-                          )}
-                        </Text>
-                        <Pressable
-                          onPress={() =>
-                            startTimedSet(ex.id, si, ex.repsCount)
-                          }>
-                          <Ionicons
-                            name={
-                              t.running ? 'pause-circle' : 'play-circle'
-                            }
-                            size={28}
-                            color="#4caf50"
-                          />
-                        </Pressable>
-                        <Pressable
-                          onPress={() => toggleMode(ex.id, si)}
-                          style={{ marginLeft: 6 }}>
-                          <Ionicons
-                            name="swap-horizontal"
-                            size={22}
-                            color="#fff"
-                          />
-                        </Pressable>
-                      </View>
-                      {t.done && (
-                        <Text style={styles.lastTxt}>Done ✔</Text>
-                      )}
-                    </View>
-                  );
-                }
+            {/* ○ / ✔︎ toggle */}
+            {trackSets && (
+              <Pressable
+                onPress={() =>
+                  setProgress((prev) => {
+                    const next = [...prev];
+                    next[exIdx] = next[exIdx].map((s) =>
+                      isComplete
+                        ? { reps: '', weight: '' }
+                        : { reps: '✓', weight: '✓' },
+                    );
+                    return next;
+                  })
+                }>
+                <Ionicons
+                  name={isComplete ? 'checkmark-circle' : 'ellipse-outline'}
+                  size={28}
+                  color={isComplete ? '#66bb6a' : '#bbb'}
+                />
+              </Pressable>
+            )}
+          </View>
 
-                // normal reps/weight
-                const set = progress[exIdx][si];
+          <Text style={styles.recommend}>
+            {formatDesc(ex)} • RPE {ex.rpe}
+          </Text>
+
+          {/* video */}
+          {!!ex.videoUri && <VideoToggle uri={ex.videoUri} />}
+
+          {/* sets */}
+          {trackSets &&
+            Array.from({ length: ex.setsCount }).map((_, si) => {
+              if (ex.type === 'time') {
+                const t = timedRef.current[ex.id][si];
                 return (
                   <View key={si} style={styles.setBlock}>
                     <View style={styles.setRow}>
                       <Text style={styles.setLabel}>Set {si + 1}</Text>
-                      <TextInput
-                        style={styles.input}
-                        placeholder="reps"
-                        placeholderTextColor="#777"
-                        keyboardType="numeric"
-                        value={set.reps}
-                        onChangeText={(t) =>
-                          updateInput(exIdx, si, 'reps', t)
-                        }
-                      />
-                      <TextInput
-                        style={styles.input}
-                        placeholder="lbs"
-                        placeholderTextColor="#777"
-                        keyboardType="numeric"
-                        value={set.weight}
-                        onChangeText={(t) =>
-                          updateInput(exIdx, si, 'weight', t)
-                        }
-                      />
-                    </View>
-                    {last[si] && (
-                      <Text style={styles.lastTxt}>
-                        Last: {last[si].reps} reps @ {last[si].weight} lbs
+                      <Text style={styles.timerDigits}>
+                        {fmtTime(
+                          t.mode === 'countdown'
+                            ? Math.max(0, t.seconds)
+                            : t.seconds,
+                        )}
                       </Text>
-                    )}
+                      <Pressable
+                        onPress={() =>
+                          startTimedSet(ex.id, si, ex.repsCount)
+                        }>
+                        <Ionicons
+                          name={t.running ? 'pause-circle' : 'play-circle'}
+                          size={28}
+                          color="#4caf50"
+                        />
+                      </Pressable>
+                      <Pressable
+                        onPress={() => toggleMode(ex.id, si)}
+                        style={{ marginLeft: 6 }}>
+                        <Ionicons
+                          name="swap-horizontal"
+                          size={22}
+                          color="#fff"
+                        />
+                      </Pressable>
+                    </View>
+                    {t.done && <Text style={styles.lastTxt}>Done ✔</Text>}
                   </View>
                 );
-              })}
-          </View>
-        );
-      })}
-    </>
-  );
+              }
+
+              // regular reps / weight
+              const set = progress[exIdx][si];
+              return (
+                <View key={si} style={styles.setBlock}>
+                  <View style={styles.setRow}>
+                    <Text style={styles.setLabel}>Set {si + 1}</Text>
+                    <TextInput
+  style={styles.input}
+  placeholder="reps"
+  placeholderTextColor="#777"
+  keyboardType="number-pad"      // ← was "numeric"
+  editable={!isComplete}
+  value={String(set.reps ?? '')}
+  onChangeText={(t) => updateInput(exIdx, si, 'reps', t)}
+/>
+
+<TextInput
+  style={styles.input}
+  placeholder="lbs"
+  placeholderTextColor="#777"
+  keyboardType="decimal-pad"     // ← was "numeric"
+  editable={!isComplete}
+  value={String(set.weight ?? '')}
+  onChangeText={(t) => updateInput(exIdx, si, 'weight', t)}
+/>
+
+                  </View>
+                  {last[si] && (
+                    <Text style={styles.lastTxt}>
+                      Last: {last[si].reps} reps @ {last[si].weight} lbs
+                    </Text>
+                  )}
+                </View>
+              );
+            })}
+        </View>
+      );
+    })}
+  </>
+);
+
 
   /* -------- render -------- */
   if (loading) {
@@ -572,7 +584,8 @@ const WorkoutDetailScreen: React.FC = () => {
 
   return (
     <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}></KeyboardAvoidingView>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
         <Text style={styles.title}>{day.title}</Text>
         {/* WARM-UP – check-off style */}
 {/* WARM-UP – check-off style */}
@@ -731,7 +744,7 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 16,
   },
-  cardDone: { opacity: 0.6, borderColor: '#4caf50', borderWidth: 1 },
+  cardDone: { opacity: 1, borderColor: '#4caf50', borderWidth: 1, backgroundColor: '#2e7d32' },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
