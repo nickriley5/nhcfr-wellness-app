@@ -4,10 +4,12 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import Feather from 'react-native-vector-icons/Feather';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, ActivityIndicator, StyleSheet, Platform } from 'react-native';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from './firebase';
-import type { ProgramDay } from './utils/types'; // or wherever it's defined
+import type { ProgramDay } from './utils/types';
+import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
+
 
 
 // Screens
@@ -28,12 +30,16 @@ import GoalsScreen from './screens/GoalsScreen';
 import EditProfileScreen from './screens/EditProfileScreen';
 import ProgramListScreen from './screens/ProgramListScreen';
 import ProgramPreviewScreen from './screens/ProgramPreviewScreen';
+import MacroCalculatorScreen from './screens/MacroCalculatorScreen';
 
 // Auth context
 import { AuthProvider, useAuth } from './providers/AuthProvider';
 
 // ----- Navigation Types -----
 // Tab navigator (inside MainTabs)
+
+
+
 export type TabParamList = {
   Home: undefined;
   Dashboard: undefined;
@@ -73,49 +79,68 @@ export type RootStackParamList = {
   ProgramList: undefined;
   ProgramSelection: undefined;
   ProgramPreview: { programId: string };
+  MacroCalculator: undefined;
+  MealPlan: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<TabParamList>();
 
 // ----- Bottom Tab Navigator -----
-const MainTabs = () => (
-  <Tab.Navigator
-    screenOptions={({ route }) => ({
-      headerShown: false,
-      tabBarStyle: {
-        backgroundColor: '#1e1e1e',
-        borderTopWidth: 0,
-        paddingBottom: 10,
-        paddingTop: 10,
-        height: 60,
-      },
-      tabBarActiveTintColor: '#d32f2f',
-      tabBarInactiveTintColor: '#888',
-      tabBarLabelStyle: {
-        fontFamily: 'Inter-Medium',
-        fontSize: 12,
-      },
-      tabBarIcon: ({ color }) => {
-        if (route.name === 'MealPlan') {
-          return <MaterialCommunityIcons name="silverware-fork-knife" size={22} color={color} />;
-        }
-        const iconMap: { [key: string]: string } = {
-          Home: 'home',
-          Dashboard: 'activity',
-          Settings: 'settings',
-        };
-        const iconName = iconMap[route.name] || 'circle';
-        return <Feather name={iconName} size={20} color={color} />;
-      },
-    })}
-  >
-    <Tab.Screen name="Home" component={HomeScreen} />
-    <Tab.Screen name="Dashboard" component={DashboardScreen} />
-    <Tab.Screen name="MealPlan" component={MealPlanScreen} />
-    <Tab.Screen name="Settings" component={SettingsScreen} />
-  </Tab.Navigator>
-);
+
+const MainTabs = () => {
+  const insets = useSafeAreaInsets();
+
+  return (
+    // This view will pad itself by the bottom inset,
+    // so content (our tab navigator) is always above the system bar.
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#121212', paddingBottom: insets.bottom }} edges={['bottom']}>
+      <Tab.Navigator
+        screenOptions={({ route }) => ({
+          headerShown: false,
+          tabBarStyle: {
+            position: 'absolute',   // absolutely stick to the bottom of the SafeAreaView
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: 52,             // a slim, fixed height
+            backgroundColor: '#1e1e1e',
+            borderTopWidth: 0,
+          },
+          tabBarActiveTintColor: '#d32f2f',
+          tabBarInactiveTintColor: '#888',
+          tabBarLabelStyle: {
+            fontFamily: 'Inter-Medium',
+            fontSize: 11,
+            marginBottom: 2,
+          },
+          tabBarIcon: ({ color, size }) => {
+            if (route.name === 'MealPlan') {
+              return <MaterialCommunityIcons name="silverware-fork-knife" size={size} color={color} />;
+            }
+            if (route.name === 'Workout') {
+              return <MaterialCommunityIcons name="weight-lifter" size={size} color={color} />;
+            }
+            const iconMap: Record<string, string> = {
+              Home: 'home',
+              Dashboard: 'activity',
+              Settings: 'settings',
+            };
+            const iconName = iconMap[route.name] || 'circle';
+            return <Feather name={iconName} size={size} color={color} />;
+          },
+        })}
+      >
+        <Tab.Screen name="Home" component={HomeScreen} />
+        <Tab.Screen name="Dashboard" component={DashboardScreen} />
+        <Tab.Screen name="MealPlan" component={MealPlanScreen} />
+        <Tab.Screen name="Workout" component={WorkoutDetailScreen} />
+        <Tab.Screen name="Settings" component={SettingsScreen} />
+      </Tab.Navigator>
+    </SafeAreaView>
+  );
+};
+
 
 // ----- App Navigator (Handles Auth & Flow) -----
 const AppNavigator = () => {
@@ -151,6 +176,7 @@ const AppNavigator = () => {
   <>
     <Stack.Screen name="Main" component={DrawerNavigation} />
     <Stack.Screen name="CheckIn" component={CheckInScreen} />
+    <Stack.Screen name="MacroCalculator" component={MacroCalculatorScreen} />
     <Stack.Screen name="WorkoutDetail" component={WorkoutDetailScreen} />
     <Stack.Screen name="ExerciseLibrary" component={require('./screens/ExerciseLibraryScreen').default} />
     <Stack.Screen name="ExerciseDetail" component={require('./screens/ExerciseDetailScreen').default} />
@@ -162,6 +188,7 @@ const AppNavigator = () => {
     <Stack.Screen name="EditProfile" component={EditProfileScreen} />
     <Stack.Screen name="ProgramList" component={ProgramListScreen} />
     <Stack.Screen name="ProgramPreview" component={ProgramPreviewScreen} />
+    <Stack.Screen name="MealPlan" component={MealPlanScreen} />
   </>
 ) : (
         <>

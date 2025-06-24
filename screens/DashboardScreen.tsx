@@ -327,11 +327,15 @@ export default function DashboardScreen() {
 
       {/* ------------ Modals ------------ */}
       <MealGoalsModal
-        visible={showMealModal}
-        currentWeight={currentWeight}
-        onClose={() => setShowMealModal(false)}
-        onSaved={() => setShowMealModal(false)}
-      />
+  visible={showMealModal}
+  currentWeight={currentWeight}
+  onClose={() => setShowMealModal(false)}
+  onSaved={() => {
+    setShowMealModal(false);
+    // ← this will switch your bottom tabs over
+    navigation.navigate('MealPlan');
+  }}
+/>
 
       <PerformanceGoalsModal
         visible={showWorkoutModal}
