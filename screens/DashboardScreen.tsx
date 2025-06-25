@@ -33,6 +33,8 @@ import EnvironmentCalendarModal from '../components/EnvironmentCalendarModal';
 import { generateProgramFromGoals } from '../utils/programGenerator';
 import { Exercise } from '../types';
 import type { ProgramDay } from '../utils/types';
+import GoalSettingsScreen from '../screens/GoalSettingsScreen';
+
 
 /* ------------ helpers ------------ */
 const pretty = (id: string) =>
@@ -61,6 +63,7 @@ export default function DashboardScreen() {
 
   const [currentWeight, setCurrentWeight] = useState(180);
   const [programExists, setProgramExists] = useState(false);
+  const [mealPlanExists, setMealPlanExists] = useState(false);
   const [exerciseLibrary, setExerciseLibrary] = useState<Exercise[]>([]);
 
   const [todayInfo, setTodayInfo] = useState<{
@@ -98,6 +101,12 @@ export default function DashboardScreen() {
         doc(db, 'users', user.uid, 'program', 'active')
       );
       setProgramExists(progSnap.exists());
+
+      /* --- meal plan --- */
+const mealSnap = await getDoc(
+  doc(db, 'users', user.uid, 'mealPlan', 'active')
+);
+setMealPlanExists(mealSnap.exists());
 
       if (progSnap.exists()) {
         const prog: any = progSnap.data();
@@ -163,6 +172,7 @@ export default function DashboardScreen() {
 
     fetchAll();
   }, [view]);
+
 
   /* ---------- Quick Preview ---------- */
   const QuickViews = () => {
@@ -279,12 +289,19 @@ export default function DashboardScreen() {
         {/* main buttons */}
         {completionPercent >= 80 && (
           <>
-            <Pressable
-              style={styles.outlinedButton}
-              onPress={() => setShowMealModal(true)}
-            >
-              <Text style={styles.buttonText}>Generate Meal Plan</Text>
-            </Pressable>
+            {!mealPlanExists && (
+  <Pressable
+  style={styles.outlinedButton}
+  onPress={() =>
+    navigation
+      .getParent<NativeStackNavigationProp<RootStackParamList>>()
+      ?.navigate('GoalSettings')
+  }
+>
+  <Text style={styles.buttonText}>Generate Meal Plan</Text>
+</Pressable>
+)}
+
 
             {!programExists && (
               <>
@@ -331,9 +348,11 @@ export default function DashboardScreen() {
   currentWeight={currentWeight}
   onClose={() => setShowMealModal(false)}
   onSaved={() => {
+    setMealPlanExists(true);
     setShowMealModal(false);
     // ← this will switch your bottom tabs over
-    navigation.navigate('MealPlan');
+   navigation.getParent()?.navigate('MealPlan');
+
   }}
 />
 

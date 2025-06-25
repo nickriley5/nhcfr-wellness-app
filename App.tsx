@@ -31,6 +31,8 @@ import EditProfileScreen from './screens/EditProfileScreen';
 import ProgramListScreen from './screens/ProgramListScreen';
 import ProgramPreviewScreen from './screens/ProgramPreviewScreen';
 import MacroCalculatorScreen from './screens/MacroCalculatorScreen';
+import GoalSettingsScreen from './screens/GoalSettingsScreen';
+
 
 // Auth context
 import { AuthProvider, useAuth } from './providers/AuthProvider';
@@ -81,6 +83,9 @@ export type RootStackParamList = {
   ProgramPreview: { programId: string };
   MacroCalculator: undefined;
   MealPlan: undefined;
+  MealGoalSettings: undefined;
+DietStyleSelection: undefined;
+GoalSettings: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -189,6 +194,9 @@ const AppNavigator = () => {
     <Stack.Screen name="ProgramList" component={ProgramListScreen} />
     <Stack.Screen name="ProgramPreview" component={ProgramPreviewScreen} />
     <Stack.Screen name="MealPlan" component={MealPlanScreen} />
+    <Stack.Screen name="MealGoalSettings" component={require('./screens/GoalSettingsScreen').default} />
+<Stack.Screen name="DietStyleSelection" component={require('./screens/DietStyleSelectionScreen').default} />
+<Stack.Screen name="GoalSettings" component={GoalSettingsScreen} />
   </>
 ) : (
         <>

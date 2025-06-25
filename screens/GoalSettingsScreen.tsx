@@ -114,9 +114,9 @@ const GoalSettingsScreen = ({ navigation }: GoalSettingsScreenProps) => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16, backgroundColor: '#0A0A23' },
-  header: { fontSize: 24, fontWeight: 'bold', color: '#FFF' },
-  subheader: { fontSize: 16, marginBottom: 24, color: '#AAA' },
+  container: { flex: 1, padding: 16, paddingTop:50, backgroundColor: '#0A0A23' },
+  header: { fontSize: 24, fontWeight: 'bold', color: '#FFF', textAlign: 'center', },
+  subheader: { fontSize: 16, marginBottom: 24, color: '#AAA', textAlign: 'center', },
   goalRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 24 },
   goalOption: { alignItems: 'center', padding: 8, width: '22%' },
   goalOptionSelected: { borderWidth: 2, borderColor: '#E63946', borderRadius: 8 },
