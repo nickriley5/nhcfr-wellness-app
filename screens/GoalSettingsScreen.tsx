@@ -7,7 +7,6 @@ import {
   ScrollView,
   TextInput,
   Pressable,
-  Alert,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
@@ -20,59 +19,40 @@ import { format, addDays } from 'date-fns';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
 const GoalSettingsScreen = () => {
-  const [currentWeight, setCurrentWeight] = useState(0);
+  const uid = auth.currentUser?.uid;
+  const [weight, setWeight] = useState(0);
   const [targetWeight, setTargetWeight] = useState(0);
   const [rate, setRate] = useState(1.0);
   const [goalType, setGoalType] = useState<'fat_loss' | 'maintain' | 'muscle_gain'>('fat_loss');
   const [dietMethod, setDietMethod] = useState<'standard' | 'zone' | 'custom'>('standard');
-  const uid = auth.currentUser?.uid;
   const [dietaryPreference, setDietaryPreference] = useState<'none' | 'carnivore' | 'paleo' | 'vegetarian' | 'vegan'>('none');
-const [dietaryRestriction, setDietaryRestriction] = useState<'none' | 'gluten_free' | 'dairy_free' | 'low_fodmap'>('none');
-
+  const [dietaryRestriction, setDietaryRestriction] = useState<'none' | 'gluten_free' | 'dairy_free' | 'low_fodmap'>('none');
 
   useEffect(() => {
-    const fetchWeights = async () => {
-      if (!uid) return;
-      const docRef = doc(db, 'users', uid);
-      const snap = await getDoc(docRef);
+    if (!uid) return;
+    const fetch = async () => {
+      const ref = doc(db, 'users', uid);
+      const snap = await getDoc(ref);
       if (snap.exists()) {
-        const data = snap.data();
-        if (data.currentWeight) setCurrentWeight(data.currentWeight);
-        if (data.targetWeight) setTargetWeight(data.targetWeight);
-        if (data.goalType) setGoalType(data.goalType);
-        if (data.dietMethod) setDietMethod(data.dietMethod);
-        if (data.dietaryPreference) setDietaryPreference(data.dietaryPreference);
-if (data.dietaryRestriction) setDietaryRestriction(data.dietaryRestriction);
-
+        const d = snap.data();
+        if (d.weight) setWeight(d.weight);
+        if (d.targetWeight) setTargetWeight(d.targetWeight);
+        if (d.goalType) setGoalType(d.goalType);
+        if (d.dietMethod) setDietMethod(d.dietMethod);
+        if (d.dietaryPreference) setDietaryPreference(d.dietaryPreference);
+        if (d.dietaryRestriction) setDietaryRestriction(d.dietaryRestriction);
       }
     };
-    fetchWeights();
+    fetch();
   }, [uid]);
 
-  const weightDiff = Math.abs(targetWeight - currentWeight);
+  const weightDiff = Math.abs(targetWeight - weight);
   const weeks = rate > 0 ? Math.ceil(weightDiff / rate) : 0;
   const endDate = addDays(new Date(), weeks * 7);
 
-  const saveGoalType = async (type: 'fat_loss' | 'maintain' | 'muscle_gain') => {
-    setGoalType(type);
-    if (uid) await setDoc(doc(db, 'users', uid), { goalType: type }, { merge: true });
+  const saveField = async (field: string, value: any) => {
+    if (uid) await setDoc(doc(db, 'users', uid), { [field]: value }, { merge: true });
   };
-
-  const saveDietMethod = async (method: 'standard' | 'zone' | 'custom') => {
-    setDietMethod(method);
-    if (uid) await setDoc(doc(db, 'users', uid), { dietMethod: method }, { merge: true });
-  };
-
-  const saveDietaryPreference = async (pref: typeof dietaryPreference) => {
-  setDietaryPreference(pref);
-  if (uid) await setDoc(doc(db, 'users', uid), { dietaryPreference: pref }, { merge: true });
-};
-
-const saveDietaryRestriction = async (restriction: typeof dietaryRestriction) => {
-  setDietaryRestriction(restriction);
-  if (uid) await setDoc(doc(db, 'users', uid), { dietaryRestriction: restriction }, { merge: true });
-};
-
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#0f0f0f' }}>
@@ -81,29 +61,28 @@ const saveDietaryRestriction = async (restriction: typeof dietaryRestriction) =>
           <ScrollView contentContainerStyle={styles.scroll}>
             <Text style={styles.heading}>Set Your Goal</Text>
 
-            {/* Current Weight */}
             <View style={styles.card}>
               <Text style={styles.label}>Current Weight (lbs)</Text>
               <TextInput
                 keyboardType="numeric"
-                value={currentWeight.toString()}
-                onChangeText={(val) => setCurrentWeight(parseFloat(val) || 0)}
+                value={weight.toString()}
+                onChangeText={(val) => setWeight(parseFloat(val) || 0)}
+                onBlur={() => saveField('weight', weight)}
                 style={styles.input}
               />
             </View>
 
-            {/* Target Weight */}
             <View style={styles.card}>
               <Text style={styles.label}>Target Weight (lbs)</Text>
               <TextInput
                 keyboardType="numeric"
                 value={targetWeight.toString()}
                 onChangeText={(val) => setTargetWeight(parseFloat(val) || 0)}
+                onBlur={() => saveField('targetWeight', targetWeight)}
                 style={styles.input}
               />
             </View>
 
-            {/* Weekly Rate */}
             <View style={styles.card}>
               <Text style={styles.label}>Weekly Rate of Change (lbs/week)</Text>
               <Slider
@@ -115,14 +94,15 @@ const saveDietaryRestriction = async (restriction: typeof dietaryRestriction) =>
                 minimumTrackTintColor="#ff3c3c"
               />
               <Text style={styles.value}>{rate} lbs/week</Text>
-              {rate > 1.5 && <Text style={styles.warning}>⚠️ Rapid weight change can impact performance and recovery.</Text>}
+              {rate > 1.5 && (
+                <Text style={styles.warning}>⚠️ Rapid weight change can impact performance and recovery.</Text>
+              )}
               <Text style={styles.value}>Estimated Completion Date: {format(endDate, 'PPP')}</Text>
               <Text style={styles.summary}>
-                To reach your target, you'll need to {currentWeight > targetWeight ? 'lose' : 'gain'} {rate} lbs/week for approximately {weeks} weeks.
+                To reach your target, you'll need to {weight > targetWeight ? 'lose' : 'gain'} {rate} lbs/week for approximately {weeks} weeks.
               </Text>
             </View>
 
-            {/* Goal Type */}
             <View style={styles.card}>
               <Text style={styles.label}>Goal Focus</Text>
               <View style={styles.optionsRow}>
@@ -130,7 +110,7 @@ const saveDietaryRestriction = async (restriction: typeof dietaryRestriction) =>
                   <Pressable
                     key={type}
                     style={[styles.optionButton, goalType === type && styles.activeOption]}
-                    onPress={() => saveGoalType(type as any)}
+                    onPress={() => { setGoalType(type as any); saveField('goalType', type); }}
                   >
                     <Ionicons
                       name={type === 'fat_loss' ? 'flame' : type === 'maintain' ? 'body' : 'barbell'}
@@ -138,19 +118,16 @@ const saveDietaryRestriction = async (restriction: typeof dietaryRestriction) =>
                       color="#fff"
                     />
                     <Text style={styles.optionText}>
-                      {type === 'fat_loss' ? 'Fat Loss' : type === 'maintain' ? 'Maintenance' : 'Muscle Gain'}
+                      {type === 'fat_loss' ? 'Fat Loss' : type === 'maintain' ? 'Maintain' : 'Muscle Gain'}
                     </Text>
-
                   </Pressable>
                 ))}
               </View>
               <Text style={styles.summary}>
-                 You’re currently focused on {goalType === 'fat_loss' ? 'Fat Loss' : goalType === 'maintain' ? 'Maintenance' : 'Muscle Gain'}.
+                You’re currently focused on {goalType === 'fat_loss' ? 'Fat Loss' : goalType === 'maintain' ? 'Maintenance' : 'Muscle Gain'}.
               </Text>
-
             </View>
 
-            {/* Diet Strategy */}
             <View style={styles.card}>
               <Text style={styles.label}>Diet Strategy</Text>
               <View style={styles.optionsRow}>
@@ -158,7 +135,7 @@ const saveDietaryRestriction = async (restriction: typeof dietaryRestriction) =>
                   <Pressable
                     key={method}
                     style={[styles.optionButton, dietMethod === method && styles.activeOption]}
-                    onPress={() => saveDietMethod(method as any)}
+                    onPress={() => { setDietMethod(method as any); saveField('dietMethod', method); }}
                   >
                     <Ionicons
                       name={method === 'standard' ? 'stats-chart' : method === 'zone' ? 'grid' : 'create'}
@@ -178,15 +155,39 @@ const saveDietaryRestriction = async (restriction: typeof dietaryRestriction) =>
               </Text>
             </View>
 
-            {/* Dietary Preference */}
-<View style={styles.card}>
+            <View style={styles.card}>
   <Text style={styles.label}>Dietary Preference</Text>
   <View style={styles.optionsRow}>
-    {['none', 'carnivore', 'paleo', 'vegetarian', 'vegan'].map((pref) => (
+    {['none', 'carnivore', 'paleo'].map((pref) => (
       <Pressable
         key={pref}
-        style={[styles.optionButton, dietaryPreference === pref && styles.activeOption]}
-        onPress={() => saveDietaryPreference(pref as any)}
+        style={[
+          styles.optionButton,
+          dietaryPreference === pref && styles.activeOption,
+        ]}
+        onPress={() => {
+          setDietaryPreference(pref as any);
+          saveField('dietaryPreference', pref);
+        }}
+      >
+        <Text style={styles.optionText}>
+          {pref.charAt(0).toUpperCase() + pref.slice(1)}
+        </Text>
+      </Pressable>
+    ))}
+  </View>
+  <View style={[styles.optionsRow, { justifyContent: 'flex-start' }]}>
+    {['vegetarian', 'vegan'].map((pref) => (
+      <Pressable
+        key={pref}
+        style={[
+          styles.optionButton,
+          dietaryPreference === pref && styles.activeOption,
+        ]}
+        onPress={() => {
+          setDietaryPreference(pref as any);
+          saveField('dietaryPreference', pref);
+        }}
       >
         <Text style={styles.optionText}>
           {pref.charAt(0).toUpperCase() + pref.slice(1)}
@@ -195,34 +196,32 @@ const saveDietaryRestriction = async (restriction: typeof dietaryRestriction) =>
     ))}
   </View>
   <Text style={styles.summary}>
-    Your preference will help guide food suggestions and recipe ideas in future features.
+    Your preference will help guide food suggestions and recipe ideas in future
+    features.
   </Text>
 </View>
 
-{/* Dietary Restrictions */}
-<View style={styles.card}>
-  <Text style={styles.label}>Dietary Restrictions</Text>
-  <View style={styles.optionsRow}>
-    {['none', 'gluten_free', 'dairy_free', 'low_fodmap'].map((restriction) => (
-      <Pressable
-        key={restriction}
-        style={[styles.optionButton, dietaryRestriction === restriction && styles.activeOption]}
-        onPress={() => saveDietaryRestriction(restriction as any)}
-      >
-        <Text style={styles.optionText}>
-          {restriction
-            .replace('_', ' ')
-            .replace(/\b\w/g, (c) => c.toUpperCase())}
-        </Text>
-      </Pressable>
-    ))}
-  </View>
-  <Text style={styles.summary}>
-    Your restriction will help guide food suggestions and recipe ideas in future features.
-  </Text>
-</View>
 
-           
+            <View style={styles.card}>
+              <Text style={styles.label}>Dietary Restrictions</Text>
+              <View style={styles.optionsRow}>
+                {['none', 'gluten_free', 'dairy_free', 'low_fodmap'].map((restriction) => (
+                  <Pressable
+                    key={restriction}
+                    style={[styles.optionButton, dietaryRestriction === restriction && styles.activeOption]}
+                    onPress={() => { setDietaryRestriction(restriction as any); saveField('dietaryRestriction', restriction); }}
+                  >
+                    <Text style={styles.optionText}>
+                      {restriction.replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+              <Text style={styles.summary}>
+                Your restriction will help guide food suggestions and recipe ideas in future features.
+              </Text>
+            </View>
+
           </ScrollView>
         </KeyboardAvoidingView>
       </LinearGradient>
@@ -241,25 +240,32 @@ const styles = StyleSheet.create({
   warning: { color: '#ff6b6b', marginTop: 8 },
   summary: { color: '#aaa', marginTop: 8, fontSize: 13 },
   optionsRow: {
-  flexDirection: 'row',
-  flexWrap: 'wrap',
-  justifyContent: 'center',
-  gap: 8, // Optional: if using React Native 0.71+
-  marginTop: 8,
-},
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
   optionButton: {
-  backgroundColor: '#1e1e1e',
-  alignItems: 'center',
-  paddingVertical: 10,
-  paddingHorizontal: 16,
-  borderRadius: 8,
-  marginRight: 8,
-  marginBottom: 8,
-},
-activeOption: {
-  backgroundColor: '#ff3b30',
-},
-  optionText: { color: '#fff', marginTop: 4, fontSize: 13 },
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#2c2c2c',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    marginBottom: 8,
+    width: '30%',
+  },
+  activeOption: {
+    backgroundColor: '#ff3b30',
+  },
+  optionText: {
+    color: '#fff',
+    fontSize: 13,
+    textAlign: 'center',
+    flexWrap: 'nowrap',
+    marginTop: 4,
+  },
 });
 
 export default GoalSettingsScreen;
