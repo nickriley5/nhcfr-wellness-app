@@ -181,11 +181,24 @@ const DrawerNavigation: React.FC = () => (
   <Drawer.Navigator
     initialRouteName="MainTabs"
     drawerContent={(props) => <CustomDrawerContent {...props} />}
-    screenOptions={{ headerShown: false, drawerStyle: { backgroundColor: '#1c1c1c' }, drawerLabelStyle: { color: '#fff' } }}
+    screenOptions={{
+  headerShown: true,
+  headerStyle: { backgroundColor: '#1e1e1e' },
+  headerTintColor: '#fff',
+  drawerStyle: { backgroundColor: '#1c1c1c' },
+  drawerLabelStyle: { color: '#fff' },
+}}
   >
-    <Drawer.Screen name="MainTabs" options={{ drawerItemStyle: { height: 0 } }}>
-      {() => <TabNavigator />}
-    </Drawer.Screen>
+    <Drawer.Screen
+  name="MainTabs"
+  options={{
+    drawerItemStyle: { height: 0 },
+    title: '', // ← hides label text if anything sneaks through
+    drawerLabel: () => null, // ← fully removes the label rendering
+  }}
+>
+  {() => <TabNavigator />}
+</Drawer.Screen>
     <Drawer.Screen name="Profile" component={ProfileScreen} />
     <Drawer.Screen name="Settings" component={SettingsScreen} />
   </Drawer.Navigator>

@@ -55,7 +55,7 @@ const ProgramPreviewScreen: React.FC = () => {
         { merge: false }
       );
 
-      navigation.navigate('Main', {
+      navigation.navigate('AppDrawer', {
         screen: 'MainTabs',
         params: { screen: 'Workout' },
       });

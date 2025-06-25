@@ -61,9 +61,9 @@ export type RootDrawerParamList = {
 export type RootStackParamList = {
   Login: undefined;
   Register: undefined;
-  Main: NavigatorScreenParams<RootDrawerParamList>;
+  AppDrawer: NavigatorScreenParams<RootDrawerParamList>;
   CheckIn: undefined;
-   WorkoutDetail: {
+  WorkoutDetail: {
     day: ProgramDay;
     weekIdx: number;
     dayIdx: number;
@@ -84,67 +84,17 @@ export type RootStackParamList = {
   MacroCalculator: undefined;
   MealPlan: undefined;
   MealGoalSettings: undefined;
-DietStyleSelection: undefined;
-GoalSettings: undefined;
+  DietStyleSelection: undefined;
+  GoalSettings: undefined;
 };
+
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<TabParamList>();
 
 // ----- Bottom Tab Navigator -----
 
-const MainTabs = () => {
-  const insets = useSafeAreaInsets();
 
-  return (
-    // This view will pad itself by the bottom inset,
-    // so content (our tab navigator) is always above the system bar.
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#121212', paddingBottom: insets.bottom }} edges={['bottom']}>
-      <Tab.Navigator
-        screenOptions={({ route }) => ({
-          headerShown: false,
-          tabBarStyle: {
-            position: 'absolute',   // absolutely stick to the bottom of the SafeAreaView
-            left: 0,
-            right: 0,
-            bottom: 0,
-            height: 52,             // a slim, fixed height
-            backgroundColor: '#1e1e1e',
-            borderTopWidth: 0,
-          },
-          tabBarActiveTintColor: '#d32f2f',
-          tabBarInactiveTintColor: '#888',
-          tabBarLabelStyle: {
-            fontFamily: 'Inter-Medium',
-            fontSize: 11,
-            marginBottom: 2,
-          },
-          tabBarIcon: ({ color, size }) => {
-            if (route.name === 'MealPlan') {
-              return <MaterialCommunityIcons name="silverware-fork-knife" size={size} color={color} />;
-            }
-            if (route.name === 'Workout') {
-              return <MaterialCommunityIcons name="weight-lifter" size={size} color={color} />;
-            }
-            const iconMap: Record<string, string> = {
-              Home: 'home',
-              Dashboard: 'activity',
-              Settings: 'settings',
-            };
-            const iconName = iconMap[route.name] || 'circle';
-            return <Feather name={iconName} size={size} color={color} />;
-          },
-        })}
-      >
-        <Tab.Screen name="Home" component={HomeScreen} />
-        <Tab.Screen name="Dashboard" component={DashboardScreen} />
-        <Tab.Screen name="MealPlan" component={MealPlanScreen} />
-        <Tab.Screen name="Workout" component={WorkoutDetailScreen} />
-        <Tab.Screen name="Settings" component={SettingsScreen} />
-      </Tab.Navigator>
-    </SafeAreaView>
-  );
-};
 
 
 // ----- App Navigator (Handles Auth & Flow) -----
@@ -179,7 +129,7 @@ const AppNavigator = () => {
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       {user ? (
   <>
-    <Stack.Screen name="Main" component={DrawerNavigation} />
+    <Stack.Screen name="AppDrawer" component={DrawerNavigation} />
     <Stack.Screen name="CheckIn" component={CheckInScreen} />
     <Stack.Screen name="MacroCalculator" component={MacroCalculatorScreen} />
     <Stack.Screen name="WorkoutDetail" component={WorkoutDetailScreen} />
