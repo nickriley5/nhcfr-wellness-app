@@ -1,21 +1,14 @@
 import React from 'react';
 import { NavigationContainer, NavigatorScreenParams } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import Feather from 'react-native-vector-icons/Feather';
-import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import { View, Text, ActivityIndicator, StyleSheet, Platform } from 'react-native';
+import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from './firebase';
-import type { ProgramDay } from './utils/types';
-import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
+import type { ProgramDay } from './types/Exercise';
 
 
 
 // Screens
-import DashboardScreen from './screens/DashboardScreen';
-import HomeScreen from './screens/HomeScreen';
-import SettingsScreen from './screens/SettingsScreen';
 import LoginScreen from './screens/LoginScreen';
 import RegisterScreen from './screens/RegisterScreen';
 import MealPlanScreen from './screens/MealPlanScreen';
@@ -32,6 +25,7 @@ import ProgramListScreen from './screens/ProgramListScreen';
 import ProgramPreviewScreen from './screens/ProgramPreviewScreen';
 import MacroCalculatorScreen from './screens/MacroCalculatorScreen';
 import GoalSettingsScreen from './screens/GoalSettingsScreen';
+import MacroPlanOverviewScreen from './screens/MacroPlanOverviewScreen';
 
 
 // Auth context
@@ -86,11 +80,19 @@ export type RootStackParamList = {
   MealGoalSettings: undefined;
   DietStyleSelection: undefined;
   GoalSettings: undefined;
+  MacroPlanOverview: {
+  calorieTarget: number;
+  proteinGrams: number;
+  fatGrams: number;
+  carbGrams: number;
+  zoneBlocks: { protein: number; carbs: number; fats: number };
+  dietMethod: 'standard' | 'zone';
+};
+
 };
 
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
-const Tab = createBottomTabNavigator<TabParamList>();
 
 // ----- Bottom Tab Navigator -----
 
@@ -145,8 +147,9 @@ const AppNavigator = () => {
     <Stack.Screen name="ProgramPreview" component={ProgramPreviewScreen} />
     <Stack.Screen name="MealPlan" component={MealPlanScreen} />
     <Stack.Screen name="MealGoalSettings" component={require('./screens/GoalSettingsScreen').default} />
-<Stack.Screen name="DietStyleSelection" component={require('./screens/DietStyleSelectionScreen').default} />
-<Stack.Screen name="GoalSettings" component={GoalSettingsScreen} />
+    <Stack.Screen name="DietStyleSelection" component={require('./screens/DietStyleSelectionScreen').default} />
+    <Stack.Screen name="GoalSettings" component={GoalSettingsScreen} />
+    <Stack.Screen name="MacroPlanOverview" component={MacroPlanOverviewScreen} />
   </>
 ) : (
         <>
@@ -206,6 +209,7 @@ const styles = StyleSheet.create({
     color: '#fff',
     letterSpacing: 4,
     fontFamily: 'sans-serif-condensed',
+
   },
   tagline: {
     fontSize: 14,

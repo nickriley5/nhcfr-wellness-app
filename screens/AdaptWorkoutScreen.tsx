@@ -63,7 +63,7 @@ const AdaptWorkoutScreen: React.FC = () => {
         const day = data.currentDay - 1;
         const todayExercises: Exercise[] = data.days[day].exercises.map((ex: any) => ({
           ...ex,
-          videoUri: fallbackVideos[ex.name] || fallbackVideos['Pushups'],
+          videoUri: fallbackVideos[ex.name] || fallbackVideos.Pushups,
         }));
         setWorkoutExercises(todayExercises);
         setAdaptedExercises(todayExercises);
@@ -128,25 +128,18 @@ const AdaptWorkoutScreen: React.FC = () => {
       if (docSnap.exists()) {
         const data = docSnap.data() as any;
         const day = data.currentDay - 1;
-  
         // Merge only name, video, and thumbnail into original structure
         const updatedDay = data.days[day];
         const mergedExercises = updatedDay.exercises.map((original: any, i: number) => {
           const adapted = adaptedExercises?.[i];
-        
           return {
             ...original,
             name: adapted?.name ?? original.name,
             videoUri: adapted?.videoUri ?? original.videoUri ?? '',
             thumbnailUri: adapted?.thumbnailUri ?? original.thumbnailUri ?? '',
           };
-        });
-        
-  
-        data.days[day].exercises = mergedExercises;
-  
+        });        data.days[day].exercises = mergedExercises;
         await setDoc(docRef, data);
-  
         setShowToast(true);
         setTimeout(() => {
           navigation.navigate('WorkoutDetail', { adapt: true });
@@ -157,8 +150,6 @@ const AdaptWorkoutScreen: React.FC = () => {
       Alert.alert('Error', 'Failed to save adapted workout.');
     }
   };
-  
-  
 
   const togglePlay = (index: number) => {
     setPlayingIndex(prev => (prev === index ? null : index));
@@ -173,7 +164,6 @@ const AdaptWorkoutScreen: React.FC = () => {
   }
 
   // Prepare the list of similar exercises when modal is open
-  
 
   return (
     <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>

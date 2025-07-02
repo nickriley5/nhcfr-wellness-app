@@ -17,64 +17,123 @@ import { auth, db } from '../firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { format, addDays } from 'date-fns';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../App'; 
 
-const GoalSettingsScreen = () => {
+  const GoalSettingsScreen = () => {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const uid = auth.currentUser?.uid;
   const [weight, setWeight] = useState(0);
   const [targetWeight, setTargetWeight] = useState(0);
   const [rate, setRate] = useState(1.0);
   const [goalType, setGoalType] = useState<'fat_loss' | 'maintain' | 'muscle_gain'>('fat_loss');
-  const [dietMethod, setDietMethod] = useState<'standard' | 'zone' | 'custom'>('standard');
+  const [dietMethod, setDietMethod] = useState<'standard' | 'zone'>('standard');
   const [dietaryPreference, setDietaryPreference] = useState<'none' | 'carnivore' | 'paleo' | 'vegetarian' | 'vegan'>('none');
   const [dietaryRestriction, setDietaryRestriction] = useState<'none' | 'gluten_free' | 'dairy_free' | 'low_fodmap'>('none');
+  const [activityLevel, setActivityLevel] = useState<'sedentary' | 'light' | 'moderate' | 'very_active'>('moderate');
+  const [showActivityInfo, setShowActivityInfo] = useState(false);
+  const [calorieTarget, setCalorieTarget] = useState(0);
+  const [proteinGrams, setProteinGrams] = useState(0);
+  const [fatGrams, setFatGrams] = useState(0);
+  const [carbGrams, setCarbGrams] = useState(0);
+  const [zoneBlocks, setZoneBlocks] = useState({ protein: 0, carbs: 0, fats: 0 });
+  const [selectedActivityDescription, setSelectedActivityDescription] = useState('');
 
   useEffect(() => {
-    if (!uid) return;
+    if (!uid) {
+      return;
+    }
     const fetch = async () => {
       const ref = doc(db, 'users', uid);
       const snap = await getDoc(ref);
       if (snap.exists()) {
         const d = snap.data();
-        if (d.weight) setWeight(d.weight);
-        if (d.targetWeight) setTargetWeight(d.targetWeight);
-        if (d.goalType) setGoalType(d.goalType);
-        if (d.dietMethod) setDietMethod(d.dietMethod);
-        if (d.dietaryPreference) setDietaryPreference(d.dietaryPreference);
-        if (d.dietaryRestriction) setDietaryRestriction(d.dietaryRestriction);
+        if (d.weight) { setWeight(d.weight); }
+        if (d.targetWeight) {setTargetWeight(d.targetWeight);}
+        if (d.goalType) {setGoalType(d.goalType);}
+        if (d.dietMethod) {setDietMethod(d.dietMethod);}
+        if (d.dietaryPreference) {setDietaryPreference(d.dietaryPreference);}
+        if (d.dietaryRestriction) {setDietaryRestriction(d.dietaryRestriction);}
+        if (d.activityLevel) { setActivityLevel(d.activityLevel); }
       }
     };
     fetch();
   }, [uid]);
 
+  const activityMultiplierMap = {
+  sedentary: 12,
+  light: 13,
+  moderate: 14,
+  very_active: 15,
+};
+
+  useEffect(() => {
+  const multiplier = activityMultiplierMap[activityLevel] || 1.2;
+  const baseCalories = multiplier * weight;
+
+  // Make rate matter: 1 lb/week ≈ 500 kcal/day
+  const calorieAdjustment = rate * 500 * (
+    goalType === 'fat_loss' ? -1 :
+    goalType === 'muscle_gain' ? 1 :
+    0
+  );
+
+  const cals = Math.round(baseCalories + calorieAdjustment);
+
+  const protein = Math.round(weight * 1);
+  const fat = Math.round((cals * 0.25) / 9);
+  const carbs = Math.round((cals - (protein * 4 + fat * 9)) / 4);
+
+  const blocks = {
+    protein: Math.round(protein / 7),
+    carbs: Math.round(carbs / 9),
+    fats: Math.round(fat / 1.5),
+  };
+
+  setCalorieTarget(cals);
+  setProteinGrams(protein);
+  setFatGrams(fat);
+  setCarbGrams(carbs);
+  setZoneBlocks(blocks);
+}, [weight, goalType, rate, activityLevel]);
+
+
+
   const saveField = async (field: string, value: any) => {
-    if (uid) await setDoc(doc(db, 'users', uid), { [field]: value }, { merge: true });
+    if (uid) {await setDoc(doc(db, 'users', uid), { [field]: value }, { merge: true });}
   };
 
   const weightDiff = Math.abs(targetWeight - weight);
   const weeks = rate > 0 ? Math.ceil(weightDiff / rate) : 0;
   const endDate = addDays(new Date(), weeks * 7);
 
-  // Calorie estimate: Mifflin-St Jeor formula-ish approximation
-  const baseCalories = 12 * weight;
-  const adjustment = goalType === 'muscle_gain' ? 250 : goalType === 'fat_loss' ? -500 : 0;
-  const calorieTarget = Math.round(baseCalories + adjustment);
-
-  const proteinGrams = Math.round(weight * 1);
-  const fatGrams = Math.round((calorieTarget * 0.25) / 9);
-  const carbGrams = Math.round((calorieTarget - (proteinGrams * 4 + fatGrams * 9)) / 4);
-
-  const zoneBlocks = {
-    protein: Math.round(proteinGrams / 7),
-    carbs: Math.round(carbGrams / 9),
-    fats: Math.round(fatGrams / 1.5),
-  };
+  
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#0f0f0f' }}>
+    <SafeAreaView style={styles.safeArea}>
       <LinearGradient colors={['#0f0f0f', '#1a1a1a']} style={styles.container}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.keyboardAvoiding}>
           <ScrollView contentContainerStyle={styles.scroll}>
             <Text style={styles.heading}>Set Your Goal</Text>
+
+            {/* GOAL TYPE */}
+            <View style={styles.card}>
+              <Text style={styles.label}>Goal Focus</Text>
+              <View style={styles.optionsRow}>
+                {['fat_loss', 'maintain', 'muscle_gain'].map((type) => (
+                  <Pressable
+                    key={type}
+                    style={[styles.optionButton, goalType === type && styles.activeOption]}
+                    onPress={() => { setGoalType(type as any); saveField('goalType', type); }}
+                  >
+                    <Ionicons name={type === 'fat_loss' ? 'flame' : type === 'maintain' ? 'body' : 'barbell'} size={24} color="#fff" />
+                    <Text style={styles.optionText}>{type.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())}</Text>
+                  </Pressable>
+                ))}
+              </View>
+              <Text style={styles.summary}>You’re currently focused on {goalType.replace('_', ' ')}</Text>
+            </View>
 
             {/* WEIGHT INPUT */}
             <View style={styles.card}>
@@ -99,6 +158,48 @@ const GoalSettingsScreen = () => {
               />
             </View>
 
+            {/* ACTIVITY LEVEL */}
+<View style={styles.card}>
+  <View style={styles.cardHeader}>
+    <Text style={styles.label}>Activity Level</Text>
+    <Pressable onPress={() => setShowActivityInfo(!showActivityInfo)}>
+      <Ionicons name="help-circle-outline" size={20} color="#aaa" />
+    </Pressable>
+  </View>
+
+  <View style={styles.optionsRow}>
+    {[
+      { key: 'sedentary', label: 'Sedentary' },
+      { key: 'light', label: 'Light' },
+      { key: 'moderate', label: 'Moderate' },
+      { key: 'very_active', label: 'Very Active' },
+    ].map(({ key, label }) => (
+      <Pressable
+        key={key}
+        style={[styles.optionButton, activityLevel === key && styles.activeOption]}
+        onPress={() => {
+          setActivityLevel(key as any);
+          saveField('activityLevel', key);
+        }}
+      >
+        <Text style={styles.optionText}>{label}</Text>
+      </Pressable>
+    ))}
+  </View>
+
+  {showActivityInfo && (
+    <Text style={styles.summary}>
+      Choose the level that best matches your daily lifestyle:{"\n\n"}
+      • <Text style={{ fontWeight: 'bold' }}>Sedentary</Text>: Desk job, minimal daily movement{"\n"}
+      • <Text style={{ fontWeight: 'bold' }}>Light</Text>: Regular walking, light household tasks{"\n"}
+      • <Text style={{ fontWeight: 'bold' }}>Moderate</Text>: Manual job or workouts 3–4x/week{"\n"}
+      • <Text style={{ fontWeight: 'bold' }}>Very Active</Text>: Intense training or daily physical labor{"\n\n"}
+      🔥 Firefighting doesn’t count unless you’re actively training or operating on scene.
+    </Text>
+  )}
+</View>
+
+
             {/* RATE */}
             <View style={styles.card}>
               <Text style={styles.label}>Weekly Rate of Change (lbs/week)</Text>
@@ -118,35 +219,19 @@ const GoalSettingsScreen = () => {
               </Text>
             </View>
 
-            {/* GOAL TYPE */}
-            <View style={styles.card}>
-              <Text style={styles.label}>Goal Focus</Text>
-              <View style={styles.optionsRow}>
-                {['fat_loss', 'maintain', 'muscle_gain'].map((type) => (
-                  <Pressable
-                    key={type}
-                    style={[styles.optionButton, goalType === type && styles.activeOption]}
-                    onPress={() => { setGoalType(type as any); saveField('goalType', type); }}
-                  >
-                    <Ionicons name={type === 'fat_loss' ? 'flame' : type === 'maintain' ? 'body' : 'barbell'} size={24} color="#fff" />
-                    <Text style={styles.optionText}>{type.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())}</Text>
-                  </Pressable>
-                ))}
-              </View>
-              <Text style={styles.summary}>You’re currently focused on {goalType.replace('_', ' ')}</Text>
-            </View>
+            
 
             {/* DIET METHOD */}
             <View style={styles.card}>
               <Text style={styles.label}>Diet Strategy</Text>
               <View style={styles.optionsRow}>
-                {['standard', 'zone', 'custom'].map((method) => (
+                {['standard', 'zone'].map((method) => (
                   <Pressable
                     key={method}
                     style={[styles.optionButton, dietMethod === method && styles.activeOption]}
                     onPress={() => { setDietMethod(method as any); saveField('dietMethod', method); }}
                   >
-                    <Ionicons name={method === 'standard' ? 'stats-chart' : method === 'zone' ? 'grid' : 'create'} size={24} color="#fff" />
+                    <Ionicons name={method === 'standard' ? 'stats-chart' : 'grid'} size={24} color="#fff" />
                     <Text style={styles.optionText}>{method.charAt(0).toUpperCase() + method.slice(1)}</Text>
                   </Pressable>
                 ))}
@@ -154,12 +239,13 @@ const GoalSettingsScreen = () => {
               <Text style={styles.summary}>
                 {dietMethod === 'standard' && 'Macros will follow a standard evidence-based formula.'}
                 {dietMethod === 'zone' && 'Macros follow 40/30/30 block ratios for carbs, protein, and fat.'}
-                {dietMethod === 'custom' && 'You’ll enter your own custom macros manually.'}
               </Text>
             </View>
 
+            
+
             {/* MACRO CALCULATOR CARD */}
-            <View style={styles.card}>
+            {/* <View style={styles.card}>
               <Text style={styles.label}>Estimated Macros</Text>
               <Text style={styles.value}>Calories: {calorieTarget} kcal/day</Text>
               <Text style={styles.value}>Protein: {proteinGrams}g</Text>
@@ -170,10 +256,16 @@ const GoalSettingsScreen = () => {
                   Zone Blocks – Protein: {zoneBlocks.protein} | Carbs: {zoneBlocks.carbs} | Fats: {zoneBlocks.fats}
                 </Text>
               )}
-            </View>
+            </View> */}
 
             {/* DIETARY PREFERENCES */}
             <View style={styles.card}>
+              <Text style={styles.label}>Nutrition Preferences</Text>
+              <Text style={styles.placeholderText}>
+                Dietary preferences and restrictions will be available in a future update to personalize meal planning and nutrition recommendations.
+              </Text>
+            </View>
+            {/* <View style={styles.card}>
               <Text style={styles.label}>Dietary Preference</Text>
               <View style={styles.optionsRow}>
                 {['none', 'carnivore', 'paleo'].map((pref) => (
@@ -186,7 +278,7 @@ const GoalSettingsScreen = () => {
                   </Pressable>
                 ))}
               </View>
-              <View style={[styles.optionsRow, { justifyContent: 'flex-start' }]}>
+              <View style={[styles.optionsRow, styles.justifyFlexStart]}>
                 {['vegetarian', 'vegan'].map((pref) => (
                   <Pressable
                     key={pref}
@@ -198,10 +290,10 @@ const GoalSettingsScreen = () => {
                 ))}
               </View>
               <Text style={styles.summary}>Preferences help shape future recipe suggestions.</Text>
-            </View>
+            </View> */}
 
             {/* RESTRICTIONS */}
-            <View style={styles.card}>
+            {/* <View style={styles.card}>
               <Text style={styles.label}>Dietary Restrictions</Text>
               <View style={styles.optionsRow}>
                 {['none', 'gluten_free', 'dairy_free', 'low_fodmap'].map((r) => (
@@ -217,7 +309,7 @@ const GoalSettingsScreen = () => {
                 ))}
               </View>
               <Text style={styles.summary}>Restrictions will be used to filter future recipes.</Text>
-            </View>
+            </View> */}
 
             {/* WORKOUT TAILORING CARD */}
             <View style={styles.card}>
@@ -227,6 +319,23 @@ const GoalSettingsScreen = () => {
               </Text>
             </View>
 
+            <Pressable
+              style={[styles.optionButton, { backgroundColor: '#ff3c3c', alignSelf: 'center', paddingVertical: 14, marginTop: 12 }]}
+              onPress={() => {
+              navigation.navigate('MacroPlanOverview', {
+              calorieTarget,
+              proteinGrams,
+              fatGrams,
+              carbGrams,
+              zoneBlocks,
+              dietMethod,
+            });
+            }}
+              >
+              <Text style={{ color: 'white', fontWeight: '600', fontSize: 16 }}>Generate My Plan</Text>
+            </Pressable>
+
+
           </ScrollView>
         </KeyboardAvoidingView>
       </LinearGradient>
@@ -235,7 +344,9 @@ const GoalSettingsScreen = () => {
 };
 
 const styles = StyleSheet.create({
+  safeArea: { flex: 1, backgroundColor: '#0f0f0f' },
   container: { flex: 1 },
+  keyboardAvoiding: { flex: 1 },
   scroll: { paddingTop: 16, paddingBottom: 48, paddingHorizontal: 16 },
   heading: { fontSize: 22, color: '#fff', marginBottom: 16, fontWeight: '600' },
   card: { backgroundColor: '#1f1f1f', borderRadius: 16, padding: 16, marginBottom: 20 },
@@ -259,7 +370,9 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 10,
     marginBottom: 8,
-    width: '30%',
+    minWidth: '23%',
+    flexGrow: 1,
+    textAlign: 'center',
   },
   activeOption: {
     backgroundColor: '#ff3b30',
@@ -271,6 +384,20 @@ const styles = StyleSheet.create({
     flexWrap: 'nowrap',
     marginTop: 4,
   },
+  justifyFlexStart: {
+    justifyContent: 'flex-start',
+  },
+  cardHeader: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+},
+placeholderText: {
+  fontSize: 14,
+  color: '#999',
+  marginTop: 8,
+  lineHeight: 20,
+},
 });
 
 export default GoalSettingsScreen;
