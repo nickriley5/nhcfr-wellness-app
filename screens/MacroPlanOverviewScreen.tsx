@@ -12,6 +12,17 @@ import LinearGradient from 'react-native-linear-gradient';
 import { RouteProp, useRoute, useNavigation } from '@react-navigation/native';
 import { RootStackParamList } from '../App';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import Animated, { FadeInDown } from 'react-native-reanimated';
+
+const MacroCard = ({ label, value, color }: { label: string; value: string; color: string }) => (
+  <Animated.View
+    entering={FadeInDown.duration(600)}
+    style={[styles.macroCard, { borderColor: color }]}
+  >
+    <Text style={[styles.cardLabel, { color }]}>{label}</Text>
+    <Text style={styles.cardValue}>{value}</Text>
+  </Animated.View>
+);
 
 const MacroPlanOverviewScreen = () => {
   const route = useRoute<RouteProp<RootStackParamList, 'MacroPlanOverview'>>();
@@ -26,62 +37,54 @@ const MacroPlanOverviewScreen = () => {
     dietMethod,
   } = route.params;
 
+  const isZone = dietMethod === 'zone';
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <LinearGradient colors={['#0f0f0f', '#1a1a1a']} style={styles.container}>
         <ScrollView contentContainerStyle={styles.scroll}>
           <Text style={styles.heading}>Your Nutrition Plan</Text>
+          <Text style={styles.tagline}>
+            {isZone
+              ? 'Your Zone blocks are ready to keep you dialed in.'
+              : 'Your macros are personalized to fuel your fire.'}
+          </Text>
 
-          <View style={styles.card}>
-            <Text style={styles.label}>Diet Strategy</Text>
-            <Text style={styles.value}>{dietMethod === 'zone' ? 'Zone Diet (40/30/30)' : 'Standard Macros'}</Text>
-            <Text style={styles.summary}>
-              {dietMethod === 'zone'
-                ? 'You’ll use block-based ratios to guide your meals. Each block consists of a specific amount of protein, carbs, and fats.'
-                : 'These macros are based on your weight, goal, and activity level using evidence-based formulas.'}
-            </Text>
+          <View style={styles.cardContainer}>
+            {!isZone ? (
+              <>
+                <MacroCard label="Calories" value={`${calorieTarget} kcal`} color="#FFA726" />
+                <MacroCard label="Protein" value={`${proteinGrams}g`} color="#4FC3F7" />
+                <MacroCard label="Carbs" value={`${carbGrams}g`} color="#81C784" />
+                <MacroCard label="Fat" value={`${fatGrams}g`} color="#F06292" />
+              </>
+            ) : (
+              <>
+                <MacroCard label="Protein Blocks" value={`${zoneBlocks.protein}`} color="#4FC3F7" />
+                <MacroCard label="Carb Blocks" value={`${zoneBlocks.carbs}`} color="#81C784" />
+                <MacroCard label="Fat Blocks" value={`${zoneBlocks.fats}`} color="#F06292" />
+              </>
+            )}
           </View>
-
-          {dietMethod === 'standard' && (
-            <View style={styles.card}>
-              <Text style={styles.label}>Standard Macro Breakdown</Text>
-              <Text style={styles.value}>Calories: {calorieTarget} kcal/day</Text>
-              <Text style={styles.value}>Protein: {proteinGrams}g</Text>
-              <Text style={styles.value}>Carbs: {carbGrams}g</Text>
-              <Text style={styles.value}>Fats: {fatGrams}g</Text>
-            </View>
-          )}
-
-          {dietMethod === 'zone' && (
-            <View style={styles.card}>
-              <Text style={styles.label}>Zone Blocks</Text>
-              <Text style={styles.value}>Protein Blocks: {zoneBlocks.protein}</Text>
-              <Text style={styles.value}>Carb Blocks: {zoneBlocks.carbs}</Text>
-              <Text style={styles.value}>Fat Blocks: {zoneBlocks.fats}</Text>
-              <Text style={styles.summary}>
-                Use these blocks to plan meals throughout the day. 1 block = 7g protein, 9g carbs, 1.5g fat.
-              </Text>
-            </View>
-          )}
 
           <View style={styles.card}>
             <Text style={styles.label}>What’s Next?</Text>
             <Text style={styles.summary}>
-              Your macro or block plan has been calculated. This data will guide your future meal plan and performance feedback.
+              Your plan has been calculated. This will guide your future meal planning and performance insights.
             </Text>
           </View>
 
           <Pressable
-          style={styles.button}
-          onPress={() =>
-            navigation.navigate('AppDrawer', {
-              screen: 'MainTabs',
-              params: { screen: 'Dashboard' },
-            })
-          }
-        >
-          <Text style={styles.buttonText}>Return to Dashboard</Text>
-        </Pressable>
+            style={styles.button}
+            onPress={() =>
+              navigation.navigate('AppDrawer', {
+                screen: 'MainTabs',
+                params: { screen: 'Dashboard' },
+              })
+            }
+          >
+            <Text style={styles.buttonText}>Return to Dashboard</Text>
+          </Pressable>
         </ScrollView>
       </LinearGradient>
     </SafeAreaView>
@@ -92,7 +95,32 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#0f0f0f' },
   container: { flex: 1 },
   scroll: { padding: 20 },
-  heading: { fontSize: 22, color: '#fff', fontWeight: '600', marginBottom: 20 },
+  heading: { fontSize: 22, color: '#fff', fontWeight: '600', marginBottom: 8 },
+  tagline: {
+    fontSize: 14,
+    color: '#bbb',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  cardContainer: {
+    gap: 16,
+    marginBottom: 24,
+  },
+  macroCard: {
+    borderWidth: 2,
+    borderRadius: 10,
+    padding: 16,
+    backgroundColor: '#1e1e1e',
+  },
+  cardLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  cardValue: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#fff',
+  },
   card: {
     backgroundColor: '#1f1f1f',
     borderRadius: 16,
@@ -100,7 +128,6 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   label: { color: '#fff', fontSize: 16, fontWeight: '600', marginBottom: 8 },
-  value: { color: '#fff', fontSize: 16, marginBottom: 4 },
   summary: { color: '#aaa', fontSize: 14, marginTop: 8, lineHeight: 20 },
   button: {
     backgroundColor: '#ff3b30',
