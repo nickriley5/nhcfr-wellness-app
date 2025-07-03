@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, Image, StyleSheet, Platform } from 'react-native';
+import { View, Text, Image, StyleSheet } from 'react-native';
 import {
   createDrawerNavigator,
   DrawerContentScrollView,
@@ -13,8 +13,7 @@ import Feather from 'react-native-vector-icons/Feather';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { getAuth, signOut } from 'firebase/auth';
 import { getFirestore, doc, getDoc } from 'firebase/firestore';
-import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
-import MainTabs from '../App';
+import { useSafeAreaInsets} from 'react-native-safe-area-context';
 
 // Screens
 import DashboardScreen from '../screens/DashboardScreen';
@@ -31,7 +30,7 @@ import MealPlanScreen from '../screens/MealPlanScreen';
 export type MealPlanStackParamList = {
   GoalSettings: undefined;
   DietStyleSelection: undefined;
-  MealPlan: undefined;
+  MealPlanHome: undefined;
 };
 const MealPlanStack = createNativeStackNavigator<MealPlanStackParamList>();
 
@@ -45,11 +44,26 @@ const Tab = createBottomTabNavigator<TabParamList>();
 
 
 
+const iconMap: Record<string, string> = {
+  Dashboard: 'activity',
+  MealPlan: 'silverware-fork-knife',
+  Workout: 'target',
+};
+
+function getTabBarIcon(routeName: string) {
+  return ({ color, size }: { color: string; size: number }) => {
+    const IconComponent = routeName === 'MealPlan'
+      ? MaterialCommunityIcons
+      : Feather;
+    return <IconComponent name={iconMap[routeName] || 'circle'} size={size} color={color} />;
+  };
+}
+
 const TabNavigator: React.FC = () => {
   const insets = useSafeAreaInsets(); // ← this gets the bottom padding
 
   return (
-    <View style={{ flex: 1, paddingBottom: insets.bottom }}>
+    <View style={[styles.flex1, { paddingBottom: insets.bottom }]}>
       <Tab.Navigator
         screenOptions={({ route }) => ({
           headerShown: false,
@@ -57,24 +71,13 @@ const TabNavigator: React.FC = () => {
             backgroundColor: '#1e1e1e',
             borderTopWidth: 0,
             paddingVertical: 10,
-            height: 25+ insets.bottom, // make room for gesture nav
+            height: 25 + insets.bottom, // make room for gesture nav
             paddingBottom: insets.bottom,
           },
           tabBarActiveTintColor: '#d32f2f',
           tabBarInactiveTintColor: '#888',
           tabBarLabelStyle: { fontFamily: 'Inter-Medium', fontSize: 12 },
-          tabBarIcon: ({ color, size }) => {
-            const iconMap: Record<string, string> = {
-              Dashboard: 'activity',
-              MealPlan: 'silverware-fork-knife',
-              Workout: 'target',
-
-            };
-            const IconComponent = route.name === 'MealPlan'
-              ? MaterialCommunityIcons
-              : Feather;
-            return <IconComponent name={iconMap[route.name] || 'circle'} size={size} color={color} />;
-          },
+          tabBarIcon: getTabBarIcon(route.name),
         })}
       >
         <Tab.Screen name="Dashboard" component={DashboardScreen} />
@@ -83,7 +86,7 @@ const TabNavigator: React.FC = () => {
             <MealPlanStack.Navigator screenOptions={{ headerShown: false }} initialRouteName="GoalSettings">
               <MealPlanStack.Screen name="GoalSettings" component={GoalSettingsScreen} />
               <MealPlanStack.Screen name="DietStyleSelection" component={DietStyleSelectionScreen} />
-              <MealPlanStack.Screen name="MealPlan" component={MealPlanScreen} />
+              <MealPlanStack.Screen name="MealPlanHome" component={MealPlanScreen} />
             </MealPlanStack.Navigator>
           )}
         </Tab.Screen>
@@ -103,6 +106,17 @@ export type RootDrawerParamList = {
 const Drawer = createDrawerNavigator<RootDrawerParamList>();
 
 // Custom drawer content
+// Icon renderers moved outside the component to avoid defining components during render
+const renderProfileIcon = ({ color, size }: { color: string; size: number }) => (
+  <Feather name="user" color={color} size={size} />
+);
+const renderSettingsIcon = ({ color, size }: { color: string; size: number }) => (
+  <Feather name="settings" color={color} size={size} />
+);
+const renderLogoutIcon = ({ color, size }: { color: string; size: number }) => (
+  <Feather name="log-out" color={color} size={size} />
+);
+
 export function CustomDrawerContent(props: DrawerContentComponentProps) {
   const { navigation } = props;
   const [userName, setUserName] = useState('Firefighter');
@@ -113,12 +127,12 @@ export function CustomDrawerContent(props: DrawerContentComponentProps) {
       const auth = getAuth();
       const firestore = getFirestore();
       const uid = auth.currentUser?.uid;
-      if (!uid) return;
+      if (!uid) {return;}
       try {
         const snap = await getDoc(doc(firestore, 'users', uid));
         const data = snap.data();
-        if (data?.fullName) setUserName(data.fullName.split(' ')[0]);
-        if (data?.profilePicture) setProfilePicture(data.profilePicture);
+        if (data?.fullName) {setUserName(data.fullName.split(' ')[0]);}
+        if (data?.profilePicture) {setProfilePicture(data.profilePicture);}
       } catch (err) {
         console.error(err);
       }
@@ -127,8 +141,8 @@ export function CustomDrawerContent(props: DrawerContentComponentProps) {
 
   const getGreeting = () => {
     const hr = new Date().getHours();
-    if (hr < 12) return 'Good morning';
-    if (hr < 18) return 'Good afternoon';
+    if (hr < 12) {return 'Good morning';}
+    if (hr < 18) {return 'Good afternoon';}
     return 'Good evening';
   };
 
@@ -142,7 +156,7 @@ export function CustomDrawerContent(props: DrawerContentComponentProps) {
   };
 
   return (
-    <View style={{ flex: 1, justifyContent: 'space-between' }}>
+    <View style={styles.drawerRoot}>
       <DrawerContentScrollView {...props} contentContainerStyle={styles.drawerContainer}>
         <View style={styles.profileSection}>
           <Image
@@ -153,22 +167,22 @@ export function CustomDrawerContent(props: DrawerContentComponentProps) {
         </View>
         <DrawerItem
           label="Profile"
-          labelStyle={{ color: '#fff' }}
-          icon={({ color, size }) => <Feather name="user" color={color} size={size} />}
+          labelStyle={styles.drawerLabel}
+          icon={renderProfileIcon}
           onPress={() => navigation.navigate('Profile')}
         />
         <DrawerItem
           label="Settings"
-          labelStyle={{ color: '#fff' }}
-          icon={({ color, size }) => <Feather name="settings" color={color} size={size} />}
+          labelStyle={styles.drawerLabel}
+          icon={renderSettingsIcon}
           onPress={() => navigation.navigate('Settings')}
         />
       </DrawerContentScrollView>
       <View style={styles.logoutSection}>
         <DrawerItem
           label="Logout"
-          labelStyle={{ color: '#fff' }}
-          icon={({ color, size }) => <Feather name="log-out" color={color} size={size} />}
+          labelStyle={styles.drawerLabel}
+          icon={renderLogoutIcon}
           onPress={handleLogout}
         />
       </View>
@@ -177,28 +191,31 @@ export function CustomDrawerContent(props: DrawerContentComponentProps) {
 }
 
 // Drawer navigator component
+// Move this function outside the DrawerNavigation component
+const renderCustomDrawerContent = (props: DrawerContentComponentProps) => <CustomDrawerContent {...props} />;
+
 const DrawerNavigation: React.FC = () => (
   <Drawer.Navigator
     initialRouteName="MainTabs"
-    drawerContent={(props) => <CustomDrawerContent {...props} />}
+    drawerContent={renderCustomDrawerContent}
     screenOptions={{
-  headerShown: true,
-  headerStyle: { backgroundColor: '#1e1e1e' },
-  headerTintColor: '#fff',
-  drawerStyle: { backgroundColor: '#1c1c1c' },
-  drawerLabelStyle: { color: '#fff' },
-}}
+      headerShown: true,
+      headerStyle: { backgroundColor: '#1e1e1e' },
+      headerTintColor: '#fff',
+      drawerStyle: { backgroundColor: '#1c1c1c' },
+      drawerLabelStyle: { color: '#fff' },
+    }}
   >
     <Drawer.Screen
-  name="MainTabs"
-  options={{
-    drawerItemStyle: { height: 0 },
-    title: '', // ← hides label text if anything sneaks through
-    drawerLabel: () => null, // ← fully removes the label rendering
-  }}
->
-  {() => <TabNavigator />}
-</Drawer.Screen>
+      name="MainTabs"
+      options={{
+        drawerItemStyle: { height: 0 },
+        title: '', // ← hides label text if anything sneaks through
+        drawerLabel: () => null, // ← fully removes the label rendering
+      }}
+    >
+      {() => <TabNavigator />}
+    </Drawer.Screen>
     <Drawer.Screen name="Profile" component={ProfileScreen} />
     <Drawer.Screen name="Settings" component={SettingsScreen} />
   </Drawer.Navigator>
@@ -207,9 +224,12 @@ const DrawerNavigation: React.FC = () => (
 export default DrawerNavigation;
 
 const styles = StyleSheet.create({
+  flex1: { flex: 1 },
+  drawerRoot: { flex: 1, justifyContent: 'space-between' },
   drawerContainer: { flex: 1, backgroundColor: '#1c1c1c' },
   profileSection: { alignItems: 'center', marginBottom: 24, paddingTop: 48 },
   profileImage: { width: 80, height: 80, borderRadius: 40, marginBottom: 12, borderWidth: 1.5, borderColor: '#444' },
   profileName: { color: '#fff', fontSize: 16, fontWeight: '600' },
   logoutSection: { borderTopWidth: 1, borderTopColor: '#333', paddingVertical: 10, backgroundColor: '#1c1c1c' },
+  drawerLabel: { color: '#fff' },
 });

@@ -19,7 +19,7 @@ import { format, addDays } from 'date-fns';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../App'; 
+import { RootStackParamList } from '../App';
 
   const GoalSettingsScreen = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -29,8 +29,6 @@ import { RootStackParamList } from '../App';
   const [rate, setRate] = useState(1.0);
   const [goalType, setGoalType] = useState<'fat_loss' | 'maintain' | 'muscle_gain'>('fat_loss');
   const [dietMethod, setDietMethod] = useState<'standard' | 'zone'>('standard');
-  const [dietaryPreference, setDietaryPreference] = useState<'none' | 'carnivore' | 'paleo' | 'vegetarian' | 'vegan'>('none');
-  const [dietaryRestriction, setDietaryRestriction] = useState<'none' | 'gluten_free' | 'dairy_free' | 'low_fodmap'>('none');
   const [activityLevel, setActivityLevel] = useState<'sedentary' | 'light' | 'moderate' | 'very_active'>('moderate');
   const [showActivityInfo, setShowActivityInfo] = useState(false);
   const [calorieTarget, setCalorieTarget] = useState(0);
@@ -38,65 +36,60 @@ import { RootStackParamList } from '../App';
   const [fatGrams, setFatGrams] = useState(0);
   const [carbGrams, setCarbGrams] = useState(0);
   const [zoneBlocks, setZoneBlocks] = useState({ protein: 0, carbs: 0, fats: 0 });
-  const [selectedActivityDescription, setSelectedActivityDescription] = useState('');
+  const [userProfile, setUserProfile] = useState<{ name?: string }>({});
+
 
   useEffect(() => {
-    if (!uid) {
-      return;
+  if (!uid) {return;}
+
+  const fetch = async () => {
+    const ref = doc(db, 'users', uid);
+    const snap = await getDoc(ref);
+    if (snap.exists()) {
+      const d = snap.data();
+      if (d.weight) {setWeight(d.weight);}
+      if (d.targetWeight) {setTargetWeight(d.targetWeight);}
+      if (d.goalType) {setGoalType(d.goalType);}
+      if (d.dietMethod) {setDietMethod(d.dietMethod);}
+      if (d.activityLevel) {setActivityLevel(d.activityLevel);}
+      if (d.name) {setUserProfile({ name: d.name });}
     }
-    const fetch = async () => {
-      const ref = doc(db, 'users', uid);
-      const snap = await getDoc(ref);
-      if (snap.exists()) {
-        const d = snap.data();
-        if (d.weight) { setWeight(d.weight); }
-        if (d.targetWeight) {setTargetWeight(d.targetWeight);}
-        if (d.goalType) {setGoalType(d.goalType);}
-        if (d.dietMethod) {setDietMethod(d.dietMethod);}
-        if (d.dietaryPreference) {setDietaryPreference(d.dietaryPreference);}
-        if (d.dietaryRestriction) {setDietaryRestriction(d.dietaryRestriction);}
-        if (d.activityLevel) { setActivityLevel(d.activityLevel); }
-      }
-    };
-    fetch();
-  }, [uid]);
+  };
 
-  const activityMultiplierMap = {
-  sedentary: 12,
-  light: 13,
-  moderate: 14,
-  very_active: 15,
-};
+  fetch();
+}, [uid]);
+
 
   useEffect(() => {
+  const activityMultiplierMap = {
+    sedentary: 12,
+    light: 13,
+    moderate: 14,
+    very_active: 15,
+  };
+
   const multiplier = activityMultiplierMap[activityLevel] || 1.2;
   const baseCalories = multiplier * weight;
 
-  // Make rate matter: 1 lb/week ≈ 500 kcal/day
-  const calorieAdjustment = rate * 500 * (
-    goalType === 'fat_loss' ? -1 :
-    goalType === 'muscle_gain' ? 1 :
-    0
-  );
+  const calorieAdjustment =
+    rate * 500 * (goalType === 'fat_loss' ? -1 : goalType === 'muscle_gain' ? 1 : 0);
 
   const cals = Math.round(baseCalories + calorieAdjustment);
-
   const protein = Math.round(weight * 1);
   const fat = Math.round((cals * 0.25) / 9);
   const carbs = Math.round((cals - (protein * 4 + fat * 9)) / 4);
-
-  const blocks = {
-    protein: Math.round(protein / 7),
-    carbs: Math.round(carbs / 9),
-    fats: Math.round(fat / 1.5),
-  };
 
   setCalorieTarget(cals);
   setProteinGrams(protein);
   setFatGrams(fat);
   setCarbGrams(carbs);
-  setZoneBlocks(blocks);
+  setZoneBlocks({
+    protein: Math.round(protein / 7),
+    carbs: Math.round(carbs / 9),
+    fats: Math.round(fat / 1.5),
+  });
 }, [weight, goalType, rate, activityLevel]);
+
 
 
 
@@ -108,7 +101,6 @@ import { RootStackParamList } from '../App';
   const weeks = rate > 0 ? Math.ceil(weightDiff / rate) : 0;
   const endDate = addDays(new Date(), weeks * 7);
 
-  
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -189,11 +181,11 @@ import { RootStackParamList } from '../App';
 
   {showActivityInfo && (
     <Text style={styles.summary}>
-      Choose the level that best matches your daily lifestyle:{"\n\n"}
-      • <Text style={{ fontWeight: 'bold' }}>Sedentary</Text>: Desk job, minimal daily movement{"\n"}
-      • <Text style={{ fontWeight: 'bold' }}>Light</Text>: Regular walking, light household tasks{"\n"}
-      • <Text style={{ fontWeight: 'bold' }}>Moderate</Text>: Manual job or workouts 3–4x/week{"\n"}
-      • <Text style={{ fontWeight: 'bold' }}>Very Active</Text>: Intense training or daily physical labor{"\n\n"}
+      Choose the level that best matches your daily lifestyle:{'\n\n'}
+      • <Text style={{ fontWeight: '700' as const }}>Sedentary</Text>: Desk job, minimal daily movement{'\n'}
+      • <Text style={{ fontWeight: '700' as const }}>Light</Text>: Regular walking, light household tasks{'\n'}
+      • <Text style={{ fontWeight: '700' as const }}>Moderate</Text>: Manual job or workouts 3–4x/week{'\n'}
+      • <Text style={{ fontWeight: '700' as const }}>Very Active</Text>: Intense training or daily physical labor{'\n\n'}
       🔥 Firefighting doesn’t count unless you’re actively training or operating on scene.
     </Text>
   )}
@@ -219,7 +211,6 @@ import { RootStackParamList } from '../App';
               </Text>
             </View>
 
-            
 
             {/* DIET METHOD */}
             <View style={styles.card}>
@@ -231,7 +222,7 @@ import { RootStackParamList } from '../App';
                     style={[styles.optionButton, dietMethod === method && styles.activeOption]}
                     onPress={() => { setDietMethod(method as any); saveField('dietMethod', method); }}
                   >
-                    <Ionicons name={method === 'standard' ? 'stats-chart' : 'grid'} size={24} color="#fff" />
+                    <Ionicons name={method === 'standard' ? 'stats-chart' : method === 'zone' ? 'grid' : 'create'} size={24} color="#fff" />
                     <Text style={styles.optionText}>{method.charAt(0).toUpperCase() + method.slice(1)}</Text>
                   </Pressable>
                 ))}
@@ -242,7 +233,7 @@ import { RootStackParamList } from '../App';
               </Text>
             </View>
 
-            
+
 
             {/* MACRO CALCULATOR CARD */}
             {/* <View style={styles.card}>
@@ -320,19 +311,22 @@ import { RootStackParamList } from '../App';
             </View>
 
             <Pressable
-              style={[styles.optionButton, { backgroundColor: '#ff3c3c', alignSelf: 'center', paddingVertical: 14, marginTop: 12 }]}
+              style={[styles.optionButton, styles.generatePlanButton]}
               onPress={() => {
               navigation.navigate('MacroPlanOverview', {
-              calorieTarget,
-              proteinGrams,
-              fatGrams,
-              carbGrams,
-              zoneBlocks,
-              dietMethod,
-            });
+  calorieTarget,
+  proteinGrams,
+  fatGrams,
+  carbGrams,
+  zoneBlocks,
+  dietMethod,
+  goalType: goalType === 'fat_loss' ? 'fatloss' : goalType === 'muscle_gain' ? 'muscle' : 'maintain',
+  name: userProfile?.name || 'Firefighter', // 👈 fallback in case name is missing
+});
+
             }}
               >
-              <Text style={{ color: 'white', fontWeight: '600', fontSize: 16 }}>Generate My Plan</Text>
+              <Text style={styles.generatePlanText}>Generate My Plan</Text>
             </Pressable>
 
 
@@ -388,16 +382,28 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
   },
   cardHeader: {
-  flexDirection: 'row',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-},
-placeholderText: {
-  fontSize: 14,
-  color: '#999',
-  marginTop: 8,
-  lineHeight: 20,
-},
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  placeholderText: {
+    fontSize: 14,
+    color: '#999',
+    marginTop: 8,
+    lineHeight: 20,
+  },
+  generatePlanButton: {
+    backgroundColor: '#ff3c3c',
+    alignSelf: 'center',
+    paddingVertical: 14,
+    marginTop: 12,
+  },
+  generatePlanText: {
+    color: 'white',
+    fontWeight: '600',
+    fontSize: 16,
+  },
 });
+
 
 export default GoalSettingsScreen;
