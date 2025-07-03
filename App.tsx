@@ -81,14 +81,19 @@ export type RootStackParamList = {
   DietStyleSelection: undefined;
   GoalSettings: undefined;
   MacroPlanOverview: {
-  calorieTarget: number;
-  proteinGrams: number;
-  fatGrams: number;
-  carbGrams: number;
-  zoneBlocks: { protein: number; carbs: number; fats: number };
-  dietMethod: 'standard' | 'zone';
-};
-
+    calorieTarget: number;
+    proteinGrams: number;
+    fatGrams: number;
+    carbGrams: number;
+    zoneBlocks: {
+      protein: number;
+      carbs: number;
+      fats: number;
+    };
+    dietMethod: 'standard' | 'zone';
+    goalType: 'fatloss' | 'maintain' | 'muscle';
+  name: string;
+  };
 };
 
 

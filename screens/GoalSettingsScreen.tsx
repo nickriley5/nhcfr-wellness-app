@@ -101,6 +101,34 @@ import { RootStackParamList } from '../App';
   const weeks = rate > 0 ? Math.ceil(weightDiff / rate) : 0;
   const endDate = addDays(new Date(), weeks * 7);
 
+  const handleGenerateMealPlan = async () => {
+  try {
+
+  if (!uid) {return;}
+
+    const mealPlanData = {
+      calorieTarget,
+      proteinGrams,
+      fatGrams,
+      carbGrams,
+      zoneBlocks,
+      dietMethod,
+      goalType: goalType as 'maintain' | 'fatloss' | 'muscle',
+      name: userProfile?.name || 'Firefighter',
+    };
+
+    // Write to Firestore
+    await setDoc(doc(db, 'users', uid, 'mealPlan', 'active'), mealPlanData);
+
+    // Navigate to overview screen
+    navigation.navigate('MacroPlanOverview', mealPlanData);
+  } catch (error) {
+    console.error('Failed to generate plan:', error);
+  }
+};
+
+
+
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -311,23 +339,14 @@ import { RootStackParamList } from '../App';
             </View>
 
             <Pressable
-              style={[styles.optionButton, styles.generatePlanButton]}
-              onPress={() => {
-              navigation.navigate('MacroPlanOverview', {
-  calorieTarget,
-  proteinGrams,
-  fatGrams,
-  carbGrams,
-  zoneBlocks,
-  dietMethod,
-  goalType: goalType === 'fat_loss' ? 'fatloss' : goalType === 'muscle_gain' ? 'muscle' : 'maintain',
-  name: userProfile?.name || 'Firefighter', // 👈 fallback in case name is missing
-});
+  style={[styles.optionButton, styles.generatePlanButton]}
+  onPress={handleGenerateMealPlan}
+>
+  <Text style={styles.generatePlanText}>Generate My Plan</Text>
+</Pressable>
 
-            }}
-              >
-              <Text style={styles.generatePlanText}>Generate My Plan</Text>
-            </Pressable>
+
+
 
 
           </ScrollView>
