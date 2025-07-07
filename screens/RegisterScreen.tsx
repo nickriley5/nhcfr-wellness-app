@@ -7,11 +7,17 @@ import {
   Pressable,
   ActivityIndicator,
   StyleSheet,
-  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  TouchableWithoutFeedback,
+  Keyboard,
+  SafeAreaView,
 } from 'react-native';
 import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
 import { getApp } from 'firebase/app';
 import { getFirestore, doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import Toast from 'react-native-toast-message';
 
 export default function RegisterScreen({ navigation }: any) {
   const auth = getAuth(getApp());
@@ -23,17 +29,19 @@ export default function RegisterScreen({ navigation }: any) {
 
   const handleRegister = async () => {
     if (!email || !password) {
-      Alert.alert('Missing Fields', 'Please enter both email and password.');
+      Toast.show({
+        type: 'error',
+        text1: 'Missing Fields',
+        text2: 'Please enter both email and password.',
+      });
       return;
     }
 
     setLoading(true);
-
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
       const uid = userCredential.user.uid;
 
-      // ✅ Create user doc with default fields
       await setDoc(doc(db, 'users', uid), {
         email: email.trim(),
         profileComplete: false,
@@ -42,98 +50,157 @@ export default function RegisterScreen({ navigation }: any) {
 
       navigation.replace('Main');
     } catch (err: any) {
+      let message = 'Something went wrong.';
       if (err.code === 'auth/network-request-failed') {
-        Alert.alert('Network Error', 'Check your connection and try again.');
+        message = 'Check your connection and try again.';
       } else if (err.code === 'auth/email-already-in-use') {
-        Alert.alert('Email Taken', 'That email is already registered. Please log in instead.');
+        message = 'That email is already registered. Please log in instead.';
       } else if (err.code === 'auth/weak-password') {
-        Alert.alert('Weak Password', 'Password should be at least 6 characters.');
+        message = 'Password should be at least 6 characters.';
       } else if (err.code === 'auth/invalid-email') {
-        Alert.alert('Invalid Email', 'Please enter a valid email address.');
-      } else {
-        console.error(err);
-        Alert.alert('Registration Error', err.message || 'Something went wrong.');
+        message = 'Please enter a valid email address.';
       }
+      Toast.show({
+        type: 'error',
+        text1: 'Registration Error',
+        text2: message,
+      });
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Create Account</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        placeholderTextColor="#aaa"
-        autoCapitalize="none"
-        keyboardType="email-address"
-        value={email}
-        onChangeText={setEmail}
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        placeholderTextColor="#aaa"
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-      />
-      <Pressable
-        style={[styles.button, loading && styles.buttonDisabled]}
-        onPress={handleRegister}
-        disabled={loading}
-      >
-        {loading
-          ? <ActivityIndicator color="#fff" />
-          : <Text style={styles.buttonText}>Register</Text>
-        }
-      </Pressable>
-      <Pressable onPress={() => navigation.goBack()}>
-        <Text style={styles.linkText}>Already have an account? Log In</Text>
-      </Pressable>
-    </View>
+    <SafeAreaView style={styles.wrapper}>
+      <Toast />
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <KeyboardAvoidingView
+          style={styles.wrapper}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 30}
+        >
+          <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
+            <View style={styles.card}>
+              <Text style={styles.title}>Create Account</Text>
+
+              <TextInput
+                style={styles.input}
+                placeholder="Email"
+                placeholderTextColor="#aaa"
+                value={email}
+                onChangeText={setEmail}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                textContentType="emailAddress"
+              />
+
+              <TextInput
+                style={styles.input}
+                placeholder="Password"
+                placeholderTextColor="#aaa"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+                textContentType="password"
+              />
+
+              <Pressable
+                style={({ pressed }) => [
+                  styles.button,
+                  pressed && styles.buttonPressed,
+                  loading && styles.buttonDisabled,
+                ]}
+                onPress={handleRegister}
+                disabled={loading}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.buttonText}>Register</Text>
+                )}
+              </Pressable>
+
+              <Text style={styles.registerText}>
+                Already have an account?{' '}
+                <Text style={styles.link} onPress={() => navigation.goBack()}>
+                  Log In
+                </Text>
+              </Text>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </TouchableWithoutFeedback>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  wrapper: {
     flex: 1,
     backgroundColor: '#121212',
-    padding: 20,
+  },
+  scrollContainer: {
+    flexGrow: 1,
     justifyContent: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 40,
+  },
+  card: {
+    backgroundColor: '#1e1e1e',
+    borderRadius: 16,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 6,
   },
   title: {
     fontSize: 28,
+    fontWeight: '700',
     color: '#fff',
     marginBottom: 24,
     textAlign: 'center',
+    fontFamily: 'Inter-Bold',
   },
   input: {
-    backgroundColor: '#1e1e1e',
+    backgroundColor: '#2a2a2a',
     color: '#fff',
-    padding: 12,
-    borderRadius: 8,
+    padding: 14,
     marginBottom: 16,
+    borderRadius: 10,
+    fontSize: 16,
+    borderWidth: 1,
+    borderColor: '#333',
+    fontFamily: 'Inter-Regular',
   },
   button: {
     backgroundColor: '#d32f2f',
-    padding: 16,
-    borderRadius: 8,
+    paddingVertical: 14,
+    borderRadius: 10,
     alignItems: 'center',
-    marginBottom: 12,
+    marginTop: 10,
+  },
+  buttonPressed: {
+    opacity: 0.8,
   },
   buttonDisabled: {
-    opacity: 0.6,
+    opacity: 0.7,
   },
   buttonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+    fontFamily: 'Inter-SemiBold',
   },
-  linkText: {
-    color: '#4fc3f7',
+  registerText: {
+    color: '#aaa',
+    marginTop: 24,
     textAlign: 'center',
-    marginTop: 8,
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+  },
+  link: {
+    color: '#4fc3f7',
+    fontWeight: '600',
   },
 });
