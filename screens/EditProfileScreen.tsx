@@ -6,36 +6,43 @@ import {
   StyleSheet,
   ScrollView,
   Pressable,
+  Platform,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
 import { auth, db } from '../firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import Toast from '../components/Toast';
+import DashboardButton from '../components/Common/DashboardButton';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const EditProfileScreen = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList, 'Profile'>>();
   const [fullName, setFullName] = useState('');
   const [sex, setSex] = useState<'Male' | 'Female' | ''>('');
   const [dob, setDob] = useState('');
+  const [dobDate, _setDobDate] = useState<Date | undefined>(undefined);
+  const [showDobPicker, setShowDobPicker] = useState(false);
   const [height, setHeight] = useState('');
   const [weight, setWeight] = useState('');
   const [loading, setLoading] = useState(true);
   const [showToast, setShowToast] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const fetchProfile = async () => {
     const uid = auth.currentUser?.uid;
-    if (!uid) return;
+    if (!uid) {return;}
     const docRef = doc(db, 'users', uid);
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
       const data = docSnap.data();
       setFullName(data.fullName || '');
-      setSex(data.sex || '');
+      setSex(data.sex ? data.sex.charAt(0).toUpperCase() + data.sex.slice(1) : '');
       setDob(data.dob || '');
-      setHeight(data.height || '');
-      setWeight(data.weight || '');
+      setHeight(data.height ? data.height.toString() : '');
+      setWeight(data.weight ? data.weight.toString() : '');
     }
     setLoading(false);
   };
@@ -45,25 +52,37 @@ const EditProfileScreen = () => {
   }, []);
 
   const handleSave = async () => {
+    if (saving) {return;}
+    setSaving(true);
+
     const uid = auth.currentUser?.uid;
-    if (!uid) return;
+    if (!uid) {return;}
 
     try {
       await setDoc(doc(db, 'users', uid), {
         fullName,
-        sex,
+        sex: sex.toLowerCase(),
         dob,
-        height,
-        weight,
+        height: parseFloat(height),
+        weight: parseFloat(weight),
       }, { merge: true });
 
       setShowToast(true);
-
       setTimeout(() => {
         navigation.goBack();
+        setSaving(false);
       }, 1200);
     } catch (err: any) {
       console.log('Profile update failed:', err.message || err.toString());
+      setSaving(false);
+    }
+  };
+
+  const handleDobChange = (_: any, selectedDate?: Date) => {
+    setShowDobPicker(false);
+    if (selectedDate) {
+      const formatted = `${selectedDate.getMonth() + 1}/${selectedDate.getDate()}/${selectedDate.getFullYear()}`;
+      setDob(formatted);
     }
   };
 
@@ -77,6 +96,7 @@ const EditProfileScreen = () => {
 
   return (
     <>
+    <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.container}>
         <Text style={styles.title}>Edit Your Profile</Text>
 
@@ -87,13 +107,20 @@ const EditProfileScreen = () => {
           value={fullName}
           onChangeText={setFullName}
         />
-        <TextInput
-          style={styles.input}
-          placeholder="Date of Birth (MM/DD/YYYY)"
-          placeholderTextColor="#aaa"
-          value={dob}
-          onChangeText={setDob}
-        />
+
+        <Pressable onPress={() => setShowDobPicker(true)} style={styles.input}>
+          <Text style={styles.dob}>{dob || 'Date of Birth (MM/DD/YYYY)'}</Text>
+        </Pressable>
+        {showDobPicker && (
+          <DateTimePicker
+            value={dobDate || new Date()}
+            mode="date"
+            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+            onChange={handleDobChange}
+            maximumDate={new Date()}
+          />
+        )}
+
         <TextInput
           style={styles.input}
           placeholder="Height (in)"
@@ -124,10 +151,14 @@ const EditProfileScreen = () => {
           ))}
         </View>
 
-        <Pressable style={styles.saveButton} onPress={handleSave}>
-          <Text style={styles.saveButtonText}>Save Changes</Text>
-        </Pressable>
+        <DashboardButton
+          text={saving ? 'Saving...' : 'Save Changes'}
+          onPress={handleSave}
+          disabled={saving}
+          variant="redSolid"
+        />
       </ScrollView>
+    </SafeAreaView>
 
       {showToast && (
         <Toast message="Profile updated successfully!" onClose={() => setShowToast(false)} />
@@ -137,6 +168,11 @@ const EditProfileScreen = () => {
 };
 
 const styles = StyleSheet.create({
+  safeArea: {
+  flex: 1,
+  backgroundColor: '#121212',
+},
+
   container: {
     padding: 20,
     backgroundColor: '#121212',
@@ -181,16 +217,9 @@ const styles = StyleSheet.create({
   },
   selected: { backgroundColor: '#d32f2f', borderColor: '#d32f2f' },
   buttonText: { color: '#fff', fontSize: 16 },
-  saveButton: {
-    backgroundColor: '#d32f2f',
-    padding: 16,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  saveButtonText: {
+  dob: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: 'bold',
   },
 });
 

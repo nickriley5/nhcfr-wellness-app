@@ -19,6 +19,8 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
 import Toast from '../components/Toast';
+import DashboardButton from '../components/Common/DashboardButton';
+
 
 const moodOptions = ['😩', '😕', '😐', '🙂', '😄'];
 const energyOptions = ['😴', '😓', '😐', '💪', '⚡'];
@@ -122,9 +124,7 @@ const CheckInScreen = () => {
         style={styles.input}
       />
 
-      <Pressable style={styles.submitButton} onPress={handleSubmit}>
-        <Text style={styles.submitText}>Submit Check-In</Text>
-      </Pressable>
+      <DashboardButton text="Submit Check-In" onPress={handleSubmit} variant="redSolid" />
 
       {showToast && (
         <Toast
@@ -200,25 +200,6 @@ const styles = StyleSheet.create({
     width: '100%',
     textAlignVertical: 'top',
     marginBottom: 24,
-  },
-  submitButton: {
-    backgroundColor: '#1c1c1c',
-    borderWidth: 1.5,
-    borderColor: '#d32f2f',
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '100%',
-    marginBottom: 16,
-  },
-  submitText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
   },
 });
 
