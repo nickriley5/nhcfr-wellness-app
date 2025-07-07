@@ -42,6 +42,7 @@ const MacroPlanOverviewScreen = () => {
     NativeStackNavigationProp<RootStackParamList>
   >();
 
+
   const { proteinGrams, fatGrams, carbGrams, zoneBlocks, dietMethod, goalType, name } = route.params;
 
 
@@ -396,20 +397,18 @@ const MacroPlanOverviewScreen = () => {
               </View>
             </>
           )}
+          <Text style={styles.infoText}>
+  You can now view your macro plan and begin logging food and activity from the Meal Plan tab.
+</Text>
 
           <Pressable
-            style={styles.button}
-            onPress={() =>
-              navigation.navigate('AppDrawer', {
-                screen: 'MainTabs',
-                params: { screen: 'Dashboard' },
-              })
-            }
-          >
-            <Text style={styles.buttonText}>
-              Return to Dashboard
-            </Text>
-          </Pressable>
+  style={styles.viewPlanButton}
+  onPress={() => navigation.navigate('MealPlan')}
+>
+  <Text style={styles.viewPlanText}>View Macro Plan & Log Food</Text>
+</Pressable>
+
+
         </ScrollView>
       </LinearGradient>
     </SafeAreaView>
@@ -596,7 +595,27 @@ totalBlocks: {
   fontSize: 14,
   marginBottom: 10,
 },
+  viewPlanButton: {
+  backgroundColor: '#ff3b30',
+  paddingVertical: 14,
+  paddingHorizontal: 20,
+  borderRadius: 16,
+  alignItems: 'center',
+  justifyContent: 'center',
+  marginTop: 24,
+  marginBottom: 32,
+},
+viewPlanText: {
+  color: '#fff',
+  fontSize: 16,
+  fontWeight: '600',
+},
 
+  infoText: {
+    color: '#aaa',
+    textAlign: 'center',
+    marginTop: 20,
+  },
 
 });
 

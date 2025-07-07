@@ -7,7 +7,6 @@ import {
   DrawerContentComponentProps,
 } from '@react-navigation/drawer';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { NavigatorScreenParams } from '@react-navigation/native';
 import Feather from 'react-native-vector-icons/Feather';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -22,22 +21,13 @@ import ProfileScreen from '../screens/ProfileScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 
 // Meal Plan flow screens
-import GoalSettingsScreen from '../screens/GoalSettingsScreen';
-import DietStyleSelectionScreen from '../screens/DietStyleSelectionScreen';
 import MealPlanScreen from '../screens/MealPlanScreen';
 
-// ----- Stack for Meal Plan flow -----
-export type MealPlanStackParamList = {
-  GoalSettings: undefined;
-  DietStyleSelection: undefined;
-  MealPlanHome: undefined;
-};
-const MealPlanStack = createNativeStackNavigator<MealPlanStackParamList>();
 
 // ----- Bottom Tabs -----
 export type TabParamList = {
   Dashboard: undefined;
-  MealPlan: NavigatorScreenParams<MealPlanStackParamList>;
+  MealPlan: undefined;
   Workout: undefined;
 };
 const Tab = createBottomTabNavigator<TabParamList>();
@@ -81,15 +71,12 @@ const TabNavigator: React.FC = () => {
         })}
       >
         <Tab.Screen name="Dashboard" component={DashboardScreen} />
-        <Tab.Screen name="MealPlan" options={{ title: 'Meal Plan' }}>
-          {() => (
-            <MealPlanStack.Navigator screenOptions={{ headerShown: false }} initialRouteName="GoalSettings">
-              <MealPlanStack.Screen name="GoalSettings" component={GoalSettingsScreen} />
-              <MealPlanStack.Screen name="DietStyleSelection" component={DietStyleSelectionScreen} />
-              <MealPlanStack.Screen name="MealPlanHome" component={MealPlanScreen} />
-            </MealPlanStack.Navigator>
-          )}
-        </Tab.Screen>
+        <Tab.Screen
+  name="MealPlan"
+  component={MealPlanScreen}
+  options={{ title: 'Meal Plan' }}
+/>
+
         <Tab.Screen name="Workout" component={WorkoutScreen} />
       </Tab.Navigator>
     </View>

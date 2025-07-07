@@ -1,136 +1,266 @@
-// screens/LoginScreen.tsx
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
-  View,
   Text,
   TextInput,
-  Pressable,
   StyleSheet,
+  Pressable,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
+  ActivityIndicator,
+  TouchableWithoutFeedback,
+  Keyboard,
+  View,
+  SafeAreaView,
+  Animated,
 } from 'react-native';
-
-// ✅ Use modular Firebase SDK & shared auth instance
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../firebase'; // uses the initialized Firebase app
-
+import { auth } from '../firebase';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
+import Toast from 'react-native-toast-message';
 
-type LoginScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Login'>;
 
 const LoginScreen = () => {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const navigation = useNavigation<LoginScreenNavigationProp>();
+  const [loading, setLoading] = useState(false);
+
+  const logoOpacity = useRef(new Animated.Value(0)).current;
+const logoTranslateY = useRef(new Animated.Value(20)).current;
+
+useEffect(() => {
+  Animated.parallel([
+    Animated.timing(logoOpacity, {
+      toValue: 1,
+      duration: 1000,
+      useNativeDriver: true,
+    }),
+    Animated.timing(logoTranslateY, {
+      toValue: 0,
+      duration: 1000,
+      useNativeDriver: true,
+    }),
+  ]).start();
+}, [logoOpacity, logoTranslateY]);
+
 
   const handleLogin = async () => {
+    if (!email || !password) {
+      Toast.show({
+        type: 'error',
+        text1: 'Missing Info',
+        text2: 'Please enter both email and password',
+      });
+      return;
+    }
+
+    setLoading(true);
     try {
-      // ✅ Sign in using the shared modular auth instance
       await signInWithEmailAndPassword(auth, email, password);
-      // ✅ AuthProvider will now detect the login and redirect
+      Toast.show({
+        type: 'success',
+        text1: 'Welcome! 🎉',
+        text2: 'Login successful',
+      });
     } catch (error: any) {
-      console.error('Login error:', error.message);
-      alert('Login failed. Please check your credentials.');
+      let errorText = 'Login failed.';
+      switch (error.code) {
+        case 'auth/invalid-email':
+          errorText = 'Invalid email format.';
+          break;
+        case 'auth/user-not-found':
+        case 'auth/wrong-password':
+          errorText = 'Incorrect email or password.';
+          break;
+      }
+      Toast.show({
+        type: 'error',
+        text1: 'Login Failed',
+        text2: errorText,
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={styles.wrapper}
-    >
-      <View style={styles.card}>
-        <Text style={styles.title}>Welcome Back</Text>
+    <SafeAreaView style={styles.wrapper}>
+      <Toast />
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+      <KeyboardAvoidingView
+        style={styles.wrapper}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 30}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scrollContainer}
+          keyboardShouldPersistTaps="handled"
+        >
+          <Animated.View
+  style={[
+    styles.logoContainer,
+    {
+      opacity: logoOpacity,
+      transform: [{ translateY: logoTranslateY }],
+    },
+  ]}
+>
+  <Text style={styles.logo}>NHCFR</Text>
+  <Text style={styles.tagline}>TRAIN FOR DUTY. FUEL FOR LIFE.</Text>
+</Animated.View>
 
-        <TextInput
-          placeholder="Email"
-          placeholderTextColor="#ccc"
-          value={email}
-          onChangeText={setEmail}
-          style={styles.input}
-          autoCapitalize="none"
-          keyboardType="email-address"
-        />
+          <View style={styles.card}>
+            <Text style={styles.title}>Welcome Back</Text>
 
-        <TextInput
-          placeholder="Password"
-          placeholderTextColor="#ccc"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-          style={styles.input}
-        />
+            <TextInput
+              style={styles.input}
+              placeholder="Email"
+              placeholderTextColor="#999"
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              textContentType="emailAddress"
+            />
 
-        <Pressable style={styles.button} onPress={handleLogin}>
-          <Text style={styles.buttonText}>Login</Text>
-        </Pressable>
+            <TextInput
+              style={styles.input}
+              placeholder="Password"
+              placeholderTextColor="#999"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              textContentType="password"
+            />
 
-        <Pressable onPress={() => navigation.navigate('Register')}>
-          <Text style={styles.linkText}>Create an Account</Text>
-        </Pressable>
-      </View>
-    </KeyboardAvoidingView>
+            <Pressable
+              style={({ pressed }) => [
+                styles.button,
+                pressed && styles.buttonPressed,
+                loading && styles.buttonDisabled,
+              ]}
+              onPress={handleLogin}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.buttonText}>Login</Text>
+              )}
+            </Pressable>
+              <Text>
+            <Text style={styles.registerText}>
+  Don’t have an account?{' '}</Text>
+  <Text style={styles.registerText}>
+  Don’t have an account?{' '}
+  <Text
+    style={styles.link}
+    onPress={() => navigation.navigate('Register')}
+  >
+    Register
+  </Text>
+</Text>
+
+</Text>
+
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </TouchableWithoutFeedback>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
   wrapper: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
     backgroundColor: '#121212',
-    padding: 20,
+  },
+  scrollContainer: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 40,
+  },
+  logoContainer: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  logo: {
+    fontSize: 40,
+    fontWeight: '900',
+    letterSpacing: 4,
+    color: '#fff',
+    fontFamily: 'Inter-Black',
+  },
+  tagline: {
+    fontSize: 14,
+    color: '#d32f2f',
+    fontWeight: '600',
+    marginTop: 4,
+    fontFamily: 'Inter-SemiBold',
   },
   card: {
-    width: '100%',
     backgroundColor: '#1e1e1e',
+    borderRadius: 16,
     padding: 24,
-    borderRadius: 12,
-    borderColor: '#333',
-    borderWidth: 1,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 10,
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 6,
   },
   title: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontSize: 28,
+    fontWeight: '700',
     color: '#fff',
-    marginBottom: 20,
+    marginBottom: 24,
     textAlign: 'center',
+    fontFamily: 'Inter-Bold',
   },
   input: {
     backgroundColor: '#2a2a2a',
     color: '#fff',
-    borderWidth: 1,
-    borderColor: '#444',
-    padding: 12,
-    borderRadius: 10,
+    padding: 14,
     marginBottom: 16,
+    borderRadius: 10,
     fontSize: 16,
+    borderWidth: 1,
+    borderColor: '#333',
+    fontFamily: 'Inter-Regular',
   },
   button: {
     backgroundColor: '#d32f2f',
-    padding: 14,
+    paddingVertical: 14,
     borderRadius: 10,
     alignItems: 'center',
-    marginTop: 4,
-    marginBottom: 16,
+    marginTop: 10,
+  },
+  buttonPressed: {
+    opacity: 0.8,
+  },
+  buttonDisabled: {
+    opacity: 0.7,
   },
   buttonText: {
     color: '#fff',
-    fontWeight: 'bold',
     fontSize: 16,
+    fontWeight: '600',
+    fontFamily: 'Inter-SemiBold',
   },
-  linkText: {
-    color: '#d32f2f',
-    fontSize: 14,
+  registerText: {
+    color: '#aaa',
+    marginTop: 24,
     textAlign: 'center',
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
   },
-});
+  link: {
+    color: '#d32f2f',
+    fontWeight: '600',
+  },
+  });
 
 export default LoginScreen;

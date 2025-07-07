@@ -1,10 +1,12 @@
 import React from 'react';
 import { NavigationContainer, NavigatorScreenParams } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from './firebase';
 import type { ProgramDay } from './types/Exercise';
+import Toast from 'react-native-toast-message';
+
 
 
 
@@ -81,19 +83,19 @@ export type RootStackParamList = {
   DietStyleSelection: undefined;
   GoalSettings: undefined;
   MacroPlanOverview: {
-    calorieTarget: number;
-    proteinGrams: number;
-    fatGrams: number;
-    carbGrams: number;
-    zoneBlocks: {
-      protein: number;
-      carbs: number;
-      fats: number;
-    };
-    dietMethod: 'standard' | 'zone';
-    goalType: 'fatloss' | 'maintain' | 'muscle';
-  name: string;
+  calorieTarget: number;
+  proteinGrams: number;
+  fatGrams: number;
+  carbGrams: number;
+  zoneBlocks: {
+    protein: number;
+    carbs: number;
+    fats: number;
   };
+  dietMethod: 'standard' | 'zone';
+  goalType: 'maintain' | 'fatloss' | 'muscle';
+  name: string;
+};
 };
 
 
@@ -152,25 +154,13 @@ const AppNavigator = () => {
     <Stack.Screen name="ProgramPreview" component={ProgramPreviewScreen} />
     <Stack.Screen name="MealPlan" component={MealPlanScreen} />
     <Stack.Screen name="MealGoalSettings" component={require('./screens/GoalSettingsScreen').default} />
-    <Stack.Screen name="DietStyleSelection" component={require('./screens/DietStyleSelectionScreen').default} />
     <Stack.Screen name="GoalSettings" component={GoalSettingsScreen} />
     <Stack.Screen name="MacroPlanOverview" component={MacroPlanOverviewScreen} />
   </>
 ) : (
         <>
-          <Stack.Screen name="Login">
-            {() => (
-              <View style={styles.splashWrapper}>
-                <View style={styles.titleContainer}>
-                  <Text style={styles.title}>NHCFR</Text>
-                  <Text style={styles.tagline}>TRAIN FOR DUTY. FUEL FOR LIFE.</Text>
-                </View>
-                <View style={styles.loginCardWrapper}>
-                  <LoginScreen />
-                </View>
-              </View>
-            )}
-          </Stack.Screen>
+          <Stack.Screen name="Login" component={LoginScreen} />
+
           <Stack.Screen name="Register" component={RegisterScreen} />
         </>
       )}
@@ -184,6 +174,7 @@ const App = () => (
   <AuthProvider>
     <NavigationContainer>
       <AppNavigator />
+      <Toast/>
     </NavigationContainer>
   </AuthProvider>
 );

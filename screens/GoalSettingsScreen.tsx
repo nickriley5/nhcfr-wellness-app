@@ -340,7 +340,10 @@ import { RootStackParamList } from '../App';
 
             <Pressable
   style={[styles.optionButton, styles.generatePlanButton]}
-  onPress={handleGenerateMealPlan}
+  onPress={async () => {
+  await handleGenerateMealPlan();// ✅ go to Meal Plan tab
+}}
+
 >
   <Text style={styles.generatePlanText}>Generate My Plan</Text>
 </Pressable>
