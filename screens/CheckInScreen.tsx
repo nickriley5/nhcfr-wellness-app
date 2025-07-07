@@ -8,7 +8,12 @@ import {
   ScrollView,
 } from 'react-native';
 import { getAuth } from 'firebase/auth';
-import { getFirestore, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import {
+  getFirestore,
+  collection,
+  addDoc,
+  serverTimestamp,
+} from 'firebase/firestore';
 import { getApp } from 'firebase/app';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -23,7 +28,17 @@ const CheckInScreen = () => {
   const [energy, setEnergy] = useState<number | null>(null);
   const [notes, setNotes] = useState('');
   const [showToast, setShowToast] = useState(false);
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const [toastMessage, setToastMessage] = useState('');
+  const [toastType, setToastType] = useState<'success' | 'error'>('success');
+
+  const navigation =
+    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+
+  const showCustomToast = (message: string, type: 'success' | 'error') => {
+    setToastMessage(message);
+    setToastType(type);
+    setShowToast(true);
+  };
 
   const handleSubmit = async () => {
     const auth = getAuth(getApp());
@@ -31,7 +46,8 @@ const CheckInScreen = () => {
     const uid = auth.currentUser?.uid;
 
     if (!uid || mood === null || energy === null) {
-      return alert('Please select both mood and energy.');
+      showCustomToast('Please select both mood and energy.', 'error');
+      return;
     }
 
     try {
@@ -46,17 +62,17 @@ const CheckInScreen = () => {
       setMood(null);
       setEnergy(null);
       setNotes('');
-      setShowToast(true);
+      showCustomToast('Check-in submitted!', 'success');
 
       setTimeout(() => {
-        navigation.navigate('Main', {
+        navigation.navigate('AppDrawer', {
           screen: 'MainTabs',
-          params: { screen: 'Home' },
+          params: { screen: 'Dashboard' },
         });
       }, 2000);
     } catch (err) {
       console.error('Check-In Error:', err);
-      alert('Error saving your check-in.');
+      showCustomToast('Error saving your check-in.', 'error');
     }
   };
 
@@ -111,7 +127,11 @@ const CheckInScreen = () => {
       </Pressable>
 
       {showToast && (
-        <Toast message="Check-in submitted!" onClose={() => setShowToast(false)} />
+        <Toast
+          message={toastMessage}
+          type={toastType}
+          onClose={() => setShowToast(false)}
+        />
       )}
     </ScrollView>
   );

@@ -1,13 +1,14 @@
 import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, Animated, Pressable } from 'react-native';
+import {Text, StyleSheet, Animated, Pressable } from 'react-native';
 
 interface ToastProps {
   message: string;
   onClose: () => void;
+  type?: 'success' | 'error';
 }
 
 const Toast: React.FC<ToastProps> = ({ message, onClose }) => {
-  const slideAnim = new Animated.Value(100);
+  const slideAnim = React.useRef(new Animated.Value(100)).current;
 
   useEffect(() => {
     Animated.spring(slideAnim, {
@@ -17,7 +18,7 @@ const Toast: React.FC<ToastProps> = ({ message, onClose }) => {
 
     const timer = setTimeout(onClose, 4000);
     return () => clearTimeout(timer);
-  }, []);
+  }, [onClose, slideAnim]);
 
   return (
     <Animated.View style={[styles.toast, { transform: [{ translateY: slideAnim }] }]}>

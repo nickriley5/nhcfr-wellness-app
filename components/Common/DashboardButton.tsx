@@ -1,10 +1,11 @@
+// DashboardButton.tsx
 import React from 'react';
 import { Pressable, Text, StyleSheet, ViewStyle } from 'react-native';
 
 interface Props {
   text: string;
   onPress: () => void;
-  variant?: 'default' | 'green' | 'blue';
+  variant?: 'default' | 'green' | 'blue' | 'redSolid';
   disabled?: boolean;
   style?: ViewStyle;
 }
@@ -22,6 +23,8 @@ const DashboardButton = ({
         return styles.green;
       case 'blue':
         return styles.blue;
+      case 'redSolid':
+        return styles.redSolid;
       default:
         return styles.default;
     }
@@ -50,7 +53,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     alignItems: 'center',
     marginBottom: 16,
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
   },
   default: {
@@ -65,8 +68,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#1e88e5',
     borderColor: '#1e88e5',
   },
+  redSolid: {
+    backgroundColor: '#d32f2f',
+    borderColor: '#d32f2f',
+  },
   pressed: {
-    opacity: 0.8,
+    opacity: 0.85,
   },
   disabled: {
     opacity: 0.6,
@@ -77,6 +84,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+    paddingLeft: 10,
+    paddingRight: 10,
   },
 });
 

@@ -52,13 +52,13 @@ const GenerateButtons = ({
       <DashboardButton
         text="📅 Set Workout Schedule"
         onPress={onSetSchedule}
-        variant="blue"
+        variant="redSolid"
       />
 
       <DashboardButton
         text="📜 View Workout History"
         onPress={onViewHistory}
-        variant="blue"
+        variant="redSolid"
       />
     </View>
   );

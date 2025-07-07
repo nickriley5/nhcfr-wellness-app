@@ -16,12 +16,26 @@ const MoodEnergyChart = ({ moodData, energyData }: {
       </View>
     );
   }
+  // Generate date labels for the x-axis based on the number of data points
+  // Assuming each data point represents a consecutive day, ending today
+  const getDateLabels = (numDays: number) => {
+    const labels: string[] = [];
+    const today = new Date();
+    for (let i = numDays - 1; i >= 0; i--) {
+      const date = new Date(today);
+      date.setDate(today.getDate() - i);
+      // Format as M/D (e.g., 6/10)
+      labels.push(`${date.getMonth() + 1}/${date.getDate()}`);
+    }
+    return labels;
+  };
 
+  const labels = getDateLabels(moodData.length);
   return (
     <View style={styles.container}>
       <LineChart
         data={{
-          labels: moodData.map((_, index) => `D${index + 1}`),
+          labels: labels,
           datasets: [
             {
               data: moodData,
