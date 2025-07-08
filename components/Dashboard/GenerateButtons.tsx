@@ -1,6 +1,6 @@
 import React from 'react';
 import { View } from 'react-native';
-import DashboardButton from '../Common/DashboardButton';
+import AppButton from '../Common/AppButton';
 
 interface Props {
   completionPercent: number;
@@ -28,35 +28,35 @@ const GenerateButtons = ({
   return (
     <View>
       {!mealPlanExists && (
-        <DashboardButton
-          text="🍽 Generate Meal Plan"
+        <AppButton
+          title="🍽 Generate Meal Plan"
           onPress={onGenerateMeal}
           variant="green"
         />)}
 
       {!programExists && (
         <>
-          <DashboardButton
-            text="🏋️‍♂️ View Workout Programs"
+          <AppButton
+            title="🏋️‍♂️ View Workout Programs"
             onPress={onViewPrograms}
             variant="blue"/>
 
-          <DashboardButton
-            text="🏋️‍♀️ Generate Workout Program"
+          <AppButton
+            title="🏋️‍♀️ Generate Workout Program"
             onPress={onGenerateProgram}
             variant="green"
           />
         </>
       )}
 
-      <DashboardButton
-        text="📅 Set Workout Schedule"
+      <AppButton
+        title="📅 Set Workout Schedule"
         onPress={onSetSchedule}
         variant="redSolid"
       />
 
-      <DashboardButton
-        text="📜 View Workout History"
+      <AppButton
+        title="📜 View Workout History"
         onPress={onViewHistory}
         variant="redSolid"
       />

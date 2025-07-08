@@ -1,6 +1,6 @@
 // screens/MacroCalculatorScreen.tsx
 import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, Alert } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView, Alert } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { useNavigation } from '@react-navigation/native';
 
@@ -42,6 +42,39 @@ const MacroCalculatorScreen: React.FC = () => {
   const heightCm = userProfile?.height ? userProfile.height * 2.54 : undefined;
   const weightKg = userProfile?.weight ? userProfile.weight * 0.453592 : undefined;
 
+  const leanMassKg = weightKg && userProfile?.bodyFat !== undefined
+    ? weightKg * (1 - userProfile.bodyFat / 100)
+    : undefined;
+
+  const zoneBlocks = useMemo(() => {
+    if (dietStyle !== 'Zone' || !leanMassKg) {
+      return null;
+    }
+    const proteinGrams = leanMassKg * 1.8; // ~0.8g/lb lean mass
+    const blocks = Math.round(proteinGrams / 7);
+    return {
+      blocks,
+      protein: blocks * 7,
+      carbs: blocks * 9,
+      fat: blocks * 1.5,
+    };
+  }, [dietStyle, leanMassKg]);
+
+  const macroSplit = useMemo(() => {
+    if (dietStyle === 'Zone') {
+      return { protein: 0.3, carbs: 0.4, fat: 0.3 };
+    }
+    if (dietStyle === 'Custom') {
+      const total = customMacros.protein + customMacros.carbs + customMacros.fat;
+      return {
+        protein: customMacros.protein / total,
+        carbs: customMacros.carbs / total,
+        fat: customMacros.fat / total,
+      };
+    }
+    return { protein: 0.3, carbs: 0.4, fat: 0.3 }; // Standard
+  }, [dietStyle, customMacros]);
+
   if (
     !userProfile ||
     userProfile.age === undefined ||
@@ -60,35 +93,6 @@ const MacroCalculatorScreen: React.FC = () => {
       </View>
     );
   }
-
-    const leanMassKg = weightKg && userProfile.bodyFat !== undefined
-    ? weightKg * (1 - userProfile.bodyFat / 100)
-    : undefined;
-
-  const zoneBlocks = useMemo(() => {
-    if (dietStyle !== 'Zone' || !leanMassKg) return null;
-    const proteinGrams = leanMassKg * 1.8; // ~0.8g/lb lean mass
-    const blocks = Math.round(proteinGrams / 7);
-    return {
-      blocks,
-      protein: blocks * 7,
-      carbs: blocks * 9,
-      fat: blocks * 1.5,
-    };
-  }, [dietStyle, leanMassKg]);
-
-  const macroSplit = useMemo(() => {
-    if (dietStyle === 'Zone') return { protein: 0.3, carbs: 0.4, fat: 0.3 };
-    if (dietStyle === 'Custom') {
-      const total = customMacros.protein + customMacros.carbs + customMacros.fat;
-      return {
-        protein: customMacros.protein / total,
-        carbs: customMacros.carbs / total,
-        fat: customMacros.fat / total,
-      };
-    }
-    return { protein: 0.3, carbs: 0.4, fat: 0.3 }; // Standard
-  }, [dietStyle, customMacros]);
 
   const bmr = calculateBMR({
     age: userProfile.age,
@@ -165,7 +169,7 @@ const MacroCalculatorScreen: React.FC = () => {
 
       {/* ⚠️ Rapid warning */}
       {overrideWarning && (
-        <Text style={[styles.warn, { color: '#f39c12' }]}>
+        <Text style={[styles.warn, styles.warnRapid]}>
           ⚠ Rapid fat loss can cause muscle loss and rebound. Consider a slower rate.
         </Text>
       )}
@@ -207,7 +211,7 @@ const MacroCalculatorScreen: React.FC = () => {
           ))}
           {/* Total Check */}
           {customMacros.protein + customMacros.carbs + customMacros.fat !== 100 && (
-            <Text style={[styles.warn, { color: '#e74c3c' }]}>
+            <Text style={[styles.warn, styles.error]}>
               Macro ratios must total 100%.
             </Text>
           )}
@@ -222,7 +226,7 @@ const MacroCalculatorScreen: React.FC = () => {
         <Text style={styles.resultsTxt}>Fat: {Math.round(macros.fat)}g</Text>
 
         {zoneBlocks && (
-          <View style={{ marginTop: 12 }}>
+          <View style={styles.zoneBlockContainer}>
             <Text style={styles.resultsTxt}>
               Zone Blocks: {zoneBlocks.blocks}
             </Text>
@@ -255,8 +259,12 @@ const styles = StyleSheet.create({
   goalTxtActive : { color: '#fff', fontWeight: '700' },
 
   warn     : { color: '#f39c12', marginVertical: 8 },
+  warnRapid: { color: '#f39c12' },
+  error    : { color: '#e74c3c' },
   results  : { marginTop: 24, padding: 20, backgroundColor: '#222', borderRadius: 8 },
   resultsTxt: { color: '#fff', marginBottom: 4 },
+
+  zoneBlockContainer: { marginTop: 12 },
 
   saveBtn : { marginTop: 32, backgroundColor: '#d32f2f', padding: 14, borderRadius: 8 },
   saveTxt : { color: '#fff', textAlign: 'center', fontWeight: '600' },
