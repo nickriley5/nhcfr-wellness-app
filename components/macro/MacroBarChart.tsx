@@ -1,17 +1,15 @@
-// components/macro/MacroBarChart.tsx
 import React from 'react';
-import { Dimensions } from 'react-native';
+import { View, TouchableOpacity, Text, StyleSheet } from 'react-native';
 import Svg, { Rect } from 'react-native-svg';
 
 interface Props {
-  weeklyData: { protein: number; carbs: number; fat: number }[];
+  weeklyData: { day?: string; protein: number; carbs: number; fat: number }[];
   selectedDayIndex: number;
   onSelectDay: (index: number) => void;
 }
 
 const barWidth = 28;
-const barSpacing = 10;
-const chartHeight = 180;
+const chartHeight = 140;
 
 const colors = {
   protein: '#4FC3F7',
@@ -19,33 +17,90 @@ const colors = {
   fat: '#F06292',
 };
 
-const screenWidth = Dimensions.get('window').width;
-
 const calorieFrom = (p: number, c: number, f: number) =>
   p * 4 + c * 4 + f * 9;
 
-const MacroBarChart: React.FC<Props> = ({ weeklyData, onSelectDay }) => {
+const MacroBarChart: React.FC<Props> = ({ weeklyData, selectedDayIndex, onSelectDay }) => {
   return (
-    <Svg width={screenWidth} height={chartHeight + 5}>
+    <View style={styles.container}>
       {weeklyData.map((day, i) => {
-        const total = calorieFrom(day.protein, day.carbs, day.fat);
+        const total = calorieFrom(day.protein, day.carbs, day.fat) || 1;
         const proteinHeight = (day.protein * 4 / total) * chartHeight;
         const carbsHeight = (day.carbs * 4 / total) * chartHeight;
         const fatHeight = (day.fat * 9 / total) * chartHeight;
-        const xOffset = 24;
-        const x = xOffset + i * (barWidth + barSpacing);
-        const y = chartHeight;
+        const isSelected = selectedDayIndex === i;
 
         return (
-          <React.Fragment key={i}>
-            <Rect x={x} y={y - proteinHeight} width={barWidth} height={proteinHeight} fill={colors.protein} onPress={() => onSelectDay(i)} />
-            <Rect x={x} y={y - proteinHeight - carbsHeight} width={barWidth} height={carbsHeight} fill={colors.carbs} onPress={() => onSelectDay(i)} />
-            <Rect x={x} y={y - proteinHeight - carbsHeight - fatHeight} width={barWidth} height={fatHeight} fill={colors.fat} onPress={() => onSelectDay(i)} />
-          </React.Fragment>
+          <TouchableOpacity
+            key={i}
+            onPress={() => onSelectDay(i)}
+            style={[
+              styles.barWrapper,
+              isSelected && styles.barSelected            ]}
+            activeOpacity={0.7}
+          >
+            <Svg width={barWidth} height={chartHeight}>
+              {/* Fat segment (drawn bottom first) */}
+              <Rect
+                x={0}
+                y={chartHeight - fatHeight}
+                width={barWidth}
+                height={fatHeight}
+                fill={colors.fat}
+              />
+              {/* Carbs segment */}
+              <Rect
+                x={0}
+                y={chartHeight - fatHeight - carbsHeight}
+                width={barWidth}
+                height={carbsHeight}
+                fill={colors.carbs}
+              />
+              {/* Protein segment */}
+              <Rect
+                x={0}
+                y={chartHeight - fatHeight - carbsHeight - proteinHeight}
+                width={barWidth}
+                height={proteinHeight}
+                fill={colors.protein}
+              />
+            </Svg>
+            {/* Day label under bar */}
+            <Text style={[styles.dayLabel, isSelected && styles.daySelected]}>
+              {day.day?.slice(0, 3)}
+            </Text>
+          </TouchableOpacity>
         );
       })}
-    </Svg>
+    </View>
   );
 };
+
+const styles = StyleSheet.create({
+  container: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginVertical: 10,
+    alignItems: 'flex-end',
+    },
+  barWrapper: {
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    paddingTop: 4,
+  },
+  barSelected: {
+    backgroundColor: '#FFD54F',
+    borderRadius: 6,
+  },
+  dayLabel: {
+    marginTop: 4,
+    color: '#ccc',
+    fontSize: 12,
+  },
+  daySelected: {
+    color: 'white',
+    fontWeight: 'bold',
+  },
+});
 
 export default MacroBarChart;

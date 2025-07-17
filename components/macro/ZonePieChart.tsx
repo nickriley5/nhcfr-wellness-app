@@ -1,7 +1,8 @@
 // components/macro/ZonePieChart.tsx
 import React from 'react';
 import Svg, { Path } from 'react-native-svg';
-import { StyleSheet, View, Text } from 'react-native';
+import { View, Text } from 'react-native';
+import styles from '../../styles/MacroPlanOverview.styles';
 
 interface Props {
   protein: number;
@@ -33,6 +34,7 @@ const ZonePieChart: React.FC<Props> = ({ protein, carbs, fats }) => {
   let start = 0;
 
   return (
+    <View style={styles.zonePieContainer}>
     <Svg height={200} width={200} style={styles.svg}>
       {segments.map((s, i) => {
         const angle = (s.value / total) * 2 * Math.PI;
@@ -46,18 +48,9 @@ const ZonePieChart: React.FC<Props> = ({ protein, carbs, fats }) => {
         return <Path key={i} d={d} fill={s.color} />;
       })}
     </Svg>
+    </View>
   );
 };
 
-const styles = StyleSheet.create({
-  svg: {
-    alignSelf: 'center',
-    marginBottom: 8,
-  },
-  noDataText: {
-    color: '#ccc',
-    textAlign: 'center',
-  },
-});
 
 export default ZonePieChart;
