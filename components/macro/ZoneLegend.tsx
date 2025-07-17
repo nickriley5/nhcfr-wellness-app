@@ -1,7 +1,6 @@
 import React from 'react';
 import { View, Text } from 'react-native';
-// Fix the path below if necessary, or replace with actual inline styles
-import styles from '../../styles/MacroPlanOverview.styles';
+import styles from '../../styles/ZoneLegend.styles';
 
 interface Props {
   colors: {
@@ -11,19 +10,24 @@ interface Props {
   };
 }
 
-const ZoneLegend: React.FC<Props> = ({ colors }) => (
-  <View style={styles.zoneLegend}>
-    {[
-      { label: 'Protein', color: colors.protein },
-      { label: 'Carbs', color: colors.carbs },
-      { label: 'Fats', color: colors.fat },
-    ].map((item, idx) => (
-      <View key={idx} style={styles.legendRow}>
-        <View style={[styles.legendColorBox, { backgroundColor: item.color }]} />
-        <Text style={styles.legendText}>{item.label}</Text>
-      </View>
-    ))}
-  </View>
-);
+const ZoneLegend: React.FC<Props> = ({ colors }) => {
+  const legendItems = [
+    { label: 'Protein', color: colors.protein },
+    { label: 'Carbs', color: colors.carbs },
+    { label: 'Fats', color: colors.fat },
+  ];
+
+  return (
+    <View style={styles.legendContainer}>
+      {legendItems.map((item, idx) => (
+        <View key={idx} style={styles.legendRow}>
+          {/* Colored dot with subtle glow */}
+          <View style={[styles.colorDot, { backgroundColor: item.color, shadowColor: item.color }]} />
+          <Text style={styles.legendLabel}>{item.label}</Text>
+        </View>
+      ))}
+    </View>
+  );
+};
 
 export default ZoneLegend;

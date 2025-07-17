@@ -155,7 +155,6 @@ dayLabel: {
 },
 svg: {
     alignSelf: 'center',
-    marginBottom: 8,
   },
   noDataText: {
     color: '#ccc',
@@ -169,14 +168,15 @@ zoneSection: {
 },
 
 zonePieContainer: {
-  backgroundColor: '#1C1F26',
+  backgroundColor: '#1A1A1A',
   padding: 20,
   borderRadius: 16,
   shadowColor: '#000',
-  shadowOpacity: 0.3,
+  shadowOpacity: 0.25,
+  shadowRadius: 10,
   shadowOffset: { width: 0, height: 4 },
-  shadowRadius: 12,
-  elevation: 8,
+  elevation: 6,
+  alignSelf: 'center',
   marginBottom: 16,
 },
 zoneLegend: {
@@ -207,6 +207,16 @@ totalBlocks: {
   fontSize: 16,
   fontWeight: 'bold',
   marginVertical: 12,
+},
+totalBlocksGlow: {
+  marginTop: 12,
+  textAlign: 'center',
+  color: '#3BA7F0',
+  fontSize: 18,
+  fontWeight: '600',
+  textShadowColor: 'rgba(59, 167, 240, 0.6)',
+  textShadowOffset: { width: 0, height: 0 },
+  textShadowRadius: 6,
 },
   viewPlanButton: {
   backgroundColor: '#ff3b30',
