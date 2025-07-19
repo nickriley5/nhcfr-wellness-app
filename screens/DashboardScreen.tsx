@@ -1,23 +1,27 @@
-// DashboardScreen.tsx
 import React, { useState, useEffect } from 'react';
 import {
   Text,
   StyleSheet,
   ScrollView,
   Animated,
+  Modal,
+  View,
+  Alert,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import {
   useNavigation,
   CompositeNavigationProp,
 } from '@react-navigation/native';
-import { Alert } from 'react-native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+
 import { TabParamList, RootStackParamList } from '../App';
 import MealGoalsModal from '../components/MealGoalsModal';
 import PerformanceGoalsModal from '../components/PerformanceGoalsModal';
 import EnvironmentCalendarModal from '../components/EnvironmentCalendarModal';
+import GoalSettingsScreen from './GoalSettingsScreen'; // ✅ Import Goal Settings
+
 import { generateProgramFromGoals } from '../utils/programGenerator';
 import ReminderCard from '../components/Dashboard/ReminderCard';
 import ProfileCompletionBanner from '../components/Profile/ProfileCompletionBanner';
@@ -44,6 +48,9 @@ export default function DashboardScreen() {
   const [showMealModal, setShowMealModal] = useState(false);
   const [showWorkoutModal, setShowWorkoutModal] = useState(false);
   const [showCalendarModal, setShowCalendarModal] = useState(false);
+
+  // ✅ NEW: GoalSettings modal state
+  const [showGoalSettingsModal, setShowGoalSettingsModal] = useState(false);
 
   const {
     moodData,
@@ -107,11 +114,8 @@ export default function DashboardScreen() {
           completionPercent={completionPercent}
           programExists={programExists}
           mealPlanExists={mealPlanExists}
-          onGenerateMeal={() =>
-            navigation
-              .getParent<NativeStackNavigationProp<RootStackParamList>>()
-              ?.navigate('GoalSettings')
-          }
+          // ✅ Instead of old MealGoalsModal, open GoalSettingsScreen as modal
+          onGenerateMeal={() => setShowGoalSettingsModal(true)}
           onGenerateProgram={() => setShowWorkoutModal(true)}
           onViewPrograms={() =>
             navigation
@@ -123,23 +127,30 @@ export default function DashboardScreen() {
         />
       </ScrollView>
 
+      {/* Old Meal modal stays available if needed elsewhere */}
       <MealGoalsModal
         visible={showMealModal}
         currentWeight={currentWeight}
         onClose={() => setShowMealModal(false)}
         onSaved={() => {
           setShowMealModal(false);
-          navigation.getParent()?.navigate('MealPlan');
+          // ✅ Navigate to MealPlan tab
+          navigation
+            .getParent<NativeStackNavigationProp<RootStackParamList>>()
+            ?.navigate('MainTabs', { screen: 'MealPlan' });
         }}
       />
 
+      {/* Performance goals modal */}
       <PerformanceGoalsModal
         visible={showWorkoutModal}
         onClose={() => setShowWorkoutModal(false)}
         onSaved={async (goals) => {
           setShowWorkoutModal(false);
           const uid = auth.currentUser?.uid;
-          if (!uid) {return;}
+          if (!uid) {
+            return;
+          }
           try {
             const program = await generateProgramFromGoals(
               {
@@ -169,10 +180,34 @@ export default function DashboardScreen() {
         fullExerciseLibrary={exerciseLibrary}
       />
 
+      {/* Calendar modal */}
       <EnvironmentCalendarModal
         visible={showCalendarModal}
         onClose={() => setShowCalendarModal(false)}
       />
+
+      {/* ✅ TRUE MODAL: GoalSettingsScreen overlay */}
+      <Modal
+        visible={showGoalSettingsModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowGoalSettingsModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+  <GoalSettingsScreen
+    onClose={() => setShowGoalSettingsModal(false)}
+    onGenerated={() => {
+      // When goal settings are saved:
+      setShowGoalSettingsModal(false);
+
+      // ✅ Navigate to MealPlan tab inside MainTabs
+      navigation
+        .getParent<NativeStackNavigationProp<RootStackParamList>>()
+        ?.navigate('MainTabs', { screen: 'MealPlan' });
+    }}
+  />
+</View>
+      </Modal>
     </LinearGradient>
   );
 }
@@ -190,4 +225,11 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   exerciseLine: { fontSize: 14, color: '#ccc', marginBottom: 2 },
+
+  // ✅ Dark translucent overlay for modal background
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.85)',
+    justifyContent: 'center',
+  },
 });

@@ -435,9 +435,47 @@ presetTxt: {
 presetTxtActive: {
   color: '#fff',
 },
+loadingWrapper: {
+  flex: 1,
+  justifyContent: 'center',
+  alignItems: 'center',
+},
+centered: {
+  flex: 1,
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: 20,
+},
 
+loadingText: {
+  marginTop: 12,
+  fontSize: 16,
+  color: '#aaa',
+  textAlign: 'center',
+},
+previewBanner: {
+  backgroundColor: 'rgba(255, 215, 64, 0.1)', // soft yellow highlight
+  borderWidth: 1,
+  borderColor: '#FFD740',
+  borderRadius: 12,
+  padding: 12,
+  marginHorizontal: 16,
+  marginBottom: 16,
+},
 
+previewBannerText: {
+  color: '#FFD740',
+  fontSize: 14,
+  fontWeight: '600',
+  textAlign: 'center',
+  marginBottom: 12,
+},
 
+previewButtonsRow: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  gap: 12,
+},
 
 
 });

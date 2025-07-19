@@ -7,24 +7,33 @@ import React, {
   ReactNode,
 } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { auth, db } from '../firebase';          // shared instances
+import { auth, db } from '../firebase';
 import { doc, getDoc } from 'firebase/firestore';
 
 /* ------------------------------------------------------------------ */
-/* 1️⃣  Define the shape of a user profile                             */
+/* 1️⃣  Firestore doc type – matches all possible fields in Firestore  */
 /* ------------------------------------------------------------------ */
-export interface UserProfile {
+interface FirestoreUserDoc {
+  name?: string;
   fullName?: string;
   age?: number;
   sex?: 'male' | 'female';
-  height?: number;   // cm
-  weight?: number;   // kg
-  bodyFat?: number;  // %
-  // add any other fields you store under users/{uid}
+  height?: number;
+  weight?: number;
+  bodyFat?: number;
+  // any other fields you save under users/{uid}
 }
 
 /* ------------------------------------------------------------------ */
-/* 2️⃣  Context type                                                   */
+/* 2️⃣  Full merged UserProfile                                        */
+/* ------------------------------------------------------------------ */
+export interface UserProfile extends FirestoreUserDoc {
+  uid: string;                // ✅ always from Firebase Auth
+  email?: string | null;      // ✅ always from Firebase Auth
+}
+
+/* ------------------------------------------------------------------ */
+/* 3️⃣  Context type                                                   */
 /* ------------------------------------------------------------------ */
 interface AuthContextType {
   user: User | null;
@@ -33,44 +42,65 @@ interface AuthContextType {
 }
 
 /* ------------------------------------------------------------------ */
-/* 3️⃣  Create context with sensible defaults                          */
+/* 4️⃣  Create Context with sensible defaults                          */
 /* ------------------------------------------------------------------ */
 const AuthContext = createContext<AuthContextType>({
-  user        : null,
-  loading     : true,
-  userProfile : null,
+  user: null,
+  loading: true,
+  userProfile: null,
 });
 
 /* ------------------------------------------------------------------ */
-/* 4️⃣  Provider component                                             */
+/* 5️⃣  Provider component                                             */
 /* ------------------------------------------------------------------ */
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [user, setUser]                 = useState<User | null>(null);
-  const [userProfile, setUserProfile]   = useState<UserProfile | null>(null);
-  const [loading, setLoading]           = useState(true);
+  const [user, setUser] = useState<User | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    /* Listen for auth state changes */
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       setUser(firebaseUser);
 
       if (firebaseUser) {
         try {
-          /* 🔥 Pull profile from Firestore */
+          // 🔥 Fetch Firestore profile document
           const snap = await getDoc(doc(db, 'users', firebaseUser.uid));
-          setUserProfile(snap.exists() ? (snap.data() as UserProfile) : null);
+
+          // ✅ Type-safe data cast (no more as any)
+          const firestoreData: FirestoreUserDoc = snap.exists()
+            ? (snap.data() as FirestoreUserDoc)
+            : {};
+
+          // ✅ Merge Auth + Firestore fields
+          const mergedProfile: UserProfile = {
+            uid: firebaseUser.uid,          // always present
+            email: firebaseUser.email,      // always present
+            name: firestoreData.name ??
+                  firestoreData.fullName ??
+                  'Firefighter',            // fallback name
+            ...firestoreData,               // spreads weight, height, bodyFat, etc.
+          };
+
+          setUserProfile(mergedProfile);
         } catch (err) {
           console.error('Failed to fetch user profile:', err);
-          setUserProfile(null);
+
+          // Fallback: only auth info
+          setUserProfile({
+            uid: firebaseUser.uid,
+            email: firebaseUser.email,
+          });
         }
       } else {
+        // Not logged in → reset profile
         setUserProfile(null);
       }
 
       setLoading(false);
     });
 
-    return unsubscribe; // cleanup on unmount
+    return unsubscribe;
   }, []);
 
   return (
@@ -81,6 +111,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 };
 
 /* ------------------------------------------------------------------ */
-/* 5️⃣  Helper hook                                                    */
+/* 6️⃣  Helper hook                                                    */
 /* ------------------------------------------------------------------ */
 export const useAuth = () => useContext(AuthContext);

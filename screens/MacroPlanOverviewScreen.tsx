@@ -13,16 +13,17 @@ import LinearGradient from 'react-native-linear-gradient';
 import { RouteProp, useRoute, useNavigation } from '@react-navigation/native';
 import { RootStackParamList } from '../App';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+
 import MacroBarChart from '../components/macro/MacroBarChart';
 import ZonePieChart from '../components/macro/ZonePieChart';
 import ZoneLegend from '../components/macro/ZoneLegend';
 import styles from '../styles/MacroPlanOverview.styles';
 import MacroDayEditor from '../components/MacroDayEditor';
+import DashboardButton from '../components/Common/DashboardButton';
 import { useAuth } from '../providers/AuthProvider';
 import { calculateCalories } from '../components/macroUtils';
-
-// ✅ NEW: premium unified button
-import DashboardButton from '../components/Common/DashboardButton';
+import { db } from '../firebase';
+import { doc, updateDoc } from 'firebase/firestore';
 
 // Enable LayoutAnimation on Android for smooth transitions
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -32,11 +33,12 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 const MacroPlanOverviewScreen = () => {
   const { userProfile } = useAuth();
   const displayName = userProfile?.fullName || 'Firefighter';
+  const userId = userProfile?.uid;
 
   const route = useRoute<RouteProp<RootStackParamList, 'MacroPlanOverview'>>();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
-  const userWeight = userProfile?.weight ?? 180; // fallback if profile incomplete
+  const userWeight = userProfile?.weight ?? 180;
 
   const colors = {
     protein: '#4FC3F7',
@@ -47,31 +49,28 @@ const MacroPlanOverviewScreen = () => {
   const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
   const {
-  proteinGrams,
-  fatGrams,
-  carbGrams,
-  dietMethod,
-  goalType,
-} = route.params;
+    proteinGrams,
+    fatGrams,
+    carbGrams,
+    dietMethod: initialDietMethod,
+    goalType,
+  } = route.params;
 
-// Calculate zone blocks dynamically
-const zoneProteinBlocks = Math.floor(proteinGrams / 7);
-const zoneCarbBlocks = Math.floor(carbGrams / 9);
-const zoneFatBlocks = Math.floor(fatGrams / 3);
+  // ✅ Calculate zone blocks dynamically for preview
+  const zoneBlocks = {
+    protein: Math.floor(proteinGrams / 7),
+    carbs: Math.floor(carbGrams / 9),
+    fats: Math.floor(fatGrams / 3),
+  };
 
-const zoneBlocks = {
-  protein: zoneProteinBlocks,
-  carbs: zoneCarbBlocks,
-  fats: zoneFatBlocks,
-};
-
-
-  const [selectedMode, setSelectedMode] = useState<'standard' | 'zone'>(
-    dietMethod === 'zone' ? 'zone' : 'standard'
+  // ✅ State
+  const [activeDietMethod, setActiveDietMethod] = useState<'standard' | 'zone'>(
+    initialDietMethod === 'zone' ? 'zone' : 'standard'
   );
+  const [previewDietMethod, setPreviewDietMethod] = useState<'standard' | 'zone' | null>(null);
+  const [showPreviewBanner, setShowPreviewBanner] = useState(false);
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
 
-  // Initial plan values for the whole week
   const initialWeekly = dayLabels.map((day) => ({
     day,
     protein: proteinGrams,
@@ -88,7 +87,6 @@ const zoneBlocks = {
 
   const [weeklyData, setWeeklyData] = useState<WeeklyMacro[]>(initialWeekly);
 
-  // Sync MacroDayEditor inputs when selectedDay changes
   const [editProtein, setEditProtein] = useState<number>(proteinGrams);
   const [editCarbs, setEditCarbs] = useState<number>(carbGrams);
   const [editFat, setEditFat] = useState<number>(fatGrams);
@@ -102,6 +100,59 @@ const zoneBlocks = {
   }, [selectedDayIndex, weeklyData]);
 
   const currentDayCalories = calculateCalories(editProtein, editCarbs, editFat);
+
+  /* ------------------------------------------
+   ✅ When user toggles a different diet method
+  -------------------------------------------*/
+  const handleTogglePreview = (newMode: 'standard' | 'zone') => {
+    if (newMode === activeDietMethod) {
+      // ✅ They clicked their current plan → reset preview
+      setPreviewDietMethod(null);
+      setShowPreviewBanner(false);
+      return;
+    }
+
+    // ✅ They are previewing the OTHER plan
+    setPreviewDietMethod(newMode);
+    setShowPreviewBanner(true);
+  };
+
+  /* ------------------------------------------
+   ✅ Confirm & switch the plan
+  -------------------------------------------*/
+  const handleConfirmSwitch = async () => {
+    if (!previewDietMethod || !userId) {
+      return;
+    }
+
+    try {
+      const planRef = doc(db, `users/${userId}/mealplan/active`);
+
+      if (previewDietMethod === 'zone') {
+        await updateDoc(planRef, {
+          dietMethod: 'zone',
+          zoneBlocks,
+        });
+      } else {
+        await updateDoc(planRef, {
+          dietMethod: 'standard',
+          proteinGrams,
+          carbGrams,
+          fatGrams,
+        });
+      }
+
+      // ✅ Now make the preview the active
+      setActiveDietMethod(previewDietMethod);
+      setPreviewDietMethod(null);
+      setShowPreviewBanner(false);
+    } catch (err) {
+      console.error('Failed to switch meal plan:', err);
+    }
+  };
+
+  // ✅ Decide what is currently visible (preview OR actual)
+  const visibleMode = previewDietMethod || activeDietMethod;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -122,56 +173,79 @@ const zoneBlocks = {
         </View>
 
         <ScrollView contentContainerStyle={styles.scroll}>
-          {/* Recap card for initial baseline */}
+          {/* Preview Banner */}
+          {showPreviewBanner && (
+            <View style={styles.previewBanner}>
+              <Text style={styles.previewBannerText}>
+                You are previewing {previewDietMethod === 'zone' ? 'Zone Blocks' : 'Standard Macros'}.
+                Switching will overwrite your current plan.
+              </Text>
+              <View style={styles.previewButtonsRow}>
+                <DashboardButton text="Cancel" variant="default" onPress={() => {
+                  setPreviewDietMethod(null);
+                  setShowPreviewBanner(false);
+                }}/>
+                <DashboardButton text="Confirm & Switch Plan" variant="redSolid" onPress={handleConfirmSwitch}/>
+              </View>
+            </View>
+          )}
+
+          {/* Recap card for current baseline */}
           <View style={styles.recapCard}>
-            <Text style={styles.recapText}>
-              Default Plan:{' '}
-              {calculateCalories(proteinGrams, carbGrams, fatGrams)} kcal · P {proteinGrams}g · C{' '}
-              {carbGrams}g · F {fatGrams}g
-            </Text>
+            {visibleMode === 'standard' ? (
+              <Text style={styles.recapText}>
+                Default Plan:{' '}
+                {calculateCalories(proteinGrams, carbGrams, fatGrams)} kcal · P {proteinGrams}g · C{' '}
+                {carbGrams}g · F {fatGrams}g
+              </Text>
+            ) : (
+              <Text style={styles.recapText}>
+                Zone Blocks: P {zoneBlocks.protein} · C {zoneBlocks.carbs} · F {zoneBlocks.fats}
+              </Text>
+            )}
           </View>
 
           {/* Toggle Standard vs Zone */}
           <View style={styles.toggleContainer}>
-            {['standard', 'zone'].map((mode) => (
-              <Pressable
-                key={mode}
-                style={[
-                  styles.toggleButton,
-                  selectedMode === mode && styles.toggleActive,
-                ]}
-                onPress={() => setSelectedMode(mode as 'standard' | 'zone')}
-              >
-                <Text
+            {['standard', 'zone'].map((mode) => {
+              const isActive = visibleMode === mode;
+              return (
+                <Pressable
+                  key={mode}
                   style={[
-                    styles.toggleText,
-                    selectedMode === mode && styles.toggleTextActive,
+                    styles.toggleButton,
+                    isActive && styles.toggleActive,
                   ]}
+                  onPress={() => handleTogglePreview(mode as 'standard' | 'zone')}
                 >
-                  {mode === 'standard' ? 'Standard Macros' : 'Zone Blocks'}
-                </Text>
-              </Pressable>
-            ))}
+                  <Text
+                    style={[
+                      styles.toggleText,
+                      isActive && styles.toggleTextActive,
+                    ]}
+                  >
+                    {mode === 'standard' ? 'Standard Macros' : 'Zone Blocks'}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
 
-          {selectedMode === 'standard' ? (
+          {/* Show either Standard OR Zone preview */}
+          {visibleMode === 'standard' ? (
             <>
               <Text style={styles.chartLabel}>Weekly Macro Overview</Text>
 
-              {/* Interactive weekly bar chart */}
               <MacroBarChart
                 weeklyData={weeklyData}
                 selectedDayIndex={selectedDayIndex}
                 onSelectDay={(index) => setSelectedDayIndex(index)}
               />
 
-
-              {/* Selected day macro summary */}
               <Text style={styles.chartLabel}>
                 Editing {weeklyData[selectedDayIndex].day} · {currentDayCalories} kcal
               </Text>
 
-              {/* Editor for that specific day */}
               <MacroDayEditor
                 selectedDay={weeklyData[selectedDayIndex].day}
                 currentCalories={currentDayCalories}
@@ -180,75 +254,76 @@ const zoneBlocks = {
                 }
                 currentCarbPct={60}
                 onApply={(protein, carbs, fat, _calories, applyToAll) => {
-  let updated;
-  if (applyToAll) {
-    // ✅ Update every day with same values
-    updated = weeklyData.map((d) => ({
-      ...d,
-      protein,
-      carbs,
-      fat,
-    }));
-  } else {
-    // ✅ Update only selected day
-    updated = weeklyData.map((d, i) =>
-      i === selectedDayIndex ? { ...d, protein, carbs, fat } : d
-    );
-  }
-  setWeeklyData(updated);
-}}
-
+                  let updated;
+                  if (applyToAll) {
+                    updated = weeklyData.map((d) => ({
+                      ...d,
+                      protein,
+                      carbs,
+                      fat,
+                    }));
+                  } else {
+                    updated = weeklyData.map((d, i) =>
+                      i === selectedDayIndex ? { ...d, protein, carbs, fat } : d
+                    );
+                  }
+                  setWeeklyData(updated);
+                }}
               />
             </>
           ) : (
             <>
               <View style={styles.zoneSection}>
-  <Text style={styles.chartLabel}>Zone Block Distribution</Text>
+                <Text style={styles.chartLabel}>Zone Block Distribution</Text>
 
-  {zoneBlocks.protein + zoneBlocks.carbs + zoneBlocks.fats > 0 ? (
-    <ZonePieChart
-      protein={zoneBlocks.protein}
-      carbs={zoneBlocks.carbs}
-      fats={zoneBlocks.fats}
-    />
-  ) : (
-    <Text style={styles.infoText}>No blocks available yet.</Text>
-  )}
+                {zoneBlocks.protein + zoneBlocks.carbs + zoneBlocks.fats > 0 ? (
+                  <ZonePieChart
+                    protein={zoneBlocks.protein}
+                    carbs={zoneBlocks.carbs}
+                    fats={zoneBlocks.fats}
+                  />
+                ) : (
+                  <Text style={styles.infoText}>No blocks available yet.</Text>
+                )}
 
-  <ZoneLegend colors={colors} />
+                <ZoneLegend colors={colors} />
 
-  <Text style={styles.totalBlocks}>
-    Total: {zoneBlocks.protein + zoneBlocks.carbs + zoneBlocks.fats} Blocks
-  </Text>
-</View>
-
+                <Text style={styles.totalBlocks}>
+                  Total: {zoneBlocks.protein + zoneBlocks.carbs + zoneBlocks.fats} Blocks
+                </Text>
+              </View>
 
               <View style={styles.dayDetailCard}>
                 <Text style={styles.label}>Meal Breakdown (example):</Text>
                 <Text style={styles.summary}>
-  🥞 Breakfast: {Math.round(zoneBlocks.protein * 0.25)}P/
-  {Math.round(zoneBlocks.carbs * 0.25)}C/
-  {Math.round(zoneBlocks.fats * 0.25)}F blocks{'\n'}
-  🍎 Snack: 2 blocks{'\n'}
-  🥗 Lunch: {Math.round(zoneBlocks.protein * 0.4)} blocks{'\n'}
-  🍲 Dinner: {Math.round(zoneBlocks.protein * 0.35)} blocks
-</Text>
-
+                  🥞 Breakfast: {Math.round(zoneBlocks.protein * 0.25)}P/
+                  {Math.round(zoneBlocks.carbs * 0.25)}C/
+                  {Math.round(zoneBlocks.fats * 0.25)}F blocks{'\n'}
+                  🍎 Snack: 2 blocks{'\n'}
+                  🥗 Lunch: {Math.round(zoneBlocks.protein * 0.4)} blocks{'\n'}
+                  🍲 Dinner: {Math.round(zoneBlocks.protein * 0.35)} blocks
+                </Text>
               </View>
             </>
           )}
 
           {/* Info text */}
           <Text style={styles.infoText}>
-            You can now view your macro plan and begin logging apand activity from the Meal Plan tab.
+            You can now view your macro plan and begin logging meal activity from the Meal Plan tab.
           </Text>
 
-          {/* ✅ Premium button instead of Pressable */}
           <DashboardButton
-            text="View Macro Plan & Log Food"
-            variant="default"
-            onPress={() => navigation.navigate('MealPlan')}
-          />
+  text="Go to Meal Plan"
+  variant="default"
+  onPress={() => {
+    navigation.navigate('AppDrawer', {
+      screen: 'MainTabs',
+      params: {
+        screen: 'MealPlan',
+      },
+    }); // then select tab
+  }}
+/>
         </ScrollView>
       </LinearGradient>
     </SafeAreaView>
