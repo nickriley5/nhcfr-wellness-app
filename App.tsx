@@ -55,6 +55,7 @@ export type RootDrawerParamList = {
 
 // Root stack navigator
 export type RootStackParamList = {
+  MainTabs: NavigatorScreenParams<TabParamList>;
   Login: undefined;
   Register: undefined;
   AppDrawer: NavigatorScreenParams<RootDrawerParamList>;

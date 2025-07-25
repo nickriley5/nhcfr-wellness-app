@@ -117,7 +117,7 @@ const MealPlanScreen: React.FC = () => {
         onScroll={handleScroll}
         scrollEventThrottle={16}
       >
-        <Text style={styles.heading}>Today’s Nutrition</Text>
+        <Text style={styles.heading}>Nutrition</Text>
 
         {/* ✅ Date picker with swipe + calendar */}
         <DateNavBar selectedDate={selectedDate} onChange={setSelectedDate} />
@@ -224,6 +224,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#fff',
     marginBottom: 16,
+    textAlign: 'center',
   },
   loadingText: {
     color: '#aaa',
