@@ -1,6 +1,14 @@
 // screens/MealPlanScreen.tsx
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import React, { useEffect, useState, useRef } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  Animated,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
+} from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -9,7 +17,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import DashboardButton from '../components/Common/DashboardButton';
 import { RootStackParamList } from '../App';
 
-// ✅ Refactored components & hook
+// ✅ Imported components & hook
 import MacroCard from '../components/mealplan/MacroCard';
 import MealCard from '../components/mealplan/MealCard';
 import FloatingMenu from '../components/mealplan/FloatingMenu';
@@ -32,17 +40,45 @@ const MealPlanScreen: React.FC = () => {
   const [mealPlan, setMealPlan] = useState<MealPlanData | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // ✅ Track current date
   const [selectedDate, setSelectedDate] = useState(new Date());
   const uid = auth.currentUser?.uid;
 
   // ✅ Centralized hook for logs & totals
   const { loggedMeals, totals, addMeal } = useMealLogs(uid, selectedDate);
 
-  // ✅ Fetch meal plan targets (once)
+  // ✅ FloatingMenu animation for scroll direction
+  const menuTranslate = useRef(new Animated.Value(0)).current; // 0 = visible, 100 = hidden
+  const lastScrollY = useRef(0);
+
+  const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const currentY = e.nativeEvent.contentOffset.y;
+    const diff = currentY - lastScrollY.current;
+
+    if (diff > 5) {
+      // scrolling down → hide
+      Animated.timing(menuTranslate, {
+        toValue: 100, // slide off screen
+        duration: 200,
+        useNativeDriver: true,
+      }).start();
+    } else if (diff < -5) {
+      // scrolling up → show
+      Animated.timing(menuTranslate, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }).start();
+    }
+
+    lastScrollY.current = currentY;
+  };
+
+  // ✅ Fetch meal plan targets once
   useEffect(() => {
     const fetchMealPlan = async () => {
-      if (!uid) {return;}
+      if (!uid) {
+        return;
+      }
       try {
         const ref = doc(db, `users/${uid}/mealPlan/active`);
         const snap = await getDoc(ref);
@@ -59,7 +95,9 @@ const MealPlanScreen: React.FC = () => {
   }, [uid]);
 
   const goToMacroOverview = () => {
-    if (!mealPlan) {return;}
+    if (!mealPlan) {
+      return;
+    }
     navigation.navigate('MacroPlanOverview', {
       calorieTarget: mealPlan.calorieTarget,
       proteinGrams: mealPlan.proteinGrams,
@@ -74,7 +112,11 @@ const MealPlanScreen: React.FC = () => {
 
   return (
     <LinearGradient colors={['#0f0f0f', '#1a1a1a']} style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
+      >
         <Text style={styles.heading}>Today’s Nutrition</Text>
 
         {/* ✅ Date picker with swipe + calendar */}
@@ -152,8 +194,19 @@ const MealPlanScreen: React.FC = () => {
         )}
       </ScrollView>
 
-      {/* ✅ Floating radial menu for future AI meal add */}
-      <FloatingMenu />
+      {/* ✅ Floating menu slides down/up based on scroll direction */}
+      <Animated.View
+        style={{
+          transform: [{ translateY: menuTranslate }],
+        }}
+      >
+        <FloatingMenu
+          onSnapMeal={() => console.log('Snap Meal')}
+          onDescribeMeal={() => console.log('Describe Meal')}
+          onScanBarcode={() => console.log('Scan Barcode')}
+          onSelectFavorite={() => console.log('Select Favorite')}
+        />
+      </Animated.View>
     </LinearGradient>
   );
 };

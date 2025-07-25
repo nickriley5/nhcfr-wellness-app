@@ -1,32 +1,51 @@
-import React from 'react';
+import React, {useState} from 'react';
 import { View, Pressable, Text, StyleSheet } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
-const FloatingMenu: React.FC = () => (
-  <View style={styles.floatingContainer}>
-    <Pressable style={styles.floatingButton}>
-      <Ionicons name="add" size={30} color="#fff" />
-    </Pressable>
-    <View style={styles.radialMenu}>
-      <Pressable style={styles.menuOption}>
-        <Ionicons name="camera" size={24} color="#fff" />
-        <Text style={styles.menuLabel}>Snap Meal</Text>
-      </Pressable>
-      <Pressable style={styles.menuOption}>
-        <Ionicons name="mic" size={24} color="#fff" />
-        <Text style={styles.menuLabel}>Describe</Text>
-      </Pressable>
-      <Pressable style={styles.menuOption}>
-        <Ionicons name="barcode" size={24} color="#fff" />
-        <Text style={styles.menuLabel}>Scan</Text>
-      </Pressable>
-      <Pressable style={styles.menuOption}>
-        <Ionicons name="star" size={24} color="#fff" />
-        <Text style={styles.menuLabel}>Favorites</Text>
+interface FloatingMenuProps {
+  onSnapMeal: () => void;
+  onDescribeMeal: () => void;
+  onScanBarcode: () => void;
+  onSelectFavorite: () => void;
+}
+
+const FloatingMenu: React.FC<FloatingMenuProps> = ({
+  onSnapMeal,
+  onDescribeMeal,
+  onScanBarcode,
+  onSelectFavorite,
+}) => {
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  return (
+    <View style={styles.floatingContainer}>
+      {menuOpen && (
+        <View style={styles.radialMenu}>
+          <Pressable style={styles.menuOption} onPress={onSnapMeal}>
+            <Ionicons name="camera" size={24} color="#fff" />
+            <Text style={styles.menuLabel}>Snap Meal</Text>
+          </Pressable>
+          <Pressable style={styles.menuOption} onPress={onDescribeMeal}>
+            <Ionicons name="mic" size={24} color="#fff" />
+            <Text style={styles.menuLabel}>Describe</Text>
+          </Pressable>
+          <Pressable style={styles.menuOption} onPress={onScanBarcode}>
+            <Ionicons name="barcode" size={24} color="#fff" />
+            <Text style={styles.menuLabel}>Scan</Text>
+          </Pressable>
+          <Pressable style={styles.menuOption} onPress={onSelectFavorite}>
+            <Ionicons name="star" size={24} color="#fff" />
+            <Text style={styles.menuLabel}>Favorites</Text>
+          </Pressable>
+        </View>
+      )}
+
+      <Pressable style={styles.floatingButton} onPress={() => setMenuOpen((p) => !p)}>
+        <Ionicons name={menuOpen ? 'close' : 'add'} size={30} color="#fff" />
       </Pressable>
     </View>
-  </View>
-);
+  );
+};
 
 export default FloatingMenu;
 
