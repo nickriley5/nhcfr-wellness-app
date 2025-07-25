@@ -1,79 +1,61 @@
-// screens/MealPlanScreen.tsx
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  Animated,
-  NativeSyntheticEvent,
-  NativeScrollEvent,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { auth, db } from '../firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, onSnapshot, addDoc } from 'firebase/firestore';
+import { format } from 'date-fns';
 import DashboardButton from '../components/Common/DashboardButton';
 import { RootStackParamList } from '../App';
-
-// ✅ Imported components & hook
 import MacroCard from '../components/mealplan/MacroCard';
 import MealCard from '../components/mealplan/MealCard';
 import FloatingMenu from '../components/mealplan/FloatingMenu';
-import DateNavBar from '../components/mealplan/DateNavBar';
-import { useMealLogs } from '../hooks/useMealLogs';
+import DescribeMealModal from '../components/mealplan/DescribeMealModal';  // ✅ NEW
 
+/* -------------------------- TYPES -------------------------- */
 interface MealPlanData {
   calorieTarget: number;
   proteinGrams: number;
   carbGrams: number;
   fatGrams: number;
-  zoneBlocks?: { protein: number; carbs: number; fats: number };
+  zoneBlocks?: {
+    protein: number;
+    carbs: number;
+    fats: number;
+  };
   dietMethod: 'standard' | 'zone';
   goalType: 'maintain' | 'fatloss' | 'muscle';
   name: string;
 }
 
+interface MealCardProps {
+  name: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+}
+
+/* -------------------------- MAIN -------------------------- */
 const MealPlanScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [mealPlan, setMealPlan] = useState<MealPlanData | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [selectedDate, _setSelectedDate] = useState(new Date());
+  const [loggedMeals, setLoggedMeals] = useState<MealCardProps[]>([]);
+
+  const [showDescribeModal, setShowDescribeModal] = useState(false); // ✅ NEW STATE
+
   const uid = auth.currentUser?.uid;
 
-  // ✅ Centralized hook for logs & totals
-  const { loggedMeals, totals, addMeal } = useMealLogs(uid, selectedDate);
-
-  // ✅ FloatingMenu animation for scroll direction
-  const menuTranslate = useRef(new Animated.Value(0)).current; // 0 = visible, 100 = hidden
-  const lastScrollY = useRef(0);
-
-  const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const currentY = e.nativeEvent.contentOffset.y;
-    const diff = currentY - lastScrollY.current;
-
-    if (diff > 5) {
-      // scrolling down → hide
-      Animated.timing(menuTranslate, {
-        toValue: 100, // slide off screen
-        duration: 200,
-        useNativeDriver: true,
-      }).start();
-    } else if (diff < -5) {
-      // scrolling up → show
-      Animated.timing(menuTranslate, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }).start();
-    }
-
-    lastScrollY.current = currentY;
-  };
-
-  // ✅ Fetch meal plan targets once
+  // Fetch meal plan targets
   useEffect(() => {
     const fetchMealPlan = async () => {
       if (!uid) {
@@ -94,33 +76,70 @@ const MealPlanScreen: React.FC = () => {
     fetchMealPlan();
   }, [uid]);
 
-  const goToMacroOverview = () => {
-    if (!mealPlan) {
+  // Fetch logged meals for selected day
+  useEffect(() => {
+    if (!uid) {
       return;
     }
-    navigation.navigate('MacroPlanOverview', {
-      calorieTarget: mealPlan.calorieTarget,
-      proteinGrams: mealPlan.proteinGrams,
-      carbGrams: mealPlan.carbGrams,
-      fatGrams: mealPlan.fatGrams,
-      zoneBlocks: mealPlan.zoneBlocks || { protein: 0, carbs: 0, fats: 0 },
-      dietMethod: mealPlan.dietMethod,
-      goalType: mealPlan.goalType,
-      name: mealPlan.name,
+    const dateKey = format(selectedDate, 'yyyy-MM-dd');
+    const mealLogRef = collection(db, `users/${uid}/mealLogs/${dateKey}/meals`);
+    const unsub = onSnapshot(mealLogRef, (snapshot) => {
+      const meals: MealCardProps[] = snapshot.docs.map((mealDoc) => ({
+        ...(mealDoc.data() as MealCardProps),
+      }));
+      setLoggedMeals(meals);
     });
+    return () => unsub();
+  }, [uid, selectedDate]);
+
+  // Quick add dummy meal
+  const quickAddMeal = async () => {
+    if (!uid) {
+      return;
+    }
+    const dateKey = format(selectedDate, 'yyyy-MM-dd');
+    const mealLogRef = collection(db, `users/${uid}/mealLogs/${dateKey}/meals`);
+    await addDoc(mealLogRef, {
+      name: 'Test Meal',
+      calories: 300,
+      protein: 25,
+      carbs: 30,
+      fat: 10,
+      loggedAt: new Date(),
+    });
+  };
+
+  // Calculate totals
+  const totals = loggedMeals.reduce(
+    (acc, m) => {
+      acc.calories += m.calories;
+      acc.protein += m.protein;
+      acc.carbs += m.carbs;
+      acc.fat += m.fat;
+      return acc;
+    },
+    { calories: 0, protein: 0, carbs: 0, fat: 0 }
+  );
+
+  const goToMacroOverview = () => {
+    if (mealPlan) {
+      navigation.navigate('MacroPlanOverview', {
+        calorieTarget: mealPlan.calorieTarget,
+        proteinGrams: mealPlan.proteinGrams,
+        carbGrams: mealPlan.carbGrams,
+        fatGrams: mealPlan.fatGrams,
+        zoneBlocks: mealPlan.zoneBlocks || { protein: 0, carbs: 0, fats: 0 },
+        dietMethod: mealPlan.dietMethod,
+        goalType: mealPlan.goalType,
+        name: mealPlan.name,
+      });
+    }
   };
 
   return (
     <LinearGradient colors={['#0f0f0f', '#1a1a1a']} style={styles.container}>
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        onScroll={handleScroll}
-        scrollEventThrottle={16}
-      >
-        <Text style={styles.heading}>Nutrition</Text>
-
-        {/* ✅ Date picker with swipe + calendar */}
-        <DateNavBar selectedDate={selectedDate} onChange={setSelectedDate} />
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        <Text style={styles.heading}>Today’s Nutrition</Text>
 
         {loading ? (
           <Text style={styles.loadingText}>Loading your plan...</Text>
@@ -128,7 +147,7 @@ const MealPlanScreen: React.FC = () => {
           <Text style={styles.infoText}>No meal plan found. Generate one first!</Text>
         ) : (
           <>
-            {/* ✅ Macro summary cards */}
+            {/* Macro Cards showing Logged / Target */}
             <View style={styles.macroRowTop}>
               <MacroCard
                 label="Calories"
@@ -160,15 +179,13 @@ const MealPlanScreen: React.FC = () => {
               />
             </View>
 
-            {/* ✅ Quick nav to full macro plan */}
             <DashboardButton
               text="📊 View Full Plan"
               variant="blue"
               onPress={goToMacroOverview}
             />
 
-            {/* ✅ Meals logged today */}
-            <Text style={styles.subheading}>Meals for {selectedDate.toDateString()}</Text>
+            <Text style={styles.subheading}>Today’s Meals</Text>
 
             {loggedMeals.length === 0 ? (
               <Text style={styles.infoText}>No meals logged yet.</Text>
@@ -176,37 +193,30 @@ const MealPlanScreen: React.FC = () => {
               loggedMeals.map((meal, idx) => <MealCard key={idx} {...meal} />)
             )}
 
-            {/* ✅ Quick test button using hook addMeal */}
+            {/* TEMP TEST BUTTON */}
             <DashboardButton
               text="➕ Quick Add Test Meal"
               variant="green"
-              onPress={() =>
-                addMeal({
-                  name: 'Test Meal',
-                  calories: 300,
-                  protein: 25,
-                  carbs: 30,
-                  fat: 10,
-                })
-              }
+              onPress={quickAddMeal}
             />
           </>
         )}
       </ScrollView>
 
-      {/* ✅ Floating menu slides down/up based on scroll direction */}
-      <Animated.View
-        style={{
-          transform: [{ translateY: menuTranslate }],
+      {/* Floating menu for interactive add */}
+      <FloatingMenu
+        onDescribeMeal={() => setShowDescribeModal(true)} // ✅ OPEN MODAL
+      />
+
+      {/* Describe Meal Modal */}
+      <DescribeMealModal
+        visible={showDescribeModal}
+        onClose={() => setShowDescribeModal(false)}
+        onMealLogged={(meal) => {
+          console.log('Meal parsed:', meal);
+          // 🔹 Later we can auto-log to Firestore here
         }}
-      >
-        <FloatingMenu
-          onSnapMeal={() => console.log('Snap Meal')}
-          onDescribeMeal={() => console.log('Describe Meal')}
-          onScanBarcode={() => console.log('Scan Barcode')}
-          onSelectFavorite={() => console.log('Select Favorite')}
-        />
-      </Animated.View>
+      />
     </LinearGradient>
   );
 };
@@ -215,28 +225,10 @@ export default MealPlanScreen;
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 120,
-  },
-  heading: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#fff',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  loadingText: {
-    color: '#aaa',
-    textAlign: 'center',
-    marginVertical: 20,
-  },
-  infoText: {
-    color: '#aaa',
-    textAlign: 'center',
-    marginVertical: 20,
-    fontSize: 15,
-  },
+  scrollContent: { padding: 16, paddingBottom: 120 },
+  heading: { fontSize: 24, fontWeight: '700', color: '#fff', marginBottom: 16 },
+  loadingText: { color: '#aaa', textAlign: 'center', marginVertical: 20 },
+  infoText: { color: '#aaa', textAlign: 'center', marginVertical: 20, fontSize: 15 },
   macroRowTop: {
     flexDirection: 'row',
     flexWrap: 'wrap',

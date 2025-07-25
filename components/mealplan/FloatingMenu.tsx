@@ -3,10 +3,10 @@ import { View, Pressable, Text, StyleSheet } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
 interface FloatingMenuProps {
-  onSnapMeal: () => void;
-  onDescribeMeal: () => void;
-  onScanBarcode: () => void;
-  onSelectFavorite: () => void;
+  onSnapMeal?: () => void;
+  onDescribeMeal?: () => void;
+  onScanBarcode?: () => void;
+  onSelectFavorite?: () => void;
 }
 
 const FloatingMenu: React.FC<FloatingMenuProps> = ({
