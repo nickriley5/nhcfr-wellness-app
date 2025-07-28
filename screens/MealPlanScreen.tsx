@@ -16,7 +16,8 @@ import { RootStackParamList } from '../App';
 import MacroCard from '../components/mealplan/MacroCard';
 import MealCard from '../components/mealplan/MealCard';
 import FloatingMenu from '../components/mealplan/FloatingMenu';
-import DescribeMealModal from '../components/mealplan/DescribeMealModal';  // ✅ NEW
+import DescribeMealModal from '../components/mealplan/DescribeMealModal';
+import CameraModal from '../components/mealplan/CameraModal'; // ✅ NEW IMPORT
 
 /* -------------------------- TYPES -------------------------- */
 interface MealPlanData {
@@ -40,6 +41,7 @@ interface MealCardProps {
   protein: number;
   carbs: number;
   fat: number;
+  photoUri?: string | null;
 }
 
 /* -------------------------- MAIN -------------------------- */
@@ -51,7 +53,13 @@ const MealPlanScreen: React.FC = () => {
   const [selectedDate, _setSelectedDate] = useState(new Date());
   const [loggedMeals, setLoggedMeals] = useState<MealCardProps[]>([]);
 
-  const [showDescribeModal, setShowDescribeModal] = useState(false); // ✅ NEW STATE
+  // ✅ EXISTING MODAL STATE
+  const [showDescribeModal, setShowDescribeModal] = useState(false);
+
+  // ✅ NEW CAMERA MODAL STATE
+  const [showCameraModal, setShowCameraModal] = useState(false);
+  const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
+  const [pendingPhotoUri, setPendingPhotoUri] = useState<string | null>(null); // 🔥 NEW: Store photo for meal logging
 
   const uid = auth.currentUser?.uid;
 
@@ -84,11 +92,19 @@ const MealPlanScreen: React.FC = () => {
     const dateKey = format(selectedDate, 'yyyy-MM-dd');
     const mealLogRef = collection(db, `users/${uid}/mealLogs/${dateKey}/meals`);
     const unsub = onSnapshot(mealLogRef, (snapshot) => {
-      const meals: MealCardProps[] = snapshot.docs.map((mealDoc) => ({
-        ...(mealDoc.data() as MealCardProps),
-      }));
-      setLoggedMeals(meals);
-    });
+  const meals: MealCardProps[] = snapshot.docs.map((mealDoc) => {
+    const data = mealDoc.data();
+    return {
+      name: data.name,
+      calories: data.calories,
+      protein: data.protein,
+      carbs: data.carbs,
+      fat: data.fat,
+      photoUri: data.photoUri || null, // 🔥 Explicitly include photoUri
+    };
+  });
+  setLoggedMeals(meals);
+});
     return () => unsub();
   }, [uid, selectedDate]);
 
@@ -107,6 +123,12 @@ const MealPlanScreen: React.FC = () => {
       fat: 10,
       loggedAt: new Date(),
     });
+  };
+
+  // ✅ NEW: Handle image selection from camera/gallery
+  const handleImageSelected = (imageUri: string) => {
+    setSelectedImageUri(imageUri);
+    setShowCameraModal(true);
   };
 
   // Calculate totals
@@ -139,7 +161,7 @@ const MealPlanScreen: React.FC = () => {
   return (
     <LinearGradient colors={['#0f0f0f', '#1a1a1a']} style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <Text style={styles.heading}>Today’s Nutrition</Text>
+        <Text style={styles.heading}>Today's Nutrition</Text>
 
         {loading ? (
           <Text style={styles.loadingText}>Loading your plan...</Text>
@@ -185,7 +207,7 @@ const MealPlanScreen: React.FC = () => {
               onPress={goToMacroOverview}
             />
 
-            <Text style={styles.subheading}>Today’s Meals</Text>
+            <Text style={styles.subheading}>Today's Meals</Text>
 
             {loggedMeals.length === 0 ? (
               <Text style={styles.infoText}>No meals logged yet.</Text>
@@ -203,18 +225,46 @@ const MealPlanScreen: React.FC = () => {
         )}
       </ScrollView>
 
-      {/* Floating menu for interactive add */}
+      {/* ✅ ENHANCED: Floating menu with camera integration */}
       <FloatingMenu
-        onDescribeMeal={() => setShowDescribeModal(true)} // ✅ OPEN MODAL
+        onDescribeMeal={() => setShowDescribeModal(true)}
+        onImageSelected={handleImageSelected} // ✅ NEW: Handle camera/gallery selection
+        onScanBarcode={() => {
+          // TODO: Implement barcode scanning next
+          console.log('Barcode scanning coming soon!');
+        }}
       />
 
-      {/* Describe Meal Modal */}
+      {/* ✅ EXISTING: Describe Meal Modal */}
       <DescribeMealModal
         visible={showDescribeModal}
-        onClose={() => setShowDescribeModal(false)}
+        onClose={() => {
+          setShowDescribeModal(false);
+          setPendingPhotoUri(null); // Clear pending photo when modal closes
+        }}
         onMealLogged={(meal) => {
           console.log('Meal parsed:', meal);
-          // 🔹 Later we can auto-log to Firestore here
+          // Photo will be automatically included when meal is logged
+        }}
+        pendingPhotoUri={pendingPhotoUri} // 🔥 NEW: Pass photo to describe modal
+      />
+
+      {/* ✅ NEW: Camera Modal for image recognition */}
+      <CameraModal
+        visible={showCameraModal}
+        onClose={() => {
+          setShowCameraModal(false);
+          setSelectedImageUri(null);
+        }}
+        imageUri={selectedImageUri}
+        onMealLogged={(meal) => {
+          console.log('Camera meal logged:', meal);
+          // Check if this is a signal to open describe modal
+          if (meal.source === 'OPEN_DESCRIBE_MODAL') {
+            // Store the photo URI for when the meal gets logged
+            setPendingPhotoUri(meal.photoUri || null);
+            setShowDescribeModal(true);
+          }
         }}
       />
     </LinearGradient>

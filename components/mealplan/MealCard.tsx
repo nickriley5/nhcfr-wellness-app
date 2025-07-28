@@ -7,6 +7,7 @@ export interface MealCardProps {
   protein: number;
   carbs: number;
   fat: number;
+  photoUri?: string | null;
 }
 
 const MealCard: React.FC<MealCardProps> = ({ name, calories, protein, carbs, fat }) => (
