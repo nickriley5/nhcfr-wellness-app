@@ -15,9 +15,11 @@ import DashboardButton from '../components/Common/DashboardButton';
 import { RootStackParamList } from '../App';
 import MacroCard from '../components/mealplan/MacroCard';
 import MealCard from '../components/mealplan/MealCard';
-import FloatingMenu from '../components/mealplan/FloatingMenu';
+import LogFoodButton from '../components/mealplan/LogFoodButton'; // ✅ NEW IMPORT
+import MealLoggingModal, { MealContext } from '../components/mealplan/MealLoggingModal'; // ✅ NEW IMPORT
 import DescribeMealModal from '../components/mealplan/DescribeMealModal';
-import CameraModal from '../components/mealplan/CameraModal'; // ✅ NEW IMPORT
+import CameraModal from '../components/mealplan/CameraModal';
+import QuickFavoritesModal from '../components/mealplan/QuickFavorites'; // ✅ ENHANCED
 
 /* -------------------------- TYPES -------------------------- */
 interface MealPlanData {
@@ -53,13 +55,18 @@ const MealPlanScreen: React.FC = () => {
   const [selectedDate, _setSelectedDate] = useState(new Date());
   const [loggedMeals, setLoggedMeals] = useState<MealCardProps[]>([]);
 
-  // ✅ EXISTING MODAL STATE
+  // ✅ NEW MODAL STATES
+  const [showMealLoggingModal, setShowMealLoggingModal] = useState(false);
   const [showDescribeModal, setShowDescribeModal] = useState(false);
+  const [showQuickFavoritesModal, setShowQuickFavoritesModal] = useState(false);
 
-  // ✅ NEW CAMERA MODAL STATE
+  // ✅ EXISTING CAMERA MODAL STATE
   const [showCameraModal, setShowCameraModal] = useState(false);
   const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
-  const [pendingPhotoUri, setPendingPhotoUri] = useState<string | null>(null); // 🔥 NEW: Store photo for meal logging
+  const [pendingPhotoUri, setPendingPhotoUri] = useState<string | null>(null);
+
+  // ✅ NEW: Store meal context for when modals open
+  const [currentMealContext, setCurrentMealContext] = useState<MealContext | null>(null);
 
   const uid = auth.currentUser?.uid;
 
@@ -92,23 +99,23 @@ const MealPlanScreen: React.FC = () => {
     const dateKey = format(selectedDate, 'yyyy-MM-dd');
     const mealLogRef = collection(db, `users/${uid}/mealLogs/${dateKey}/meals`);
     const unsub = onSnapshot(mealLogRef, (snapshot) => {
-  const meals: MealCardProps[] = snapshot.docs.map((mealDoc) => {
-    const data = mealDoc.data();
-    return {
-      name: data.name,
-      calories: data.calories,
-      protein: data.protein,
-      carbs: data.carbs,
-      fat: data.fat,
-      photoUri: data.photoUri || null, // 🔥 Explicitly include photoUri
-    };
-  });
-  setLoggedMeals(meals);
-});
+      const meals: MealCardProps[] = snapshot.docs.map((mealDoc) => {
+        const data = mealDoc.data();
+        return {
+          name: data.name,
+          calories: data.calories,
+          protein: data.protein,
+          carbs: data.carbs,
+          fat: data.fat,
+          photoUri: data.photoUri || null,
+        };
+      });
+      setLoggedMeals(meals);
+    });
     return () => unsub();
   }, [uid, selectedDate]);
 
-  // Quick add dummy meal
+  // Quick add dummy meal (TEMP - remove later)
   const quickAddMeal = async () => {
     if (!uid) {
       return;
@@ -125,10 +132,21 @@ const MealPlanScreen: React.FC = () => {
     });
   };
 
-  // ✅ NEW: Handle image selection from camera/gallery
-  const handleImageSelected = (imageUri: string) => {
-    setSelectedImageUri(imageUri);
-    setShowCameraModal(true);
+  // ✅ ENHANCED: Handle modal opening with context
+  const handleOpenDescribeModal = (mealContext: MealContext) => {
+    setCurrentMealContext(mealContext);
+    setShowDescribeModal(true);
+  };
+
+  const handleOpenQuickAdd = (mealContext: MealContext) => {
+    setCurrentMealContext(mealContext);
+    setShowQuickFavoritesModal(true);
+  };
+
+  const handleOpenBarcodeScanner = (mealContext: MealContext) => {
+    setCurrentMealContext(mealContext);
+    // TODO: Implement barcode scanner
+    console.log('Barcode scanner coming soon!', mealContext);
   };
 
   // Calculate totals
@@ -215,7 +233,7 @@ const MealPlanScreen: React.FC = () => {
               loggedMeals.map((meal, idx) => <MealCard key={idx} {...meal} />)
             )}
 
-            {/* TEMP TEST BUTTON */}
+            {/* TEMP TEST BUTTON - REMOVE LATER */}
             <DashboardButton
               text="➕ Quick Add Test Meal"
               variant="green"
@@ -225,31 +243,47 @@ const MealPlanScreen: React.FC = () => {
         )}
       </ScrollView>
 
-      {/* ✅ ENHANCED: Floating menu with camera integration */}
-      <FloatingMenu
-        onDescribeMeal={() => setShowDescribeModal(true)}
-        onImageSelected={handleImageSelected} // ✅ NEW: Handle camera/gallery selection
-        onScanBarcode={() => {
-          // TODO: Implement barcode scanning next
-          console.log('Barcode scanning coming soon!');
-        }}
+      {/* ✅ NEW: Log Food Button (replaces FloatingMenu) */}
+      <LogFoodButton onPress={() => setShowMealLoggingModal(true)} />
+
+      {/* ✅ NEW: Main Meal Logging Modal */}
+      <MealLoggingModal
+        visible={showMealLoggingModal}
+        onClose={() => setShowMealLoggingModal(false)}
+        onOpenDescribeModal={handleOpenDescribeModal}
+        onOpenQuickAdd={handleOpenQuickAdd}
+        onOpenBarcodeScanner={handleOpenBarcodeScanner}
       />
 
-      {/* ✅ EXISTING: Describe Meal Modal */}
+      {/* ✅ ENHANCED: Describe Meal Modal with context */}
       <DescribeMealModal
         visible={showDescribeModal}
         onClose={() => {
           setShowDescribeModal(false);
-          setPendingPhotoUri(null); // Clear pending photo when modal closes
+          setPendingPhotoUri(null);
+          setCurrentMealContext(null);
         }}
         onMealLogged={(meal) => {
           console.log('Meal parsed:', meal);
-          // Photo will be automatically included when meal is logged
         }}
-        pendingPhotoUri={pendingPhotoUri} // 🔥 NEW: Pass photo to describe modal
+        pendingPhotoUri={pendingPhotoUri}
+        mealContext={currentMealContext}
       />
 
-      {/* ✅ NEW: Camera Modal for image recognition */}
+      {/* ✅ ENHANCED: Quick Favorites Modal with context */}
+      <QuickFavoritesModal
+        visible={showQuickFavoritesModal}
+        onClose={() => {
+          setShowQuickFavoritesModal(false);
+          setCurrentMealContext(null);
+        }}
+        onFoodLogged={() => {
+          console.log('Quick food logged');
+        }}
+        mealContext={currentMealContext}
+      />
+
+      {/* ✅ EXISTING: Camera Modal */}
       <CameraModal
         visible={showCameraModal}
         onClose={() => {
@@ -259,9 +293,7 @@ const MealPlanScreen: React.FC = () => {
         imageUri={selectedImageUri}
         onMealLogged={(meal) => {
           console.log('Camera meal logged:', meal);
-          // Check if this is a signal to open describe modal
           if (meal.source === 'OPEN_DESCRIBE_MODAL') {
-            // Store the photo URI for when the meal gets logged
             setPendingPhotoUri(meal.photoUri || null);
             setShowDescribeModal(true);
           }
@@ -275,7 +307,7 @@ export default MealPlanScreen;
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  scrollContent: { padding: 16, paddingBottom: 120 },
+  scrollContent: { padding: 16, paddingBottom: 120 }, // ✅ Extra padding for LogFoodButton
   heading: { fontSize: 24, fontWeight: '700', color: '#fff', marginBottom: 16 },
   loadingText: { color: '#aaa', textAlign: 'center', marginVertical: 20 },
   infoText: { color: '#aaa', textAlign: 'center', marginVertical: 20, fontSize: 15 },

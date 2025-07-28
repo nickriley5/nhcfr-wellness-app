@@ -8,45 +8,36 @@ import {
   ActivityIndicator,
   StyleSheet,
   ScrollView,
-  FlatList,
+  Alert,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { describeMeal, MealMacroResult } from '../../utils/nutritionService';
 import { auth, db } from '../../firebase';
 import { collection, addDoc } from 'firebase/firestore';
 import { format } from 'date-fns';
-
-interface AlternativeResult {
-  id: string;
-  name: string;
-  calories: number;
-  protein: number;
-  carbs: number;
-  fat: number;
-  source: string;
-  confidence: 'high' | 'medium' | 'low';
-}
+import FoodAdjustmentList, { ParsedFoodItem } from './TempFoodList';
+import { MealContext } from './MealLoggingModal';
 
 interface Props {
   visible: boolean;
   onClose: () => void;
   onMealLogged?: (meal: MealMacroResult) => void;
   pendingPhotoUri?: string | null;
+  mealContext?: MealContext | null;
 }
 
-const DescribeMealModal: React.FC<Props> = ({ visible, onClose, onMealLogged, pendingPhotoUri }) => {
+const DescribeMealModal: React.FC<Props> = ({
+  visible,
+  onClose,
+  onMealLogged,
+  pendingPhotoUri,
+  mealContext,
+}) => {
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
-  const [results, setResults] = useState<AlternativeResult[]>([]);
-  const [selectedResult, setSelectedResult] = useState<AlternativeResult | null>(null);
+  const [parsedFoods, setParsedFoods] = useState<ParsedFoodItem[]>([]);
+  const [showResults, setShowResults] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [editingMacros, setEditingMacros] = useState(false);
-  const [editedMacros, setEditedMacros] = useState({
-    calories: 0,
-    protein: 0,
-    carbs: 0,
-    fat: 0,
-  });
 
   // Suggested queries for better UX
   const suggestions = [
@@ -55,6 +46,9 @@ const DescribeMealModal: React.FC<Props> = ({ visible, onClose, onMealLogged, pe
     'Big Mac from McDonald\'s',
     '6oz grilled chicken',
     '2 slices pizza',
+    'turkey sandwich with cheese',
+    'greek yogurt with berries',
+    'oatmeal with banana',
   ];
 
   const handleSubmit = async () => {
@@ -62,49 +56,60 @@ const DescribeMealModal: React.FC<Props> = ({ visible, onClose, onMealLogged, pe
 
     setLoading(true);
     setError(null);
-    setResults([]);
-    setSelectedResult(null);
+    setParsedFoods([]);
+    setShowResults(false);
 
     try {
-      // Get primary result
-      const primaryResult = await describeMeal(query);
+      // Get nutrition data from your smart API
+      const result = await describeMeal(query);
 
-      // Create alternatives with different confidence levels
-      const alternatives: AlternativeResult[] = [
-        {
-          id: '1',
+      // Parse the result into individual food items
+      // This is a simplified parsing - in reality, you might enhance this
+      const foodItems: ParsedFoodItem[] = [];
+
+      // Check if the API returned items (some APIs return item breakdowns)
+      if (result.items && result.items.length > 0) {
+        // Multiple items returned - create individual adjustable items
+        result.items.forEach((item, index) => {
+          // Estimate macros per item (distribute total macros)
+          const itemCalories = Math.round(result.calories / result.items!.length);
+          const itemProtein = Math.round(result.protein / result.items!.length);
+          const itemCarbs = Math.round(result.carbs / result.items!.length);
+          const itemFat = Math.round(result.fat / result.items!.length);
+
+          foodItems.push({
+            id: `item-${index}`,
+            name: item,
+            baseQuantity: 1,
+            currentQuantity: 1,
+            unit: 'serving',
+            baseCalories: itemCalories,
+            baseProtein: itemProtein,
+            baseCarbs: itemCarbs,
+            baseFat: itemFat,
+            confidence: 'high',
+            source: result.source,
+          });
+        });
+      } else {
+        // Single meal - create one adjustable item
+        foodItems.push({
+          id: 'meal-1',
           name: query,
-          calories: primaryResult.calories,
-          protein: primaryResult.protein,
-          carbs: primaryResult.carbs,
-          fat: primaryResult.fat,
-          source: primaryResult.source,
-          confidence: 'high',
-        },
-        // Add variations (in real app, these could come from trying different APIs)
-        {
-          id: '2',
-          name: `${query} (larger portion)`,
-          calories: Math.round(primaryResult.calories * 1.3),
-          protein: Math.round(primaryResult.protein * 1.3),
-          carbs: Math.round(primaryResult.carbs * 1.3),
-          fat: Math.round(primaryResult.fat * 1.3),
-          source: primaryResult.source,
-          confidence: 'medium',
-        },
-        {
-          id: '3',
-          name: `${query} (smaller portion)`,
-          calories: Math.round(primaryResult.calories * 0.7),
-          protein: Math.round(primaryResult.protein * 0.7),
-          carbs: Math.round(primaryResult.carbs * 0.7),
-          fat: Math.round(primaryResult.fat * 0.7),
-          source: primaryResult.source,
-          confidence: 'medium',
-        }      ];
+          baseQuantity: 1,
+          currentQuantity: 1,
+          unit: 'serving',
+          baseCalories: result.calories,
+          baseProtein: result.protein,
+          baseCarbs: result.carbs,
+          baseFat: result.fat,
+          confidence: result.source === 'NUTRITIONIX_PROFESSIONAL' ? 'high' : 'medium',
+          source: result.source,
+        });
+      }
 
-      setResults(alternatives);
-      setSelectedResult(alternatives[0]); // Auto-select the best match
+      setParsedFoods(foodItems);
+      setShowResults(true);
 
     } catch (err) {
       setError('Could not find meal info. Try a different description.');
@@ -113,85 +118,87 @@ const DescribeMealModal: React.FC<Props> = ({ visible, onClose, onMealLogged, pe
     }
   };
 
-  const handleSelectResult = (result: AlternativeResult) => {
-    setSelectedResult(result);
-    setEditedMacros({
-      calories: result.calories,
-      protein: result.protein,
-      carbs: result.carbs,
-      fat: result.fat,
-    });
-  };
-
   const handleLogMeal = async () => {
-    if (!selectedResult) {return;}
-
-    const finalMacros = editingMacros ? editedMacros : selectedResult;
+    if (parsedFoods.length === 0) {return;}
 
     try {
+      // Calculate total macros from adjusted foods
+      const totals = parsedFoods.reduce((total, food) => {
+        const multiplier = food.currentQuantity / food.baseQuantity;
+        return {
+          calories: total.calories + Math.round(food.baseCalories * multiplier),
+          protein: total.protein + Math.round(food.baseProtein * multiplier),
+          carbs: total.carbs + Math.round(food.baseCarbs * multiplier),
+          fat: total.fat + Math.round(food.baseFat * multiplier),
+        };
+      }, { calories: 0, protein: 0, carbs: 0, fat: 0 });
+
+      // Create meal name from food items
+      const mealName = parsedFoods.length === 1
+        ? parsedFoods[0].name
+        : `${parsedFoods.length} items: ${parsedFoods.map(f => f.name).join(', ')}`;
+
       // Log to Firestore
       const uid = auth.currentUser?.uid;
       if (uid) {
         const dateKey = format(new Date(), 'yyyy-MM-dd');
         const mealLogRef = collection(db, `users/${uid}/mealLogs/${dateKey}/meals`);
 
-        await addDoc(mealLogRef, {
-          name: selectedResult.name,
-          calories: finalMacros.calories,
-          protein: finalMacros.protein,
-          carbs: finalMacros.carbs,
-          fat: finalMacros.fat,
-          source: selectedResult.source,
-          photoUri: pendingPhotoUri,
-          loggedAt: new Date(),
-        });
+        // ✅ Use mealContext in Firebase logging
+await addDoc(mealLogRef, {
+  name: mealName,
+  calories: totals.calories,
+  protein: totals.protein,
+  carbs: totals.carbs,
+  fat: totals.fat,
+  source: 'DESCRIBE_ENHANCED',
+  photoUri: pendingPhotoUri,
+  foodItems: parsedFoods,
+  // ✅ Add meal context data
+  mealType: mealContext?.mealType?.id || 'unknown',
+  mealEmoji: mealContext?.mealType?.emoji || '🍽️',
+  plannedDate: mealContext?.date || format(new Date(), 'yyyy-MM-dd'),
+  plannedTime: mealContext?.time || format(new Date(), 'HH:mm'),
+  loggedAt: new Date(),
+});
       }
 
       // Callback
       if (onMealLogged) {
         onMealLogged({
-          calories: finalMacros.calories,
-          protein: finalMacros.protein,
-          carbs: finalMacros.carbs,
-          fat: finalMacros.fat,
-          source: selectedResult.source,
+          calories: totals.calories,
+          protein: totals.protein,
+          carbs: totals.carbs,
+          fat: totals.fat,
+          source: 'DESCRIBE_ENHANCED',
         });
       }
 
-      // Reset and close
-      setQuery('');
-      setResults([]);
-      setSelectedResult(null);
-      setEditingMacros(false);
-      onClose();
+      // Show success and close
+      Alert.alert(
+        '✅ Meal Logged!',
+        `Successfully logged ${mealName} with ${totals.calories} calories.`,
+        [{ text: 'OK', onPress: handleClose }]
+      );
 
     } catch (err) {
       setError('Failed to log meal. Please try again.');
     }
   };
 
-  const renderResultItem = ({ item }: { item: AlternativeResult }) => (
-    <Pressable
-      style={[
-        styles.resultItem,
-        selectedResult?.id === item.id && styles.selectedResult,
-      ]}
-      onPress={() => handleSelectResult(item)}
-    >
-      <View style={styles.resultHeader}>
-        <Text style={styles.resultName}>{item.name}</Text>
-        <View style={[styles.confidenceBadge, styles[`confidence${item.confidence}`]]}>
-          <Text style={styles.confidenceText}>
-            {item.confidence === 'high' ? '🎯' : item.confidence === 'medium' ? '👍' : '🤔'}
-          </Text>
-        </View>
-      </View>
-      <Text style={styles.resultMacros}>
-        {item.calories} cal • {item.protein}g protein • {item.carbs}g carbs • {item.fat}g fat
-      </Text>
-      <Text style={styles.resultSource}>Source: {item.source}</Text>
-    </Pressable>
-  );
+  const handleClose = () => {
+    setQuery('');
+    setParsedFoods([]);
+    setShowResults(false);
+    setError(null);
+    onClose();
+  };
+
+  const handleAddMoreFood = () => {
+    // Allow user to add another food item to this meal
+    setShowResults(false);
+    setQuery('');
+  };
 
   return (
     <Modal visible={visible} transparent animationType="slide">
@@ -200,135 +207,84 @@ const DescribeMealModal: React.FC<Props> = ({ visible, onClose, onMealLogged, pe
           <ScrollView showsVerticalScrollIndicator={false}>
             {/* Header */}
             <View style={styles.headerRow}>
-              <Text style={styles.modalTitle}>Describe Your Meal</Text>
-              <Pressable onPress={onClose}>
+              <Text style={styles.modalTitle}>
+                {showResults ? 'Review Your Meal' : 'Describe Your Meal'}
+              </Text>
+              <Pressable onPress={handleClose}>
                 <Ionicons name="close" size={24} color="#fff" />
               </Pressable>
             </View>
 
-            {/* Input */}
-            <TextInput
-              placeholder="e.g. 2 eggs, 1 toast, 1 tbsp butter"
-              placeholderTextColor="#999"
-              style={styles.input}
-              value={query}
-              onChangeText={setQuery}
-              multiline
-            />
-
-            {/* Suggestions */}
-            {!loading && results.length === 0 && (
-              <View style={styles.suggestionsContainer}>
-                <Text style={styles.suggestionsTitle}>Try these examples:</Text>
-                {suggestions.map((suggestion, index) => (
-                  <Pressable
-                    key={index}
-                    style={styles.suggestionChip}
-                    onPress={() => setQuery(suggestion)}
-                  >
-                    <Text style={styles.suggestionText}>{suggestion}</Text>
-                  </Pressable>
-                ))}
-              </View>
-            )}
-
-            {/* Action Button */}
-            <Pressable
-              style={[styles.searchButton, !query.trim() && styles.searchButtonDisabled]}
-              onPress={handleSubmit}
-              disabled={!query.trim() || loading}
-            >
-              <Text style={styles.searchButtonText}>
-                {loading ? 'Analyzing...' : 'Analyze Meal'}
-              </Text>
-            </Pressable>
-
-            {/* Loading */}
-            {loading && <ActivityIndicator color="#4FC3F7" style={styles.loadingIndicator} />}
-
-            {/* Error */}
-            {error && <Text style={styles.errorText}>{error}</Text>}
-
-            {/* Results */}
-            {results.length > 0 && (
+            {!showResults ? (
+              /* INPUT PHASE */
               <>
-                <Text style={styles.resultsTitle}>Select the best match:</Text>
-                <FlatList
-                  data={results}
-                  renderItem={renderResultItem}
-                  keyExtractor={(item) => item.id}
-                  style={styles.resultsList}
-                  scrollEnabled={false}
+                {/* Input */}
+                <TextInput
+                  placeholder="e.g. 2 eggs, 1 toast, 1 tbsp butter"
+                  placeholderTextColor="#999"
+                  style={styles.input}
+                  value={query}
+                  onChangeText={setQuery}
+                  multiline
                 />
 
-                {/* Edit Macros Option */}
-                {selectedResult && (
-                  <View style={styles.editSection}>
-                    <Pressable
-                      style={styles.editToggle}
-                      onPress={() => setEditingMacros(!editingMacros)}
-                    >
-                      <Text style={styles.editToggleText}>
-                        {editingMacros ? '📝 Stop Editing' : '✏️ Edit Macros'}
-                      </Text>
-                    </Pressable>
-
-                    {editingMacros && (
-                      <View style={styles.editInputs}>
-                        <View style={styles.editRow}>
-                          <Text style={styles.editLabel}>Calories:</Text>
-                          <TextInput
-                            style={styles.editInput}
-                            value={editedMacros.calories.toString()}
-                            onChangeText={(text) => setEditedMacros(prev => ({
-                              ...prev, calories: parseInt(text, 10) || 0,
-                            }))}
-                            keyboardType="numeric"
-                          />
-                        </View>
-                        <View style={styles.editRow}>
-                          <Text style={styles.editLabel}>Protein (g):</Text>
-                          <TextInput
-                            style={styles.editInput}
-                            value={editedMacros.protein.toString()}
-                            onChangeText={(text) => setEditedMacros(prev => ({
-                              ...prev, protein: parseInt(text, 10) || 0,
-                            }))}
-                            keyboardType="numeric"
-                          />
-                        </View>
-                        <View style={styles.editRow}>
-                          <Text style={styles.editLabel}>Carbs (g):</Text>
-                          <TextInput
-                            style={styles.editInput}
-                            value={editedMacros.carbs.toString()}
-                            onChangeText={(text) => setEditedMacros(prev => ({
-                              ...prev, carbs: parseInt(text, 10) || 0,
-                            }))}
-                            keyboardType="numeric"
-                          />
-                        </View>
-                        <View style={styles.editRow}>
-                          <Text style={styles.editLabel}>Fat (g):</Text>
-                          <TextInput
-                            style={styles.editInput}
-                            value={editedMacros.fat.toString()}
-                            onChangeText={(text) => setEditedMacros(prev => ({
-                              ...prev, fat: parseInt(text, 10) || 0,
-                            }))}
-                            keyboardType="numeric"
-                          />
-                        </View>
-                      </View>
-                    )}
-
-                    <Pressable style={styles.logButton} onPress={handleLogMeal}>
-                      <Text style={styles.logButtonText}>
-                        🍽️ Log This Meal
-                      </Text>
-                    </Pressable>
+                {/* Suggestions */}
+                {!loading && (
+                  <View style={styles.suggestionsContainer}>
+                    <Text style={styles.suggestionsTitle}>Try these examples:</Text>
+                    {suggestions.map((suggestion, index) => (
+                      <Pressable
+                        key={index}
+                        style={styles.suggestionChip}
+                        onPress={() => setQuery(suggestion)}
+                      >
+                        <Text style={styles.suggestionText}>{suggestion}</Text>
+                      </Pressable>
+                    ))}
                   </View>
                 )}
+
+                {/* Action Button */}
+                <Pressable
+                  style={[styles.searchButton, !query.trim() && styles.searchButtonDisabled]}
+                  onPress={handleSubmit}
+                  disabled={!query.trim() || loading}
+                >
+                  <Text style={styles.searchButtonText}>
+                    {loading ? 'Analyzing...' : 'Analyze Meal'}
+                  </Text>
+                </Pressable>
+
+                {/* Loading */}
+                {loading && <ActivityIndicator color="#4FC3F7" style={styles.loadingIndicator} />}
+
+                {/* Error */}
+                {error && <Text style={styles.errorText}>{error}</Text>}
+              </>
+            ) : (
+              /* RESULTS PHASE */
+              <>
+                <FoodAdjustmentList
+                  foods={parsedFoods}
+                  onFoodsChange={setParsedFoods}
+                  photoUri={pendingPhotoUri}
+                />
+
+                {/* Action Buttons */}
+                <View style={styles.actionButtons}>
+                  <Pressable
+                    style={styles.addMoreButton}
+                    onPress={handleAddMoreFood}
+                  >
+                    <Ionicons name="add" size={16} color="#4FC3F7" />
+                    <Text style={styles.addMoreText}>Add More Food</Text>
+                  </Pressable>
+
+                  <Pressable style={styles.logButton} onPress={handleLogMeal}>
+                    <Ionicons name="checkmark" size={20} color="#000" />
+                    <Text style={styles.logButtonText}>Log This Meal</Text>
+                  </Pressable>
+                </View>
               </>
             )}
           </ScrollView>
@@ -373,9 +329,10 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     fontSize: 16,
     minHeight: 50,
+    marginBottom: 16,
   },
   suggestionsContainer: {
-    marginTop: 16,
+    marginBottom: 16,
   },
   suggestionsTitle: {
     color: '#aaa',
@@ -399,7 +356,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#4FC3F7',
     paddingVertical: 14,
     borderRadius: 12,
-    marginTop: 16,
     alignItems: 'center',
   },
   searchButtonDisabled: {
@@ -419,121 +375,39 @@ const styles = StyleSheet.create({
     marginTop: 12,
     fontSize: 14,
   },
-  resultsTitle: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-    marginTop: 20,
-    marginBottom: 12,
-  },
-  resultsList: {
-    maxHeight: 200,
-  },
-  resultItem: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 8,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  selectedResult: {
-    borderColor: '#4FC3F7',
-    backgroundColor: '#1e3a4a',
-  },
-  resultHeader: {
+  actionButtons: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  resultName: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-    flex: 1,
-  },
-  confidenceBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 8,
-    marginLeft: 8,
-  },
-  confidencehigh: {
-    backgroundColor: '#4CAF50',
-  },
-  confidencemedium: {
-    backgroundColor: '#FF9800',
-  },
-  confidencelow: {
-    backgroundColor: '#F44336',
-  },
-  confidenceText: {
-    fontSize: 12,
-  },
-  resultMacros: {
-    color: '#ddd',
-    fontSize: 13,
-    marginBottom: 2,
-  },
-  resultSource: {
-    color: '#888',
-    fontSize: 11,
-  },
-  editSection: {
+    gap: 12,
     marginTop: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#333',
   },
-  editToggle: {
+  addMoreButton: {
+    flex: 1,
     backgroundColor: '#333',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    alignSelf: 'center',
-    marginBottom: 12,
+    borderRadius: 12,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  editToggleText: {
+  addMoreText: {
     color: '#4FC3F7',
     fontSize: 14,
     fontWeight: '500',
-  },
-  editInputs: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 16,
-  },
-  editRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  editLabel: {
-    color: '#fff',
-    fontSize: 14,
-    flex: 1,
-  },
-  editInput: {
-    backgroundColor: '#333',
-    color: '#fff',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    width: 80,
-    textAlign: 'center',
+    marginLeft: 6,
   },
   logButton: {
+    flex: 2,
     backgroundColor: '#81C784',
-    paddingVertical: 14,
     borderRadius: 12,
+    paddingVertical: 12,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
   },
   logButtonText: {
     color: '#000',
     fontWeight: '600',
     fontSize: 16,
+    marginLeft: 6,
   },
 });
