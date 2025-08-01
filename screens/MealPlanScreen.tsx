@@ -4,22 +4,35 @@ import {
   Text,
   StyleSheet,
   ScrollView,
+  Alert,
+  Platform,
+  PermissionsAndroid,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { auth, db } from '../firebase';
-import { doc, getDoc, collection, onSnapshot, addDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, onSnapshot, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { format } from 'date-fns';
+// ✅ Import the image picker with correct types
+import {
+  launchCamera,
+  launchImageLibrary,
+  ImagePickerResponse,
+  CameraOptions,
+  ImageLibraryOptions,
+} from 'react-native-image-picker';
+
 import DashboardButton from '../components/Common/DashboardButton';
 import { RootStackParamList } from '../App';
 import MacroCard from '../components/mealplan/MacroCard';
 import MealCard from '../components/mealplan/MealCard';
-import LogFoodButton from '../components/mealplan/LogFoodButton'; // ✅ NEW IMPORT
-import MealLoggingModal, { MealContext } from '../components/mealplan/MealLoggingModal'; // ✅ NEW IMPORT
+import LogFoodButton from '../components/mealplan/LogFoodButton';
+import MealLoggingModal, { MealContext } from '../components/mealplan/MealLoggingModal';
 import DescribeMealModal from '../components/mealplan/DescribeMealModal';
 import CameraModal from '../components/mealplan/CameraModal';
-import QuickFavoritesModal from '../components/mealplan/QuickFavorites'; // ✅ ENHANCED
+import QuickFavoritesModal from '../components/mealplan/QuickFavorites';
+import MealEditModal from '../components/mealplan/MealEditModal'; // ✅ NEW IMPORT
 
 /* -------------------------- TYPES -------------------------- */
 interface MealPlanData {
@@ -38,6 +51,7 @@ interface MealPlanData {
 }
 
 interface MealCardProps {
+  id: string; // ✅ Add ID for editing
   name: string;
   calories: number;
   protein: number;
@@ -55,20 +69,57 @@ const MealPlanScreen: React.FC = () => {
   const [selectedDate, _setSelectedDate] = useState(new Date());
   const [loggedMeals, setLoggedMeals] = useState<MealCardProps[]>([]);
 
-  // ✅ NEW MODAL STATES
+  // ✅ MODAL STATES
   const [showMealLoggingModal, setShowMealLoggingModal] = useState(false);
   const [showDescribeModal, setShowDescribeModal] = useState(false);
   const [showQuickFavoritesModal, setShowQuickFavoritesModal] = useState(false);
-
-  // ✅ EXISTING CAMERA MODAL STATE
   const [showCameraModal, setShowCameraModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false); // ✅ NEW: Edit modal
+
+  // ✅ CAMERA & PHOTO STATES
   const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
   const [pendingPhotoUri, setPendingPhotoUri] = useState<string | null>(null);
 
-  // ✅ NEW: Store meal context for when modals open
+  // ✅ MEAL CONTEXT STATE
   const [currentMealContext, setCurrentMealContext] = useState<MealContext | null>(null);
+  const [editingMeal, setEditingMeal] = useState<any>(null);// ✅ NEW: Meal being edited
 
   const uid = auth.currentUser?.uid;
+
+  // ✅ REQUEST ANDROID CAMERA PERMISSION
+  const requestCameraPermission = async (): Promise<boolean> => {
+    if (Platform.OS === 'ios') {
+      return true; // iOS handles permissions automatically
+    }
+
+    try {
+      const granted = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.CAMERA,
+        {
+          title: 'Camera Permission',
+          message: 'This app needs access to your camera to take photos of meals for nutrition tracking.',
+          buttonNeutral: 'Ask Me Later',
+          buttonNegative: 'Cancel',
+          buttonPositive: 'OK',
+        },
+      );
+
+      if (granted === PermissionsAndroid.RESULTS.GRANTED) {
+        console.log('✅ Camera permission granted');
+        return true;
+      } else {
+        console.log('❌ Camera permission denied');
+        Alert.alert(
+          'Permission Required',
+          'Camera access is needed to take photos of your meals. Please enable it in app settings.',
+        );
+        return false;
+      }
+    } catch (err) {
+      console.warn('Permission request error:', err);
+      return false;
+    }
+  };
 
   // Fetch meal plan targets
   useEffect(() => {
@@ -102,6 +153,7 @@ const MealPlanScreen: React.FC = () => {
       const meals: MealCardProps[] = snapshot.docs.map((mealDoc) => {
         const data = mealDoc.data();
         return {
+          id: mealDoc.id, // ✅ Include document ID for editing
           name: data.name,
           calories: data.calories,
           protein: data.protein,
@@ -132,21 +184,201 @@ const MealPlanScreen: React.FC = () => {
     });
   };
 
-  // ✅ ENHANCED: Handle modal opening with context
+  // ✅ REAL CAMERA FUNCTIONALITY WITH PERMISSION HANDLING
+  const handleOpenCamera = (mealContext: MealContext) => {
+    console.log('📸 Opening camera with context:', mealContext);
+    setCurrentMealContext(mealContext);
+
+    // Show option to take photo or choose from library
+    Alert.alert(
+      'Add Photo',
+      'How would you like to add a photo of your meal?',
+      [
+        {
+          text: 'Camera',
+          onPress: () => openCamera(),
+        },
+        {
+          text: 'Photo Library',
+          onPress: () => openImageLibrary(),
+        },
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+      ],
+    );
+  };
+
+  // ✅ Open device camera with permission check
+  const openCamera = async () => {
+    // Check permissions first
+    const hasPermission = await requestCameraPermission();
+    if (!hasPermission) {
+      return;
+    }
+
+    const options: CameraOptions = {
+      mediaType: 'photo',
+      maxWidth: 1024,
+      maxHeight: 1024,
+      // ✅ Removed storageOptions - not supported in current version
+    };
+
+    launchCamera(options, (response: ImagePickerResponse) => {
+      console.log('📸 Camera response:', response);
+
+      if (response.didCancel) {
+        console.log('User cancelled camera');
+        return;
+      }
+
+      if (response.errorMessage) {
+        console.error('Camera error:', response.errorMessage);
+        Alert.alert('Camera Error', response.errorMessage);
+        return;
+      }
+
+      if (response.assets && response.assets[0]) {
+        const asset = response.assets[0];
+        const imageUri = asset.uri;
+
+        if (imageUri) {
+          console.log('✅ Photo taken:', imageUri);
+          setSelectedImageUri(imageUri);
+          setShowCameraModal(true);
+        }
+      }
+    });
+  };
+
+  // ✅ Open photo library (no permission needed)
+  const openImageLibrary = () => {
+    const options: ImageLibraryOptions = {
+      mediaType: 'photo',
+      maxWidth: 1024,
+      maxHeight: 1024,
+    };
+
+    launchImageLibrary(options, (response: ImagePickerResponse) => {
+      console.log('📱 Library response:', response);
+
+      if (response.didCancel) {
+        console.log('User cancelled library');
+        return;
+      }
+
+      if (response.errorMessage) {
+        console.error('Library error:', response.errorMessage);
+        Alert.alert('Library Error', response.errorMessage);
+        return;
+      }
+
+      if (response.assets && response.assets[0]) {
+        const asset = response.assets[0];
+        const imageUri = asset.uri;
+
+        if (imageUri) {
+          console.log('✅ Photo selected:', imageUri);
+          setSelectedImageUri(imageUri);
+          setShowCameraModal(true);
+        }
+      }
+    });
+  };
+
+  // ✅ MODAL HANDLERS
   const handleOpenDescribeModal = (mealContext: MealContext) => {
+    console.log('📝 Opening describe modal with context:', mealContext);
     setCurrentMealContext(mealContext);
     setShowDescribeModal(true);
   };
 
   const handleOpenQuickAdd = (mealContext: MealContext) => {
+    console.log('⚡ Opening quick add with context:', mealContext);
     setCurrentMealContext(mealContext);
     setShowQuickFavoritesModal(true);
   };
 
-  const handleOpenBarcodeScanner = (mealContext: MealContext) => {
-    setCurrentMealContext(mealContext);
-    // TODO: Implement barcode scanner
-    console.log('Barcode scanner coming soon!', mealContext);
+  // ✅ Handle camera modal completion
+  const handleCameraModalComplete = (meal: any) => {
+    console.log('📸 Camera modal completed:', meal);
+
+    if (meal.source === 'OPEN_DESCRIBE_MODAL') {
+      // User took a photo and wants to describe it
+      setPendingPhotoUri(meal.photoUri);
+      setShowCameraModal(false);
+      setSelectedImageUri(null);
+
+      // Open describe modal with the photo
+      setTimeout(() => {
+        setShowDescribeModal(true);
+      }, 300);
+    }
+  };
+
+  // ✅ Handle successful food logging
+  const handleFoodLogged = () => {
+    console.log('✅ Food logged successfully');
+    // Could show a success toast here
+  };
+
+  // ✅ Handle meal logging completion
+  const handleMealLogged = (meal: any) => {
+    console.log('✅ Meal logged successfully:', meal);
+    // Could show a success toast here
+  };
+
+  // ✅ NEW: Handle meal editing
+  const handleEditMeal = (meal: any) => {
+    console.log('✏️ Editing meal:', meal.name);
+    setEditingMeal(meal);
+    setShowEditModal(true);
+  };
+
+  // ✅ NEW: Save edited meal to Firebase
+  const handleSaveEditedMeal = async (updatedMeal: any) => {
+    if (!uid || !updatedMeal.id) {return;}
+
+    try {
+      const dateKey = format(selectedDate, 'yyyy-MM-dd');
+      const mealDocRef = doc(db, `users/${uid}/mealLogs/${dateKey}/meals`, updatedMeal.id);
+
+      await updateDoc(mealDocRef, {
+        name: updatedMeal.name,
+        calories: updatedMeal.calories,
+        protein: updatedMeal.protein,
+        carbs: updatedMeal.carbs,
+        fat: updatedMeal.fat,
+        updatedAt: new Date(),
+      });
+
+      console.log('✅ Meal updated successfully');
+      setShowEditModal(false);
+      setEditingMeal(null);
+    } catch (error) {
+      console.error('❌ Failed to update meal:', error);
+      Alert.alert('Error', 'Failed to update meal. Please try again.');
+    }
+  };
+
+  // ✅ NEW: Delete meal from Firebase
+  const handleDeleteMeal = async (mealId: string) => {
+    if (!uid) {return;}
+
+    try {
+      const dateKey = format(selectedDate, 'yyyy-MM-dd');
+      const mealDocRef = doc(db, `users/${uid}/mealLogs/${dateKey}/meals`, mealId);
+
+      await deleteDoc(mealDocRef);
+
+      console.log('✅ Meal deleted successfully');
+      setShowEditModal(false);
+      setEditingMeal(null);
+    } catch (error) {
+      console.error('❌ Failed to delete meal:', error);
+      Alert.alert('Error', 'Failed to delete meal. Please try again.');
+    }
   };
 
   // Calculate totals
@@ -230,7 +462,13 @@ const MealPlanScreen: React.FC = () => {
             {loggedMeals.length === 0 ? (
               <Text style={styles.infoText}>No meals logged yet.</Text>
             ) : (
-              loggedMeals.map((meal, idx) => <MealCard key={idx} {...meal} />)
+              loggedMeals.map((meal) => (
+                <MealCard
+                  key={meal.id}
+                  {...meal}
+                  onEdit={handleEditMeal} // ✅ Add edit handler
+                />
+              ))
             )}
 
             {/* TEMP TEST BUTTON - REMOVE LATER */}
@@ -243,19 +481,19 @@ const MealPlanScreen: React.FC = () => {
         )}
       </ScrollView>
 
-      {/* ✅ NEW: Log Food Button (replaces FloatingMenu) */}
+      {/* ✅ Log Food Button */}
       <LogFoodButton onPress={() => setShowMealLoggingModal(true)} />
 
-      {/* ✅ NEW: Main Meal Logging Modal */}
+      {/* ✅ MAIN MEAL LOGGING MODAL */}
       <MealLoggingModal
         visible={showMealLoggingModal}
         onClose={() => setShowMealLoggingModal(false)}
         onOpenDescribeModal={handleOpenDescribeModal}
         onOpenQuickAdd={handleOpenQuickAdd}
-        onOpenBarcodeScanner={handleOpenBarcodeScanner}
+        onOpenCamera={handleOpenCamera}
       />
 
-      {/* ✅ ENHANCED: Describe Meal Modal with context */}
+      {/* ✅ DESCRIBE MEAL MODAL */}
       <DescribeMealModal
         visible={showDescribeModal}
         onClose={() => {
@@ -263,41 +501,44 @@ const MealPlanScreen: React.FC = () => {
           setPendingPhotoUri(null);
           setCurrentMealContext(null);
         }}
-        onMealLogged={(meal) => {
-          console.log('Meal parsed:', meal);
-        }}
+        onMealLogged={handleMealLogged}
         pendingPhotoUri={pendingPhotoUri}
         mealContext={currentMealContext}
       />
 
-      {/* ✅ ENHANCED: Quick Favorites Modal with context */}
+      {/* ✅ QUICK FAVORITES MODAL */}
       <QuickFavoritesModal
         visible={showQuickFavoritesModal}
         onClose={() => {
           setShowQuickFavoritesModal(false);
           setCurrentMealContext(null);
         }}
-        onFoodLogged={() => {
-          console.log('Quick food logged');
-        }}
+        onFoodLogged={handleFoodLogged}
         mealContext={currentMealContext}
       />
 
-      {/* ✅ EXISTING: Camera Modal */}
+      {/* ✅ CAMERA MODAL */}
       <CameraModal
         visible={showCameraModal}
         onClose={() => {
           setShowCameraModal(false);
           setSelectedImageUri(null);
+          setCurrentMealContext(null);
         }}
         imageUri={selectedImageUri}
-        onMealLogged={(meal) => {
-          console.log('Camera meal logged:', meal);
-          if (meal.source === 'OPEN_DESCRIBE_MODAL') {
-            setPendingPhotoUri(meal.photoUri || null);
-            setShowDescribeModal(true);
-          }
+        onMealLogged={handleCameraModalComplete}
+      />
+
+      {/* ✅ NEW: MEAL EDIT MODAL */}
+      <MealEditModal
+        visible={showEditModal}
+        meal={editingMeal}
+        onClose={() => {
+          setShowEditModal(false);
+          setEditingMeal(null);
         }}
+        onSave={handleSaveEditedMeal}
+        onDelete={handleDeleteMeal}
       />
     </LinearGradient>
   );
@@ -307,7 +548,7 @@ export default MealPlanScreen;
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  scrollContent: { padding: 16, paddingBottom: 120 }, // ✅ Extra padding for LogFoodButton
+  scrollContent: { padding: 16, paddingBottom: 120 },
   heading: { fontSize: 24, fontWeight: '700', color: '#fff', marginBottom: 16 },
   loadingText: { color: '#aaa', textAlign: 'center', marginVertical: 20 },
   infoText: { color: '#aaa', textAlign: 'center', marginVertical: 20, fontSize: 15 },
