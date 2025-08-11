@@ -95,6 +95,7 @@ interface Props {
 const DescribeMealModal: React.FC<Props> = ({
   visible,
   onClose,
+  onMealParsed,
   onMealLogged,
   pendingPhotoUri,
   mealContext,
@@ -111,6 +112,27 @@ const DescribeMealModal: React.FC<Props> = ({
   const [lastResult, setLastResult] = useState<MealMacroResult | null>(null);
 
   const isReDescribe = !!reDescribeMode && Array.isArray(existingItems) && existingItems.length > 0;
+  const inFavoriteSaveMode = !!onMealParsed && !reDescribeMode;
+
+  const handleSaveFavorite = async () => {
+  if (!parsedFoods.length || !onMealParsed) {return;}
+  const totals = computeTotals(parsedFoods);
+  const mealName =
+    parsedFoods.length === 1
+      ? parsedFoods[0].name
+      : `${parsedFoods.length} items: ${parsedFoods.map(f => f.name).slice(0,2).join(', ')}${parsedFoods.length > 2 ? '...' : ''}`;
+
+  onMealParsed({
+    name: mealName,
+    emoji: '🍽️',
+    calories: totals.calories,
+    protein: totals.protein,
+    carbs: totals.carbs,
+    fat: totals.fat,
+  });
+};
+
+
 
 
   useEffect(() => {
@@ -286,7 +308,7 @@ const DescribeMealModal: React.FC<Props> = ({
       }
     } catch (err) {
       console.error('❌ Meal analysis failed:', err);
-      setError(err instanceof Error ? err.message : 'Could not find meal info');
+      setError(err instanceof Error ? err.message : String(err ?? 'Could not find meal info'));
       Toast.show({
         type: 'error',
         text1: 'Analysis Failed',
@@ -515,7 +537,7 @@ const DescribeMealModal: React.FC<Props> = ({
                 {error && (
                   <View style={styles.errorContainer}>
                     <Ionicons name="warning" size={20} color="#F06292" />
-                    <Text style={styles.errorText}>{error}</Text>
+                    <Text style={styles.errorText}>{String(error)}</Text>
                   </View>
                 )}
               </>
@@ -543,9 +565,9 @@ const DescribeMealModal: React.FC<Props> = ({
                       </Text>
                       <Text style={styles.confidenceScore}>{lastResult.confidence}%</Text>
                     </View>
-                    <Text style={styles.confidenceSource}>Source: {lastResult.source}</Text>
+                    <Text style={styles.confidenceSource}>Source: {String(lastResult.source)}</Text>
                     {!!lastResult.validationFlags?.length && (
-                      <Text style={styles.validationFlags}>💡 {lastResult.validationFlags[0]}</Text>
+                      <Text style={styles.validationFlags}>💡 {String(lastResult.validationFlags[0])}</Text>
                     )}
                   </View>
                 )}
@@ -570,27 +592,35 @@ const DescribeMealModal: React.FC<Props> = ({
 
                 {/* Actions */}
                 {isReDescribe ? (
-                  <View style={styles.applyBar}>
-                    <Pressable style={[styles.applyBtn, styles.replaceBtn]} onPress={handleApplyReplace}>
-                      <Text style={styles.applyBtnText}>Replace items</Text>
-                    </Pressable>
-                    <Pressable style={[styles.applyBtn, styles.mergeBtn]} onPress={handleApplyMerge}>
-                      <Text style={styles.applyBtnText}>Merge items</Text>
-                    </Pressable>
-                  </View>
-                ) : (
-                  <View style={styles.actionButtons}>
-                    <Pressable style={styles.addMoreButton} onPress={handleAddMoreFood}>
-                      <Ionicons name="add" size={16} color="#4FC3F7" />
-                      <Text style={styles.addMoreText}>Add More Food</Text>
-                    </Pressable>
+  <View style={styles.applyBar}>
+    <Pressable style={[styles.applyBtn, styles.replaceBtn]} onPress={handleApplyReplace}>
+      <Text style={styles.applyBtnText}>Replace items</Text>
+    </Pressable>
+    <Pressable style={[styles.applyBtn, styles.mergeBtn]} onPress={handleApplyMerge}>
+      <Text style={styles.applyBtnText}>Merge items</Text>
+    </Pressable>
+  </View>
+) : (
+  <View style={styles.actionButtons}>
+    <Pressable style={styles.addMoreButton} onPress={handleAddMoreFood}>
+      <Ionicons name="add" size={16} color="#4FC3F7" />
+      <Text style={styles.addMoreText}>Add More Food</Text>
+    </Pressable>
 
-                    <Pressable style={styles.logButton} onPress={handleLogMeal}>
-                      <Ionicons name="checkmark" size={18} color="#000" />
-                      <Text style={styles.logButtonText}>Log Meal</Text>
-                    </Pressable>
-                  </View>
-                )}
+    {inFavoriteSaveMode ? (
+      <Pressable style={styles.logButton} onPress={handleSaveFavorite}>
+        <Ionicons name="star" size={18} color="#000" />
+        <Text style={styles.logButtonText}>Save as Favorite</Text>
+      </Pressable>
+    ) : (
+      <Pressable style={styles.logButton} onPress={handleLogMeal}>
+        <Ionicons name="checkmark" size={18} color="#000" />
+        <Text style={styles.logButtonText}>Log Meal</Text>
+      </Pressable>
+    )}
+  </View>
+)}
+
               </>
             )}
           </ScrollView>

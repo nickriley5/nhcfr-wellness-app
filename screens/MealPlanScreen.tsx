@@ -14,7 +14,7 @@ import LinearGradient from 'react-native-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { auth, db } from '../firebase';
-import { doc, getDoc, collection, onSnapshot, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, onSnapshot, updateDoc, deleteDoc } from 'firebase/firestore';
 import { format } from 'date-fns';
 import Toast from 'react-native-toast-message';
 import {
@@ -186,26 +186,6 @@ const MealPlanScreen: React.FC = () => {
     return () => unsub();
   }, [uid, selectedDate]);
 
-  // Quick add dummy meal (DEV ONLY)
-  const quickAddMeal = async () => {
-    if (!uid) {return;}
-    try {
-      const dateKey = format(selectedDate, 'yyyy-MM-dd');
-      const mealLogRef = collection(db, `users/${uid}/mealLogs/${dateKey}/meals`);
-      await addDoc(mealLogRef, {
-        name: 'Test Meal',
-        calories: 300,
-        protein: 25,
-        carbs: 30,
-        fat: 10,
-        loggedAt: new Date(),
-      });
-      Toast.show({ type: 'success', text1: 'Test Meal Added', position: 'bottom' });
-    } catch (err) {
-      console.error('Failed to add test meal:', err);
-      Toast.show({ type: 'error', text1: 'Failed to add meal', position: 'bottom' });
-    }
-  };
 
   // ✅ Camera + gallery
   const handleOpenCamera = (mealContext: MealContext) => {
@@ -647,10 +627,6 @@ const MealPlanScreen: React.FC = () => {
               </View>
             ) : (
               loggedMeals.map((meal) => <MealCard key={meal.id} {...meal} onEdit={handleEditMeal} />)
-            )}
-
-            {__DEV__ && (
-              <DashboardButton text="➕ Quick Add Test Meal (Dev Only)" variant="green" onPress={quickAddMeal} />
             )}
           </>
         )}

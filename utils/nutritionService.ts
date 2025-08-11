@@ -1,6 +1,33 @@
 import axios from 'axios';
 import crypto from 'crypto-js';
 
+// --- Safe console helpers to avoid Hermes "Error.stack invalid receiver" ---
+const safeLog = (label: string, value: unknown) => {
+  try {
+    const plain =
+      value && typeof value === 'object'
+        ? JSON.parse(JSON.stringify(value))
+        : value;
+
+    console.log(label, plain);
+  } catch {
+    console.log(label, String(value));
+  }
+};
+
+const safeError = (label: string, err: unknown) => {
+  if (err instanceof Error) {
+    console.error(label, err.message, err.stack);
+    return;
+  }
+  try {
+    console.error(label, JSON.parse(JSON.stringify(err)));
+  } catch {
+    console.error(label, String(err));
+  }
+};
+
+
 /* ✅ PUT YOUR REAL API KEYS HERE */
 const NUTRITIONIX_APP_ID = 'a7dc596e';
 const NUTRITIONIX_APP_KEY = '833302e6a67cd67663f72a08e8a05137';
@@ -265,7 +292,7 @@ const generateOAuthSignature = (
 export const fetchFromNutritionix = async (query: string): Promise<MealMacroResult | null> => {
   try {
     const processed = preprocessQuery(query);
-    console.log('🥗 Nutritionix analysis:', processed);
+    safeLog('🥗 Nutritionix analysis:', processed);
 
     const searchQuery = processed.originalQuery;
 
@@ -337,14 +364,14 @@ export const fetchFromNutritionix = async (query: string): Promise<MealMacroResu
     }
 
     result.validationFlags = validation.flags;
-    console.log('✅ Nutritionix result:', result);
+    safeLog('✅ Nutritionix result:', result);
     return result;
 
   } catch (error: unknown) {
-    console.error('❌ Nutritionix error:', error);
+    safeError('❌ Nutritionix error:', error);
     if (isAxiosError(error)) {
-      console.error('Nutritionix response:', error.response?.data);
-      console.error('Nutritionix status:', error.response?.status);
+      safeLog('Nutritionix response:', error.response?.data);
+      safeLog('Nutritionix status:', error.response?.status);
     }
     return null;
   }
@@ -354,26 +381,35 @@ export const fetchFromNutritionix = async (query: string): Promise<MealMacroResu
 export const fetchFromUSDA = async (query: string): Promise<MealMacroResult | null> => {
   try {
     const processed = preprocessQuery(query);
-    console.log('🏛️ USDA analysis:', processed);
+    safeLog('🏛️ USDA analysis:', processed);
 
     const searchQuery = processed.detectedFood || processed.cleanedQuery;
 
     const response = await axios.get<USDAResponse>(
-      'https://api.nal.usda.gov/fdc/v1/foods/search',
-      {
-        params: {
-          query: searchQuery,
-          pageSize: 15,
-          api_key: USDA_API_KEY,
-          dataType: ['Foundation', 'SR Legacy'],
-        },
-        timeout: 12000,
-      },
-    );
+  'https://api.nal.usda.gov/fdc/v1/foods/search',
+  {
+    params: {
+      query: searchQuery,
+      pageSize: 15,
+      api_key: USDA_API_KEY,
+      dataType: ['Foundation', 'SR Legacy'],
+    },
+    timeout: 12000,
+    paramsSerializer: (params: any) => {
+      const p = new URLSearchParams();
+      p.append('query', String(params.query));
+      p.append('pageSize', String(params.pageSize));
+      p.append('api_key', String(params.api_key));
+      (params.dataType as string[]).forEach(v => p.append('dataType', v));
+      return p.toString(); // -> dataType=Foundation&dataType=SR%20Legacy (no brackets)
+    },
+  },
+);
+
 
     const foods = response.data.foods;
     if (!foods || foods.length === 0) {
-      console.log('❌ USDA: No foods returned');
+      safeLog('❌ USDA: No foods returned', null);
       return null;
     }
 
@@ -403,7 +439,7 @@ export const fetchFromUSDA = async (query: string): Promise<MealMacroResult | nu
       }
     }
 
-    console.log('🥇 USDA selected:', bestFood.description, 'Score:', matchScore);
+    safeLog('🥇 USDA selected:', { description: bestFood.description, matchScore });
 
     const nutrients = bestFood.foodNutrients;
     let calories = 0;
@@ -450,14 +486,14 @@ export const fetchFromUSDA = async (query: string): Promise<MealMacroResult | nu
     }
 
     result.validationFlags = validation.flags;
-    console.log('✅ USDA result:', result);
+    safeLog('✅ USDA result:', result);
     return result;
 
   } catch (error: unknown) {
-    console.error('❌ USDA error:', error);
+    safeError('❌ USDA error:', error);
     if (isAxiosError(error)) {
-      console.error('USDA response data:', error.response?.data);
-      console.error('USDA status:', error.response?.status);
+      safeLog('USDA response data:', error.response?.data);
+      safeLog('USDA status:', error.response?.status);
     }
     return null;
   }
@@ -467,7 +503,7 @@ export const fetchFromUSDA = async (query: string): Promise<MealMacroResult | nu
 export const fetchFromFatSecret = async (query: string): Promise<MealMacroResult | null> => {
   try {
     const processed = preprocessQuery(query);
-    console.log('🔍 FatSecret analysis:', processed);
+    safeLog('🔍 FatSecret analysis:', processed);
 
     const timestamp = Math.floor(Date.now() / 1000).toString();
     const nonce = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
@@ -566,14 +602,14 @@ export const fetchFromFatSecret = async (query: string): Promise<MealMacroResult
     }
 
     result.validationFlags = validation.flags;
-    console.log('✅ FatSecret result:', result);
+    safeLog('✅ FatSecret result:', result);
     return result;
 
   } catch (error: unknown) {
-    console.error('❌ FatSecret error:', error);
+    safeError('❌ FatSecret error:', error);
     if (isAxiosError(error)) {
-      console.error('FatSecret response:', error.response?.data);
-      console.error('FatSecret status:', error.response?.status);
+      safeLog('FatSecret response:', error.response?.data);
+      safeLog('FatSecret status:', error.response?.status);
     }
     return null;
   }
@@ -684,7 +720,7 @@ export const describeMeal = async (query: string): Promise<MealMacroResult> => {
   // Cross-validate and return best result
   const finalResult = crossValidateResults(results);
 
-  console.log(`✅ Final result with ${finalResult.confidence}% confidence:`, finalResult);
+  safeLog(`✅ Final result with ${finalResult.confidence}% confidence:`, finalResult);
   return finalResult;
 };
 
