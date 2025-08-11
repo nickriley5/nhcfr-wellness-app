@@ -20,7 +20,7 @@ import { RootStackParamList } from '../App';
 import GoalTypeSelector from '../components/GoalSettings/GoalTypeSelector';
 import WeightInputSection from '../components/GoalSettings/WeightInputSection';
 import ActivityLevelSelector from '../components/GoalSettings/ActivityLevelSelector';
-import DietMethodSelector from '../components/GoalSettings/DietMethodSelector';
+// ⛔️ Removed DietMethodSelector (Zone) – we’re standard-only now
 import PreferencesSection from '../components/GoalSettings/PreferencesSection';
 import AppButton from '../components/Common/AppButton';
 
@@ -36,7 +36,7 @@ interface GoalSettingsProps {
 
 const GoalSettingsScreen: React.FC<GoalSettingsProps> = ({
   onGenerated,
-  onClose: _onClose, // underscore means it's optional and won't trigger eslint if unused
+  onClose: _onClose,
 }) => {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -49,7 +49,10 @@ const GoalSettingsScreen: React.FC<GoalSettingsProps> = ({
   const [goalType, setGoalType] = useState<
     'fat_loss' | 'maintain' | 'muscle_gain'
   >('fat_loss');
-  const [dietMethod, setDietMethod] = useState<'standard' | 'zone'>('standard');
+
+  // 🔒 Lock diet method to standard (no Zone for now)
+  const dietMethod: 'standard' = 'standard';
+
   const [activityLevel, setActivityLevel] = useState<
     'sedentary' | 'light' | 'moderate' | 'very_active'
   >('moderate');
@@ -59,11 +62,6 @@ const GoalSettingsScreen: React.FC<GoalSettingsProps> = ({
   const [proteinGrams, setProteinGrams] = useState(0);
   const [fatGrams, setFatGrams] = useState(0);
   const [carbGrams, setCarbGrams] = useState(0);
-  const [zoneBlocks, setZoneBlocks] = useState({
-    protein: 0,
-    carbs: 0,
-    fats: 0,
-  });
 
   const [userProfile, setUserProfile] = useState<{ name?: string }>({});
   const [dietaryPreference, setDietaryPreference] = useState<
@@ -75,9 +73,7 @@ const GoalSettingsScreen: React.FC<GoalSettingsProps> = ({
 
   // ✅ Load existing user profile if present
   useEffect(() => {
-    if (!uid) {
-      return;
-    }
+    if (!uid) {return;}
     const fetch = async () => {
       const ref = doc(db, 'users', uid);
       const snap = await getDoc(ref);
@@ -86,7 +82,6 @@ const GoalSettingsScreen: React.FC<GoalSettingsProps> = ({
         if (d.weight) {setWeight(d.weight);}
         if (d.targetWeight) {setTargetWeight(d.targetWeight);}
         if (d.goalType) {setGoalType(d.goalType);}
-        if (d.dietMethod) {setDietMethod(d.dietMethod);}
         if (d.activityLevel) {setActivityLevel(d.activityLevel);}
         if (d.name) {setUserProfile({ name: d.name });}
         if (d.dietaryPreference) {setDietaryPreference(d.dietaryPreference);}
@@ -96,14 +91,14 @@ const GoalSettingsScreen: React.FC<GoalSettingsProps> = ({
     fetch();
   }, [uid]);
 
-  // ✅ Calculate macros dynamically when inputs change
+  // ✅ Calculate macros dynamically when inputs change (Standard only)
   useEffect(() => {
     const multiplierMap = {
       sedentary: 12,
       light: 13,
       moderate: 14,
       very_active: 15,
-    };
+    } as const;
 
     const multiplier = multiplierMap[activityLevel] || 12;
     const baseCalories = multiplier * weight;
@@ -111,11 +106,7 @@ const GoalSettingsScreen: React.FC<GoalSettingsProps> = ({
     const adjustment =
       rate *
       500 *
-      (goalType === 'fat_loss'
-        ? -1
-        : goalType === 'muscle_gain'
-        ? 1
-        : 0);
+      (goalType === 'fat_loss' ? -1 : goalType === 'muscle_gain' ? 1 : 0);
 
     const cals = Math.round(baseCalories + adjustment);
     const protein = Math.round(weight * 1);
@@ -126,21 +117,12 @@ const GoalSettingsScreen: React.FC<GoalSettingsProps> = ({
     setProteinGrams(protein);
     setFatGrams(fat);
     setCarbGrams(carbs);
-    setZoneBlocks({
-      protein: Math.round(protein / 7),
-      carbs: Math.round(carbs / 9),
-      fats: Math.round(fat / 1.5),
-    });
   }, [weight, goalType, rate, activityLevel]);
 
   // ✅ Save field instantly when changed
   const saveField = async (field: string, value: any) => {
     if (uid) {
-      await setDoc(
-        doc(db, 'users', uid),
-        { [field]: value },
-        { merge: true }
-      );
+      await setDoc(doc(db, 'users', uid), { [field]: value }, { merge: true });
     }
   };
 
@@ -149,12 +131,10 @@ const GoalSettingsScreen: React.FC<GoalSettingsProps> = ({
   const weeks = rate > 0 ? Math.ceil(weightDiff / rate) : 0;
   const endDate = addDays(new Date(), weeks * 7);
 
-  // ✅ Main handler to save everything & generate plan
+  // ✅ Main handler to save everything & generate plan (Standard only)
   const handleGenerateMealPlan = async () => {
     try {
-      if (!uid) {
-        return;
-      }
+      if (!uid) {return;}
 
       const convertedGoalType: 'maintain' | 'fatloss' | 'muscle' =
         goalType === 'fat_loss'
@@ -168,8 +148,8 @@ const GoalSettingsScreen: React.FC<GoalSettingsProps> = ({
         proteinGrams,
         fatGrams,
         carbGrams,
-        zoneBlocks,
-        dietMethod,
+        zoneBlocks: { protein: 0, carbs: 0, fats: 0 }, // Add default zoneBlocks for standard
+        dietMethod, // 'standard'
         goalType: convertedGoalType,
         name: userProfile?.name || 'Firefighter',
         dietaryPreference,
@@ -177,10 +157,7 @@ const GoalSettingsScreen: React.FC<GoalSettingsProps> = ({
       };
 
       // ✅ Save mealPlan into Firestore
-      await setDoc(
-        doc(db, 'users', uid, 'mealPlan', 'active'),
-        mealPlanData
-      );
+      await setDoc(doc(db, 'users', uid, 'mealPlan', 'active'), mealPlanData);
 
       // ✅ Save profile updates
       await setDoc(
@@ -193,11 +170,10 @@ const GoalSettingsScreen: React.FC<GoalSettingsProps> = ({
           proteinGrams,
           fatGrams,
           carbGrams,
-          zoneBlocks,
           goalType: convertedGoalType,
           dietaryPreference,
           dietaryRestriction,
-          dietMethod,
+          dietMethod, // keep for compatibility
           activityLevel,
         },
         { merge: true }
@@ -209,7 +185,7 @@ const GoalSettingsScreen: React.FC<GoalSettingsProps> = ({
         return;
       }
 
-      // ✅ If not modal → behave like a full screen and navigate normally
+      // ✅ Navigate to overview (standard-only params)
       navigation.navigate('MacroPlanOverview', mealPlanData);
     } catch (error) {
       console.error('Failed to generate plan:', error);
@@ -218,10 +194,7 @@ const GoalSettingsScreen: React.FC<GoalSettingsProps> = ({
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <LinearGradient
-        colors={['#0f0f0f', '#1a1a1a']}
-        style={styles.container}
-      >
+      <LinearGradient colors={['#0f0f0f', '#1a1a1a']} style={styles.container}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.keyboardAvoiding}
@@ -243,9 +216,7 @@ const GoalSettingsScreen: React.FC<GoalSettingsProps> = ({
               onChangeWeight={setWeight}
               onChangeTargetWeight={setTargetWeight}
               onSaveWeight={() => saveField('weight', weight)}
-              onSaveTargetWeight={() =>
-                saveField('targetWeight', targetWeight)
-              }
+              onSaveTargetWeight={() => saveField('targetWeight', targetWeight)}
             />
 
             <ActivityLevelSelector
@@ -255,16 +226,12 @@ const GoalSettingsScreen: React.FC<GoalSettingsProps> = ({
                 saveField('activityLevel', a);
               }}
               showInfo={showActivityInfo}
-              onToggleInfo={() =>
-                setShowActivityInfo(!showActivityInfo)
-              }
+              onToggleInfo={() => setShowActivityInfo(!showActivityInfo)}
             />
 
             {/* Weekly Rate Section */}
             <View style={styles.card}>
-              <Text style={styles.label}>
-                Weekly Rate of Change (lbs/week)
-              </Text>
+              <Text style={styles.label}>Weekly Rate of Change (lbs/week)</Text>
               <Slider
                 minimumValue={0.25}
                 maximumValue={2.0}
@@ -278,28 +245,20 @@ const GoalSettingsScreen: React.FC<GoalSettingsProps> = ({
               <Text style={styles.value}>{rate} lbs/week</Text>
               {rate > 1.5 && (
                 <Text style={styles.warning}>
-                  ⚠️ Rapid weight change can impact performance and
-                  recovery.
+                  ⚠️ Rapid weight change can impact performance and recovery.
                 </Text>
               )}
               <Text style={styles.value}>
-                Estimated Completion Date:{' '}
-                {format(endDate, 'PPP')}
+                Estimated Completion Date: {format(endDate, 'PPP')}
               </Text>
               <Text style={styles.summary}>
                 To reach your target, you'll need to{' '}
-                {weight > targetWeight ? 'lose' : 'gain'} {rate}{' '}
-                lbs/week for ~{weeks} weeks.
+                {weight > targetWeight ? 'lose' : 'gain'} {rate} lbs/week for ~
+                {weeks} weeks.
               </Text>
             </View>
 
-            <DietMethodSelector
-              dietMethod={dietMethod}
-              onChange={(m) => {
-                setDietMethod(m);
-                saveField('dietMethod', m);
-              }}
-            />
+            {/* ⛔️ Removed DietMethodSelector UI – standard is enforced */}
 
             <PreferencesSection
               dietaryPreference={dietaryPreference}
@@ -317,9 +276,9 @@ const GoalSettingsScreen: React.FC<GoalSettingsProps> = ({
             <View style={styles.card}>
               <Text style={styles.label}>Workout Tailoring</Text>
               <Text style={styles.summary}>
-                Your selected goal will be used to shape your upcoming
-                workout program structure — intensity, volume, rest
-                days, and progression.
+                Your selected goal will be used to shape your upcoming workout
+                program structure — intensity, volume, rest days, and
+                progression.
               </Text>
             </View>
 
