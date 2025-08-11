@@ -7,12 +7,14 @@ import {
   UIManager,
   Platform,
   Pressable,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
 import { RouteProp, useRoute, useNavigation } from '@react-navigation/native';
 import { RootStackParamList } from '../App';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 
 import MacroBarChart from '../components/macro/MacroBarChart';
 import ZonePieChart from '../components/macro/ZonePieChart';
@@ -29,6 +31,35 @@ import { doc, updateDoc } from 'firebase/firestore';
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
+
+// ✅ Info Tooltip Component
+interface InfoTooltipProps {
+  title: string;
+  content: string;
+  visible: boolean;
+  onClose: () => void;
+}
+
+const InfoTooltip: React.FC<InfoTooltipProps> = ({ title, content, visible, onClose }) => {
+  return (
+    <Modal visible={visible} transparent animationType="fade">
+      <View style={styles.tooltipOverlay}>
+        <View style={styles.tooltipContainer}>
+          <View style={styles.tooltipHeader}>
+            <Text style={styles.tooltipTitle}>{title}</Text>
+            <Pressable onPress={onClose} style={styles.tooltipCloseButton}>
+              <Ionicons name="close" size={20} color="#fff" />
+            </Pressable>
+          </View>
+          <Text style={styles.tooltipContent}>{content}</Text>
+          <Pressable style={styles.tooltipOkButton} onPress={onClose}>
+            <Text style={styles.tooltipOkText}>Got it!</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
+};
 
 const MacroPlanOverviewScreen = () => {
   const { userProfile } = useAuth();
@@ -70,6 +101,10 @@ const MacroPlanOverviewScreen = () => {
   const [previewDietMethod, setPreviewDietMethod] = useState<'standard' | 'zone' | null>(null);
   const [showPreviewBanner, setShowPreviewBanner] = useState(false);
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
+
+  // ✅ NEW: Tooltip states
+  const [showZoneBlocksTooltip, setShowZoneBlocksTooltip] = useState(false);
+  const [showMacroTooltip, setShowMacroTooltip] = useState(false);
 
   const initialWeekly = dayLabels.map((day) => ({
     day,
@@ -154,6 +189,25 @@ const MacroPlanOverviewScreen = () => {
   // ✅ Decide what is currently visible (preview OR actual)
   const visibleMode = previewDietMethod || activeDietMethod;
 
+  // ✅ Tooltip content
+  const zoneBlocksTooltipContent = `Zone Blocks are a meal planning system where:
+
+• 1 Protein Block = 7g protein (size of your palm)
+• 1 Carb Block = 9g carbs (size of your fist)
+• 1 Fat Block = 1.5g fat (tip of your thumb)
+
+Each "block" represents a balanced portion. For example, if you have 4 protein blocks, you'd eat 4 palm-sized servings of protein throughout the day.
+
+This system makes portion control simple and ensures balanced nutrition at every meal.`;
+
+  const macroTooltipContent = `Standard Macros track your daily nutrition in grams:
+
+• Protein: Builds and repairs muscle (4 calories per gram)
+• Carbs: Primary energy source (4 calories per gram)
+• Fat: Essential for hormones and absorption (9 calories per gram)
+
+Your targets are calculated based on your weight, activity level, and goals. Track everything you eat to hit these numbers for optimal performance and recovery.`;
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <LinearGradient colors={['#0f0f0f', '#1a1a1a']} style={styles.container}>
@@ -226,6 +280,20 @@ const MacroPlanOverviewScreen = () => {
                   >
                     {mode === 'standard' ? 'Standard Macros' : 'Zone Blocks'}
                   </Text>
+                  {/* ✅ NEW: Info button */}
+                  <Pressable
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      if (mode === 'zone') {
+                        setShowZoneBlocksTooltip(true);
+                      } else {
+                        setShowMacroTooltip(true);
+                      }
+                    }}
+                    style={styles.infoButton}
+                  >
+                    <Ionicons name="information-circle-outline" size={16} color="#4FC3F7" />
+                  </Pressable>
                 </Pressable>
               );
             })}
@@ -234,7 +302,15 @@ const MacroPlanOverviewScreen = () => {
           {/* Show either Standard OR Zone preview */}
           {visibleMode === 'standard' ? (
             <>
-              <Text style={styles.chartLabel}>Weekly Macro Overview</Text>
+              <View style={styles.sectionHeaderWithInfo}>
+                <Text style={styles.chartLabel}>Weekly Macro Overview</Text>
+                <Pressable
+                  onPress={() => setShowMacroTooltip(true)}
+                  style={styles.infoButtonLarge}
+                >
+                  <Ionicons name="help-circle-outline" size={20} color="#4FC3F7" />
+                </Pressable>
+              </View>
 
               <MacroBarChart
                 weeklyData={weeklyData}
@@ -274,7 +350,15 @@ const MacroPlanOverviewScreen = () => {
           ) : (
             <>
               <View style={styles.zoneSection}>
-                <Text style={styles.chartLabel}>Zone Block Distribution</Text>
+                <View style={styles.sectionHeaderWithInfo}>
+                  <Text style={styles.chartLabel}>Zone Block Distribution</Text>
+                  <Pressable
+                    onPress={() => setShowZoneBlocksTooltip(true)}
+                    style={styles.infoButtonLarge}
+                  >
+                    <Ionicons name="help-circle-outline" size={20} color="#4FC3F7" />
+                  </Pressable>
+                </View>
 
                 {zoneBlocks.protein + zoneBlocks.carbs + zoneBlocks.fats > 0 ? (
                   <ZonePieChart
@@ -313,19 +397,34 @@ const MacroPlanOverviewScreen = () => {
           </Text>
 
           <DashboardButton
-  text="Go to Meal Plan"
-  variant="default"
-  onPress={() => {
-    navigation.navigate('AppDrawer', {
-      screen: 'MainTabs',
-      params: {
-        screen: 'MealPlan',
-      },
-    }); // then select tab
-  }}
-/>
+            text="Go to Meal Plan"
+            variant="default"
+            onPress={() => {
+              navigation.navigate('AppDrawer', {
+                screen: 'MainTabs',
+                params: {
+                  screen: 'MealPlan',
+                },
+              }); // then select tab
+            }}
+          />
         </ScrollView>
       </LinearGradient>
+
+      {/* ✅ NEW: Info Tooltips */}
+      <InfoTooltip
+        title="🎯 Zone Blocks Explained"
+        content={zoneBlocksTooltipContent}
+        visible={showZoneBlocksTooltip}
+        onClose={() => setShowZoneBlocksTooltip(false)}
+      />
+
+      <InfoTooltip
+        title="📊 Standard Macros Explained"
+        content={macroTooltipContent}
+        visible={showMacroTooltip}
+        onClose={() => setShowMacroTooltip(false)}
+      />
     </SafeAreaView>
   );
 };

@@ -114,8 +114,14 @@ const FoodAdjustmentList: React.FC<Props> = ({ foods, onFoodsChange, photoUri })
         </Text>
       </View>
 
-      {/* Food Items */}
-      <ScrollView style={styles.foodList} showsVerticalScrollIndicator={false}>
+      {/* ✅ FIXED: Better ScrollView configuration for proper scrolling */}
+      <ScrollView
+        style={styles.foodList}
+        showsVerticalScrollIndicator={true}
+        nestedScrollEnabled={true}
+        contentContainerStyle={styles.foodListContent}
+        bounces={true}
+      >
         {foods.map((food) => {
           const currentMacros = calculateCurrentMacros(food);
 
@@ -245,8 +251,13 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 4,
   },
+  // ✅ FIXED: Better scrolling configuration
   foodList: {
-    maxHeight: 300,
+    maxHeight: 350, // Increased height
+    marginBottom: 16,
+  },
+  foodListContent: {
+    paddingBottom: 10, // Add padding for better scrolling experience
   },
   foodItem: {
     backgroundColor: '#2a2a2a',
@@ -357,7 +368,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#1e3a4a',
     borderRadius: 12,
     padding: 16,
-    marginTop: 16,
     borderWidth: 1,
     borderColor: '#4FC3F7',
   },

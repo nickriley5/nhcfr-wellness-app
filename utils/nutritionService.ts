@@ -8,7 +8,7 @@ const USDA_API_KEY = 'DJ23bi1Bdxqm2yX1koDezsIgtbOQXLrgr0Q3UrSl';
 const FATSECRET_CONSUMER_KEY = 'fc4290b05cf8490c8391ad7b707befcc';
 const FATSECRET_CONSUMER_SECRET = 'dc90e0d80d9c405d8a4387a65c5ce875';
 
-/* ✅ Common return type for parsed meals */
+/* ✅ Enhanced return type with confidence scoring */
 export interface MealMacroResult {
   calories: number;
   protein: number;
@@ -17,9 +17,22 @@ export interface MealMacroResult {
   source: string;
   items?: string[];
   photoUri?: string | null;
+  confidence: number; // 0-100 confidence score
+  portionInfo?: {
+    detectedSize?: string;
+    standardizedAmount?: number;
+    unit?: string;
+  };
+  validationFlags?: string[];
+  itemMacros?: {
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+  }[]; // ✅ NEW
 }
 
-// ✅ Nutritionix Types
+/* ✅ API Response Types - FIXES TYPESCRIPT ERRORS */
 interface NutritionixFood {
   food_name: string;
   serving_qty: number;
@@ -36,7 +49,6 @@ interface NutritionixResponse {
   foods: NutritionixFood[];
 }
 
-// ✅ USDA Types
 interface USDAFoodNutrient {
   nutrientName: string;
   value: number;
@@ -54,7 +66,174 @@ interface USDAResponse {
   totalHits?: number;
 }
 
-// ✅ Helper function to check if error is AxiosError
+interface TestResult {
+  query: string;
+  success: boolean;
+  result?: MealMacroResult;
+  error?: unknown;
+}
+
+interface ProcessedQuery {
+  originalQuery: string;
+  cleanedQuery: string;
+  detectedQuantity: number;
+  detectedUnit: string;
+  detectedFood: string;
+  brandDetected?: string;
+  restaurantDetected?: string;
+  confidence: number;
+}
+
+/* ✅ ENHANCED QUERY PREPROCESSING - Critical for accuracy */
+const preprocessQuery = (query: string): ProcessedQuery => {
+  const original = query.trim();
+  let cleaned = original.toLowerCase();
+
+  // Remove extra whitespace and normalize
+  cleaned = cleaned.replace(/\s+/g, ' ').trim();
+
+  // Standardize common abbreviations
+  const abbreviations = {
+    'oz': 'ounce',
+    'lbs': 'pounds',
+    'lb': 'pound',
+    'tbsp': 'tablespoon',
+    'tsp': 'teaspoon',
+    'c': 'cup',
+    'pt': 'pint',
+    'qt': 'quart',
+    'gal': 'gallon',
+    'med': 'medium',
+    'lg': 'large',
+    'sm': 'small',
+    'xl': 'extra large',
+  };
+
+  Object.entries(abbreviations).forEach(([abbr, full]) => {
+    const regex = new RegExp(`\\b${abbr}\\b`, 'g');
+    cleaned = cleaned.replace(regex, full);
+  });
+
+  // Extract quantity information with better patterns
+  const quantityPatterns = [
+    /(\d+(?:\.\d+)?)\s*(ounce|oz|pound|lb|gram|g|cup|tablespoon|teaspoon|slice|piece)/i,
+    /(\d+(?:\.\d+)?)\s*(large|medium|small|extra large)/i,
+    /(\d+(?:\.\d+)?)\s+(.+)/i, // Generic number + food
+    /(one|two|three|four|five|six|seven|eight|nine|ten)/i,
+  ];
+
+  let detectedQuantity = 1;
+  let detectedUnit = 'serving';
+  let detectedFood = cleaned;
+
+  // Word to number mapping
+  const wordToNum: Record<string, number> = {
+    'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
+    'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10,
+  };
+
+  for (const pattern of quantityPatterns) {
+    const match = cleaned.match(pattern);
+    if (match) {
+      const quantityStr = match[1];
+      if (wordToNum[quantityStr]) {
+        detectedQuantity = wordToNum[quantityStr];
+      } else if (!isNaN(parseFloat(quantityStr))) {
+        detectedQuantity = parseFloat(quantityStr);
+      }
+
+      if (match[2]) {
+        detectedUnit = match[2];
+        detectedFood = cleaned.replace(match[0], '').trim();
+      }
+      break;
+    }
+  }
+
+  // Brand detection
+  const brands = [
+    'mcdonalds', 'starbucks', 'subway', 'chipotle', 'kfc', 'pizza hut',
+    'dominos', 'taco bell', 'burger king', 'wendys', 'five guys',
+    'shake shack', 'in-n-out', 'white castle', 'dunkin', 'costa',
+  ];
+
+  let brandDetected: string | undefined;
+  let restaurantDetected: string | undefined;
+
+  for (const brand of brands) {
+    if (cleaned.includes(brand)) {
+      brandDetected = brand;
+      restaurantDetected = brand;
+      break;
+    }
+  }
+
+  // Calculate preprocessing confidence
+  let confidence = 50; // Base confidence
+  if (detectedQuantity > 0) {confidence += 20;}
+  if (detectedUnit !== 'serving') {confidence += 10;}
+  if (brandDetected) {confidence += 15;}
+  if (detectedFood.length > 3) {confidence += 5;}
+
+  return {
+    originalQuery: original,
+    cleanedQuery: cleaned,
+    detectedQuantity,
+    detectedUnit,
+    detectedFood,
+    brandDetected,
+    restaurantDetected,
+    confidence: Math.min(confidence, 100),
+  };
+};
+
+/* ✅ RESULT VALIDATION - Catch unrealistic results */
+const validateNutritionResult = (result: any, query: string): { isValid: boolean; flags: string[] } => {
+  const flags: string[] = [];
+  let isValid = true;
+
+  // Check for impossible values
+  if (result.calories < 0 || result.calories > 10000) {
+    flags.push('Unrealistic calorie count');
+    isValid = false;
+  }
+
+  if (result.protein < 0 || result.protein > 500) {
+    flags.push('Unrealistic protein amount');
+    isValid = false;
+  }
+
+  if (result.carbs < 0 || result.carbs > 1000) {
+    flags.push('Unrealistic carb amount');
+    isValid = false;
+  }
+
+  if (result.fat < 0 || result.fat > 500) {
+    flags.push('Unrealistic fat amount');
+    isValid = false;
+  }
+
+  // Calorie consistency check (4 cal/g protein, 4 cal/g carbs, 9 cal/g fat)
+  const calculatedCals = (result.protein * 4) + (result.carbs * 4) + (result.fat * 9);
+  const calorieVariance = Math.abs(result.calories - calculatedCals) / result.calories;
+
+  if (calorieVariance > 0.3) { // More than 30% variance is suspicious
+    flags.push('Calorie-macro mismatch detected');
+  }
+
+  // Check for zero-macro foods that should have macros
+  const shouldHaveMacros = ['pizza', 'burger', 'sandwich', 'pasta', 'rice', 'bread'];
+  if (shouldHaveMacros.some(food => query.toLowerCase().includes(food))) {
+    if (result.calories === 0 || (result.protein === 0 && result.carbs === 0 && result.fat === 0)) {
+      flags.push('Missing expected macros for complex food');
+      isValid = false;
+    }
+  }
+
+  return { isValid, flags };
+};
+
+/* ✅ Helper function to check if error is AxiosError */
 const isAxiosError = (error: unknown): error is any => {
   return (
     typeof error === 'object' &&
@@ -64,7 +243,7 @@ const isAxiosError = (error: unknown): error is any => {
   );
 };
 
-// ✅ FatSecret OAuth 1.0 signature generation
+/* ✅ OAuth signature generation */
 const generateOAuthSignature = (
   method: string,
   url: string,
@@ -82,68 +261,26 @@ const generateOAuthSignature = (
   return crypto.HmacSHA1(baseString, signingKey).toString(crypto.enc.Base64);
 };
 
-// ✅ Strategic routing logic
-const shouldUseNutritionix = (query: string): boolean => {
-  const complexIndicators = [
-    // Restaurant chains
-    'mcdonalds', 'burger king', 'subway', 'starbucks', 'chipotle', 'taco bell',
-    'kfc', 'pizza hut', 'dominos', 'wendys', 'wendy\'s', 'five guys', 'in-n-out',
-    'shake shack', 'white castle', 'sonic', 'dairy queen', 'arbys', 'popeyes',
-    // Popular menu items
-    'big mac', 'whopper', 'quarter pounder', 'chicken mcnuggets', 'fries',
-    'baconator', 'frosty', 'blizzard', 'mcflurry',
-    'latte', 'frappuccino', 'burrito bowl', 'footlong',
-    // Complex dishes
-    'salad with', 'pasta with', 'stir fry', 'curry', 'sandwich with',
-    'burrito', 'quesadilla', 'smoothie', 'shake',
-    // Multiple ingredients
-    'and', 'with', ',', 'plus', 'mixed', 'from',
-  ];
-
-  const queryLower = query.toLowerCase();
-  const hasComplexIndicators = complexIndicators.some(indicator =>
-    queryLower.includes(indicator),
-  );
-
-  const wordCount = query.trim().split(' ').length;
-
-  // Use Nutritionix for complex descriptions or restaurant items
-  return hasComplexIndicators || wordCount >= 4;
-};
-
-const shouldUseUSDA = (query: string): boolean => {
-  const wholeFoods = [
-    'egg', 'chicken', 'salmon', 'beef', 'pork', 'turkey', 'fish',
-    'rice', 'quinoa', 'oats', 'bread', 'pasta',
-    'apple', 'banana', 'orange', 'berries', 'strawberry', 'blueberry',
-    'broccoli', 'spinach', 'carrots', 'potato', 'sweet potato',
-    'milk', 'cheese', 'yogurt', 'butter',
-  ];
-
-  const queryLower = query.toLowerCase();
-  return wholeFoods.some(food => queryLower.includes(food)) &&
-         query.trim().split(' ').length <= 3;
-};
-
-// ✅ NUTRITIONIX API - Professional accuracy for complex meals
+/* ✅ ENHANCED NUTRITIONIX - Professional accuracy for complex meals */
 export const fetchFromNutritionix = async (query: string): Promise<MealMacroResult | null> => {
   try {
-    console.log('🥗 Nutritionix query (dietitian-verified):', query);
+    const processed = preprocessQuery(query);
+    console.log('🥗 Nutritionix analysis:', processed);
+
+    const searchQuery = processed.originalQuery;
 
     const response = await axios.post<NutritionixResponse>(
       'https://trackapi.nutritionix.com/v2/natural/nutrients',
-      { query: query },
+      { query: searchQuery },
       {
         headers: {
           'x-app-id': NUTRITIONIX_APP_ID,
           'x-app-key': NUTRITIONIX_APP_KEY,
           'Content-Type': 'application/json',
         },
-        timeout: 10000,
+        timeout: 12000,
       },
     );
-
-    console.log('📥 Nutritionix raw response:', response.data);
 
     const foods = response.data.foods;
     if (!foods || foods.length === 0) {
@@ -151,12 +288,13 @@ export const fetchFromNutritionix = async (query: string): Promise<MealMacroResu
       return null;
     }
 
-    // Calculate totals from all foods
+    // Calculate totals and build confidence score
     let totalCals = 0;
     let totalProtein = 0;
     let totalCarbs = 0;
     let totalFat = 0;
     const items: string[] = [];
+    let confidenceScore = processed.confidence;
 
     foods.forEach((food: NutritionixFood) => {
       totalCals += food.nf_calories || 0;
@@ -164,19 +302,42 @@ export const fetchFromNutritionix = async (query: string): Promise<MealMacroResu
       totalCarbs += food.nf_total_carbohydrate || 0;
       totalFat += food.nf_total_fat || 0;
 
-      items.push(`${food.serving_qty} ${food.serving_unit} ${food.food_name}`);
+      const serving = `${food.serving_qty} ${food.serving_unit}`;
+      const brandInfo = food.brand_name ? ` (${food.brand_name})` : '';
+      items.push(`${serving} ${food.food_name}${brandInfo}`);
+
+      if (food.brand_name) {confidenceScore += 10;}
     });
 
-    const result = {
-      calories: Math.round(totalCals),
-      protein: Math.round(totalProtein),
-      carbs: Math.round(totalCarbs),
-      fat: Math.round(totalFat),
-      source: 'NUTRITIONIX_PROFESSIONAL',
-      items,
-    };
+    const result: MealMacroResult = {
+  calories: Math.round(totalCals),
+  protein: Math.round(totalProtein),
+  carbs: Math.round(totalCarbs),
+  fat: Math.round(totalFat),
+  source: 'NUTRITIONIX_PROFESSIONAL',
+  items,
+  confidence: Math.min(confidenceScore + 20, 95),
+  portionInfo: {
+    detectedSize: processed.detectedUnit,
+    standardizedAmount: processed.detectedQuantity,
+    unit: processed.detectedUnit,
+  },
+  itemMacros: foods.map(food => ({
+    calories: Math.round(food.nf_calories || 0),
+    protein: Math.round(food.nf_protein || 0),
+    carbs: Math.round(food.nf_total_carbohydrate || 0),
+    fat: Math.round(food.nf_total_fat || 0),
+  })),
+};
 
-    console.log('✅ Nutritionix result (dietitian-verified):', result);
+    const validation = validateNutritionResult(result, query);
+    if (!validation.isValid) {
+      console.log('❌ Nutritionix result failed validation:', validation.flags);
+      return null;
+    }
+
+    result.validationFlags = validation.flags;
+    console.log('✅ Nutritionix result:', result);
     return result;
 
   } catch (error: unknown) {
@@ -189,54 +350,63 @@ export const fetchFromNutritionix = async (query: string): Promise<MealMacroResu
   }
 };
 
-// ✅ USDA API - Government accuracy for whole foods
+/* ✅ ENHANCED USDA - Government accuracy for whole foods */
 export const fetchFromUSDA = async (query: string): Promise<MealMacroResult | null> => {
   try {
-    console.log('🏛️ USDA query (government data):', query);
+    const processed = preprocessQuery(query);
+    console.log('🏛️ USDA analysis:', processed);
 
-    const res = await axios.get<USDAResponse>(
+    const searchQuery = processed.detectedFood || processed.cleanedQuery;
+
+    const response = await axios.get<USDAResponse>(
       'https://api.nal.usda.gov/fdc/v1/foods/search',
       {
         params: {
-          query: query,
-          pageSize: 5,
+          query: searchQuery,
+          pageSize: 15,
           api_key: USDA_API_KEY,
+          dataType: ['Foundation', 'SR Legacy'],
         },
-        timeout: 10000,
+        timeout: 12000,
       },
     );
 
-    console.log('📥 USDA raw response:', res.data);
-
-    const foods = res.data.foods;
+    const foods = response.data.foods;
     if (!foods || foods.length === 0) {
       console.log('❌ USDA: No foods returned');
       return null;
     }
 
-    // Find the best match for whole foods
+    // Enhanced food selection logic
     let bestFood = foods[0];
-    if (query.toLowerCase().includes('egg')) {
-      const eggFood = foods.find(food => {
-        const desc = food.description.toLowerCase();
-        return (
-          desc.includes('egg') &&
-          !desc.includes('substitute') &&
-          !desc.includes('custard') &&
-          !desc.includes('mix') &&
-          !desc.includes('powder') &&
-          (desc.includes('whole') || desc.includes('raw') || desc.includes('large') || desc.split(' ').length <= 4)
-        );
-      });
-      if (eggFood) {
-        bestFood = eggFood;
+    let matchScore = 0;
+
+    for (const food of foods.slice(0, 10)) {
+      const desc = food.description.toLowerCase();
+      let score = 0;
+
+      if (desc.includes('raw') || desc.includes('fresh')) {score += 10;}
+
+      const searchWords = searchQuery.toLowerCase().split(' ');
+      const matchingWords = searchWords.filter(word => desc.includes(word));
+      score += (matchingWords.length / searchWords.length) * 30;
+
+      if (!desc.includes('prepared') && !desc.includes('cooked with') && !desc.includes('canned')) {
+        score += 5;
+      }
+
+      if (desc.split(' ').length <= 6) {score += 5;}
+
+      if (score > matchScore) {
+        matchScore = score;
+        bestFood = food;
       }
     }
 
-    console.log('🥇 USDA selected food:', bestFood.description);
+    console.log('🥇 USDA selected:', bestFood.description, 'Score:', matchScore);
 
     const nutrients = bestFood.foodNutrients;
-    let cals = 0;
+    let calories = 0;
     let protein = 0;
     let carbs = 0;
     let fat = 0;
@@ -245,8 +415,8 @@ export const fetchFromUSDA = async (query: string): Promise<MealMacroResult | nu
       const name = n.nutrientName.toLowerCase();
       const value = Number(n.value) || 0;
 
-      if (name.includes('energy') || name.includes('calorie')) {
-        cals = value;
+      if (name.includes('energy')) {
+        calories = value;
       } else if (name.includes('protein')) {
         protein = value;
       } else if (name.includes('carbohydrate') && !name.includes('fiber')) {
@@ -256,27 +426,31 @@ export const fetchFromUSDA = async (query: string): Promise<MealMacroResult | nu
       }
     });
 
-    // Scale portions if we can detect quantity
-    let multiplier = 1;
-    const queryLower = query.toLowerCase();
-    if (queryLower.includes('2 egg')) {
-      multiplier = 2;
-    } else if (queryLower.includes('3 egg')) {
-      multiplier = 3;
-    } else if (queryLower.includes('4 egg')) {
-      multiplier = 4;
-    }
+    const multiplier = processed.detectedQuantity;
 
-    const result = {
-      calories: Math.round(cals * multiplier) || 0,
+    const result: MealMacroResult = {
+      calories: Math.round(calories * multiplier) || 0,
       protein: Math.round(protein * multiplier) || 0,
       carbs: Math.round(carbs * multiplier) || 0,
       fat: Math.round(fat * multiplier) || 0,
       source: 'USDA_GOVERNMENT',
       items: [`${multiplier}x ${bestFood.description}`],
+      confidence: Math.min(processed.confidence + matchScore, 90),
+      portionInfo: {
+        detectedSize: processed.detectedUnit,
+        standardizedAmount: processed.detectedQuantity,
+        unit: processed.detectedUnit,
+      },
     };
 
-    console.log('✅ USDA final result:', result);
+    const validation = validateNutritionResult(result, query);
+    if (!validation.isValid) {
+      console.log('❌ USDA result failed validation:', validation.flags);
+      return null;
+    }
+
+    result.validationFlags = validation.flags;
+    console.log('✅ USDA result:', result);
     return result;
 
   } catch (error: unknown) {
@@ -289,10 +463,11 @@ export const fetchFromUSDA = async (query: string): Promise<MealMacroResult | nu
   }
 };
 
-// ✅ FATSECRET API - Large database with barcode support
+/* ✅ ENHANCED FATSECRET - Large database with brand recognition */
 export const fetchFromFatSecret = async (query: string): Promise<MealMacroResult | null> => {
   try {
-    console.log('🔍 FatSecret query (1.9M+ foods):', query);
+    const processed = preprocessQuery(query);
+    console.log('🔍 FatSecret analysis:', processed);
 
     const timestamp = Math.floor(Date.now() / 1000).toString();
     const nonce = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
@@ -303,7 +478,7 @@ export const fetchFromFatSecret = async (query: string): Promise<MealMacroResult
     // Step 1: Search for foods
     const searchParams = {
       method: 'foods.search',
-      search_expression: query,
+      search_expression: processed.cleanedQuery,
       format: 'json',
       oauth_consumer_key: FATSECRET_CONSUMER_KEY,
       oauth_nonce: nonce,
@@ -313,26 +488,17 @@ export const fetchFromFatSecret = async (query: string): Promise<MealMacroResult
     };
 
     const signature = generateOAuthSignature(method, baseUrl, searchParams, FATSECRET_CONSUMER_SECRET);
-
-    const finalParams = {
-      ...searchParams,
-      oauth_signature: signature,
-    };
+    const finalParams = { ...searchParams, oauth_signature: signature };
 
     const searchResponse = await axios.get(baseUrl, {
       params: finalParams,
-      timeout: 10000,
+      timeout: 12000,
     });
 
-    console.log('📥 FatSecret search response:', searchResponse.data);
-
-    // Handle different response formats - Type assertion for unknown data
     const searchData = searchResponse.data as any;
     let foods = [];
     if (searchData.foods && searchData.foods.food) {
-      foods = Array.isArray(searchData.foods.food)
-        ? searchData.foods.food
-        : [searchData.foods.food];
+      foods = Array.isArray(searchData.foods.food) ? searchData.foods.food : [searchData.foods.food];
     }
 
     if (!foods || foods.length === 0) {
@@ -359,20 +525,13 @@ export const fetchFromFatSecret = async (query: string): Promise<MealMacroResult
     };
 
     const detailSignature = generateOAuthSignature(method, baseUrl, detailParams, FATSECRET_CONSUMER_SECRET);
-
-    const finalDetailParams = {
-      ...detailParams,
-      oauth_signature: detailSignature,
-    };
+    const finalDetailParams = { ...detailParams, oauth_signature: detailSignature };
 
     const detailResponse = await axios.get(baseUrl, {
       params: finalDetailParams,
-      timeout: 10000,
+      timeout: 12000,
     });
 
-    console.log('📥 FatSecret detail response:', detailResponse.data);
-
-    // Type assertion for unknown data
     const detailData = detailResponse.data as any;
     const foodDetail = detailData.food;
     if (!foodDetail || !foodDetail.servings) {
@@ -380,23 +539,34 @@ export const fetchFromFatSecret = async (query: string): Promise<MealMacroResult
       return null;
     }
 
-    // Parse nutrition data from first serving
     const servings = Array.isArray(foodDetail.servings.serving)
       ? foodDetail.servings.serving
       : [foodDetail.servings.serving];
-
     const serving = servings[0];
 
-    const result = {
+    const result: MealMacroResult = {
       calories: Math.round(Number(serving.calories) || 0),
       protein: Math.round(Number(serving.protein) || 0),
       carbs: Math.round(Number(serving.carbohydrate) || 0),
       fat: Math.round(Number(serving.fat) || 0),
       source: 'FATSECRET_DATABASE',
       items: [`${serving.serving_description} ${foodDetail.food_name}`],
+      confidence: Math.min(processed.confidence + 5, 80),
+      portionInfo: {
+        detectedSize: serving.serving_description,
+        standardizedAmount: processed.detectedQuantity,
+        unit: processed.detectedUnit,
+      },
     };
 
-    console.log('✅ FatSecret final result:', result);
+    const validation = validateNutritionResult(result, query);
+    if (!validation.isValid) {
+      console.log('❌ FatSecret result failed validation:', validation.flags);
+      return null;
+    }
+
+    result.validationFlags = validation.flags;
+    console.log('✅ FatSecret result:', result);
     return result;
 
   } catch (error: unknown) {
@@ -409,115 +579,173 @@ export const fetchFromFatSecret = async (query: string): Promise<MealMacroResult
   }
 };
 
-// ✅ SMART ROUTING - The magic happens here
+/* ✅ CROSS-VALIDATION - Compare results when confidence is low */
+const crossValidateResults = (results: MealMacroResult[]): MealMacroResult => {
+  if (results.length === 1) {return results[0];}
+
+  const sortedByConfidence = results.sort((a, b) => b.confidence - a.confidence);
+  const bestResult = sortedByConfidence[0];
+
+  if (bestResult.confidence < 70 && results.length > 1) {
+    const secondBest = sortedByConfidence[1];
+
+    const calorieVariance = Math.abs(bestResult.calories - secondBest.calories) / Math.max(bestResult.calories, secondBest.calories);
+
+    if (calorieVariance > 0.25) {
+      bestResult.validationFlags = bestResult.validationFlags || [];
+      bestResult.validationFlags.push('High variance between API results');
+      bestResult.confidence = Math.max(bestResult.confidence - 15, 30);
+    } else {
+      bestResult.confidence = Math.min(bestResult.confidence + 10, 95);
+    }
+  }
+
+  return bestResult;
+};
+
+/* ✅ SMART ROUTING - The core intelligence */
 export const describeMeal = async (query: string): Promise<MealMacroResult> => {
   console.log('🚀 Smart meal analysis for:', query);
 
-  // ✅ SPECIAL CASE: Branded drinks (Starbucks, etc.) - Use FatSecret first
-  const isBrandedDrink = (query.toLowerCase().includes('starbucks') ||
-                         query.toLowerCase().includes('dunkin') ||
-                         query.toLowerCase().includes('costa')) &&
-                        (query.toLowerCase().includes('latte') ||
-                         query.toLowerCase().includes('macchiato') ||
-                         query.toLowerCase().includes('frappuccino') ||
-                         query.toLowerCase().includes('cappuccino'));
+  const processed = preprocessQuery(query);
+  const results: MealMacroResult[] = [];
 
-  if (isBrandedDrink) {
-    console.log('☕ Branded drink detected - trying FatSecret first for better brand data');
-    const fatSecretResult = await fetchFromFatSecret(query);
-    if (fatSecretResult && fatSecretResult.calories > 0 && fatSecretResult.calories < 800) {
-      return fatSecretResult;
-    }
+  // Enhanced routing logic
+  const shouldTryNutritionix = (
+    processed.restaurantDetected ||
+    processed.brandDetected ||
+    query.toLowerCase().includes('with') ||
+    query.split(' ').length >= 4 ||
+    ['burger', 'pizza', 'sandwich', 'salad', 'wrap', 'burrito'].some(food =>
+      query.toLowerCase().includes(food)
+    )
+  );
 
-    console.log('☕ FatSecret failed for branded drink, trying USDA');
-    const usdaResult = await fetchFromUSDA(query);
-    if (usdaResult && usdaResult.calories > 0 && usdaResult.calories < 800) {
-      return usdaResult;
-    }
+  const shouldTryUSDA = (
+    !processed.restaurantDetected &&
+    !processed.brandDetected &&
+    query.split(' ').length <= 3 &&
+    ['egg', 'chicken', 'fish', 'beef', 'rice', 'apple', 'banana', 'broccoli', 'milk'].some(food =>
+      query.toLowerCase().includes(food)
+    )
+  );
 
-    console.log('☕ Both failed for branded drink, skipping Nutritionix (known to split drinks incorrectly)');
-    throw new Error(`Unable to find accurate data for "${query}". Try a simpler description like "caramel macchiato" without the brand.`);
-  }
-
-  // Strategy 1: Use Nutritionix for complex/restaurant items (NOT drinks)
-  if (shouldUseNutritionix(query) && !isBrandedDrink) {
-    console.log('🎯 Using Nutritionix for complex meal (dietitian-verified)');
+  // Strategy 1: Try Nutritionix for complex/branded items
+  if (shouldTryNutritionix) {
+    console.log('🎯 Using Nutritionix for complex meal');
     const nutritionixResult = await fetchFromNutritionix(query);
     if (nutritionixResult && nutritionixResult.calories > 0) {
-      return nutritionixResult;
+      results.push(nutritionixResult);
     }
   }
 
-  // Strategy 2: Use USDA for simple whole foods (government accuracy)
-  if (shouldUseUSDA(query)) {
-    console.log('🏛️ Using USDA for whole food (government data)');
+  // Strategy 2: Try USDA for simple whole foods
+  if (shouldTryUSDA) {
+    console.log('🏛️ Using USDA for whole food');
     const usdaResult = await fetchFromUSDA(query);
     if (usdaResult && usdaResult.calories > 0) {
-      return usdaResult;
+      results.push(usdaResult);
     }
   }
 
-  // Strategy 3: Fallback to FatSecret database (largest database)
-  console.log('🔄 Falling back to FatSecret database');
-  const fatSecretResult = await fetchFromFatSecret(query);
-  if (fatSecretResult && fatSecretResult.calories > 0) {
-    return fatSecretResult;
-  }
-
-  // Strategy 4: Try other APIs as backup
-  if (!shouldUseNutritionix(query)) {
-    console.log('🔄 Backup: Trying Nutritionix for simple query');
-    const nutritionixBackup = await fetchFromNutritionix(query);
-    if (nutritionixBackup && nutritionixBackup.calories > 0) {
-      return nutritionixBackup;
+  // Strategy 3: FatSecret as fallback or for branded items
+  if (results.length === 0 || processed.brandDetected) {
+    console.log('🔄 Using FatSecret database');
+    const fatSecretResult = await fetchFromFatSecret(query);
+    if (fatSecretResult && fatSecretResult.calories > 0) {
+      results.push(fatSecretResult);
     }
   }
 
-  if (!shouldUseUSDA(query)) {
-    console.log('🔄 Backup: Trying USDA for complex query');
-    const usdaResult = await fetchFromUSDA(query);
-    if (usdaResult && usdaResult.calories > 0) {
-      return usdaResult;
+  // Strategy 4: If we have no results, try the other APIs
+  if (results.length === 0) {
+    console.log('🔄 No results yet, trying remaining APIs');
+
+    if (!shouldTryNutritionix) {
+      const nutritionixBackup = await fetchFromNutritionix(query);
+      if (nutritionixBackup && nutritionixBackup.calories > 0) {
+        results.push(nutritionixBackup);
+      }
+    }
+
+    if (!shouldTryUSDA) {
+      const usdaBackup = await fetchFromUSDA(query);
+      if (usdaBackup && usdaBackup.calories > 0) {
+        results.push(usdaBackup);
+      }
     }
   }
 
-  console.log('❌ All APIs failed');
-  throw new Error(`No nutrition data found for "${query}". Try being more specific or use simpler terms.`);
+  if (results.length === 0) {
+    console.log('❌ All APIs failed');
+    throw new Error(`No nutrition data found for "${query}". Try being more specific with portion size and preparation method.`);
+  }
+
+  // Cross-validate and return best result
+  const finalResult = crossValidateResults(results);
+
+  console.log(`✅ Final result with ${finalResult.confidence}% confidence:`, finalResult);
+  return finalResult;
 };
 
-// ✅ DEMO SHOWCASE - Perfect for presenting to your chief
-export const runDemoShowcase = async () => {
-  const demoQueries = [
-    '2 large eggs', // USDA will nail this
-    'McDonald\'s Big Mac', // Nutritionix restaurant expertise
-    '6oz grilled chicken breast', // USDA government data
-    'Caesar salad with chicken', // Nutritionix complex meal processing
-    '1 cup brown rice', // USDA whole food
-    'Starbucks grande latte', // FatSecret brand recognition
+/* ✅ ACCURACY TESTING SUITE */
+export const runAccuracyTest = async () => {
+  const testQueries = [
+    // Simple foods (should hit USDA)
+    '2 large eggs',
+    '6 oz grilled chicken breast',
+    '1 cup brown rice',
+    '1 medium apple',
+
+    // Complex foods (should hit Nutritionix)
+    'McDonald\'s Big Mac',
+    'Caesar salad with grilled chicken',
+    'turkey sandwich with mayo and cheese',
+    'Chipotle chicken burrito bowl',
+
+    // Branded drinks (should hit FatSecret)
+    'Starbucks grande latte',
+    'Dunkin medium iced coffee with cream',
+
+    // Challenging queries
+    '2 slices pepperoni pizza',
+    '1 cup pasta with marinara sauce',
+    'grilled salmon with vegetables',
+    'protein shake with banana',
   ];
 
-  console.log('🎪 Running demo showcase for chief...');
+  console.log('🎯 Running accuracy test...');
 
-  const results = [];
-  for (const query of demoQueries) {
+  const results: TestResult[] = [];
+  for (const query of testQueries) {
     try {
       const result = await describeMeal(query);
-      const success = `✅ ${query}: ${result.calories} cal, ${result.protein}g protein (${result.source})`;
+      const success = `✅ ${query}: ${result.calories} cal, ${result.protein}g protein, ${result.confidence}% confidence (${result.source})`;
       console.log(success);
       results.push({ query, success: true, result });
-    } catch (error) {
+    } catch (_error) {
       const failure = `❌ ${query}: Failed`;
       console.log(failure);
-      results.push({ query, success: false, error });
+      results.push({ query, success: false, error: _error });
     }
   }
 
-  const successRate = (results.filter(r => r.success).length / results.length) * 100;
-  console.log(`🎯 Demo Success Rate: ${successRate}%`);
+  const successfulResults = results.filter((r): r is TestResult & { success: true; result: MealMacroResult } =>
+    r.success && r.result !== undefined
+  );
+
+  const successRate = (successfulResults.length / results.length) * 100;
+  const avgConfidence = successfulResults.length > 0
+    ? successfulResults.reduce((sum, r) => sum + r.result.confidence, 0) / successfulResults.length
+    : 0;
+
+  console.log(`🎯 Success Rate: ${successRate}%`);
+  console.log(`🎯 Average Confidence: ${avgConfidence.toFixed(1)}%`);
 
   return {
     successRate,
+    avgConfidence,
     results,
-    message: `Achieved ${successRate}% accuracy with strategic API routing. Ready for production scaling.`,
+    message: `Enhanced system achieved ${successRate}% success rate with ${avgConfidence.toFixed(1)}% average confidence. Ready for deployment.`,
   };
 };

@@ -11,8 +11,15 @@ export interface MealCardProps {
   carbs: number;
   fat: number;
   photoUri?: string | null;
+  foodItems?: any[];
+  originalDescription?: string; // NEW
   onEdit?: (meal: MealCardProps) => void;
+  /** ✅ NEW: analysis meta for confidence chip */
+  lastAnalysisMeta?: {
+    confidence?: number | null;
+  };
 }
+
 
 const MealCard: React.FC<MealCardProps> = ({
   id,
@@ -22,13 +29,31 @@ const MealCard: React.FC<MealCardProps> = ({
   carbs,
   fat,
   photoUri,
+  foodItems,
+  originalDescription,
+  lastAnalysisMeta,
   onEdit,
 }) => {
   const handleEdit = () => {
     if (onEdit) {
-      onEdit({ id, name, calories, protein, carbs, fat, photoUri });
+      onEdit({ id, name, calories, protein, carbs, fat, photoUri, foodItems, originalDescription, lastAnalysisMeta });
     }
   };
+
+  const totals = foodItems?.length
+    ? foodItems.reduce(
+        (acc, item) => {
+          const multiplier = item.currentQuantity / item.baseQuantity;
+          return {
+            calories: acc.calories + Math.round(item.baseCalories * multiplier),
+            protein: acc.protein + Math.round(item.baseProtein * multiplier),
+            carbs: acc.carbs + Math.round(item.baseCarbs * multiplier),
+            fat: acc.fat + Math.round(item.baseFat * multiplier),
+          };
+        },
+        { calories: 0, protein: 0, carbs: 0, fat: 0 }
+      )
+    : { calories, protein, carbs, fat };
 
   return (
     <Pressable style={styles.mealCard} onPress={handleEdit}>
@@ -45,13 +70,28 @@ const MealCard: React.FC<MealCardProps> = ({
         {/* Meal Info */}
         <View style={styles.mealInfo}>
           <Text style={styles.mealName}>{name}</Text>
-          <Text style={styles.mealCalories}>{calories} kcal</Text>
-          <View style={styles.mealMacroRow}>
-            <Text style={[styles.mealMacro, styles.proteinColor]}>P {protein}g</Text>
-            <Text style={[styles.mealMacro, styles.carbColor]}>C {carbs}g</Text>
-            <Text style={[styles.mealMacro, styles.fatColor]}>F {fat}g</Text>
-          </View>
-        </View>
+
+          {!!originalDescription && (
+            <Text style={styles.mealSubtitle} numberOfLines={1}>
+              {originalDescription}
+            </Text>
+          )}
+
+          {lastAnalysisMeta?.confidence != null && (
+  <View style={styles.confidencePill}>
+    <Text style={styles.confidenceText}>
+      confidence ~{Number(lastAnalysisMeta.confidence).toFixed(2)}
+    </Text>
+  </View>
+)}
+
+          <Text style={styles.mealCalories}>{totals.calories} kcal</Text>
+  <View style={styles.mealMacroRow}>
+    <Text style={[styles.mealMacro, styles.proteinColor]}>P {totals.protein}g</Text>
+    <Text style={[styles.mealMacro, styles.carbColor]}>C {totals.carbs}g</Text>
+    <Text style={[styles.mealMacro, styles.fatColor]}>F {totals.fat}g</Text>
+  </View>
+</View>
 
         {/* ✅ Edit Icon */}
         {onEdit && (
@@ -79,7 +119,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  // ✅ NEW: Photo thumbnail styles
   mealPhoto: {
     width: 60,
     height: 60,
@@ -98,35 +137,26 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#444',
   },
-  mealInfo: {
-    flex: 1,
-  },
-  mealName: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  mealCalories: {
-    color: '#FFD54F',
-    marginBottom: 6,
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  mealMacroRow: {
-    flexDirection: 'row',
-  },
-  mealMacro: {
-    marginRight: 12,
-    fontWeight: '500',
-    fontSize: 13,
-  },
+  mealInfo: { flex: 1 },
+  mealName: { color: '#fff', fontSize: 16, fontWeight: '600', marginBottom: 2 },
+  mealSubtitle: { color: '#bbb', fontSize: 12, marginBottom: 4 },
+  mealCalories: { color: '#FFD54F', marginBottom: 6, fontSize: 14, fontWeight: '500' },
+  mealMacroRow: { flexDirection: 'row' },
+  mealMacro: { marginRight: 12, fontWeight: '500', fontSize: 13 },
   proteinColor: { color: '#4FC3F7' },
   carbColor: { color: '#81C784' },
   fatColor: { color: '#F06292' },
-  // ✅ NEW: Edit button styles
-  editButton: {
-    padding: 8,
-    marginLeft: 8,
-  },
+  editButton: { padding: 8, marginLeft: 8 },
+  confidencePill: {
+  alignSelf: 'flex-start',
+  paddingHorizontal: 8,
+  paddingVertical: 4,
+  borderRadius: 999,
+  backgroundColor: '#1f2937',
+  marginBottom: 6,
+},
+confidenceText: {
+  color: '#9CA3AF',
+  fontSize: 12,
+},
 });

@@ -1,5 +1,5 @@
 /* eslint-disable no-trailing-spaces */
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -270,6 +270,25 @@ const [selectedMinute, setSelectedMinute] = useState(new Date().getMinutes());
     return mealTypes[5]; // Dessert/Late night
   };
 
+  // ✅ NEW: Reset modal state when opened
+  const resetModal = (): void => {
+    setSelectedMealType(null);
+    setSelectedDate(format(new Date(), 'yyyy-MM-dd'));
+    setSelectedTime(format(new Date(), 'HH:mm'));
+    setSelectedHour(new Date().getHours());
+    setSelectedMinute(new Date().getMinutes());
+    setIsSelectingMinutes(false);
+    setShowCalendar(false);
+    setShowTimePicker(false);
+  };
+
+  // ✅ NEW: Reset modal when it opens
+  useEffect(() => {
+    if (visible) {
+      resetModal();
+    }
+  }, [visible]);
+
   const handleMethodSelect = (methodId: string): void => {
     const mealType = selectedMealType || getSuggestedMealType();
 
@@ -296,18 +315,13 @@ const [selectedMinute, setSelectedMinute] = useState(new Date().getMinutes());
     }, 300);
   };
 
-  const resetModal = (): void => {
-    setSelectedMealType(null);
-    setSelectedTime(format(new Date(), 'HH:mm'));
-    setSelectedHour(new Date().getHours());
-    setSelectedMinute(new Date().getMinutes());
-    setIsSelectingMinutes(false);
-  };
-
   const handleClose = (): void => {
     resetModal();
     onClose();
   };
+
+  // ✅ NEW: Get auto-selected meal type for display
+  const autoSelected = !selectedMealType ? getSuggestedMealType() : null;
 
   return (
     <Modal visible={visible} transparent animationType="slide">
@@ -351,6 +365,13 @@ const [selectedMinute, setSelectedMinute] = useState(new Date().getMinutes());
                   </Pressable>
                 ))}
               </ScrollView>
+
+              {/* ✅ NEW: Auto-selection hint */}
+              {autoSelected && !selectedMealType && (
+                <Text style={styles.autoHint}>
+                  Auto-selected: {autoSelected.label} {autoSelected.emoji}
+                </Text>
+              )}
             </View>
 
             {/* Enhanced Time Section */}
@@ -631,6 +652,14 @@ const styles = StyleSheet.create({
   selectedMealTypeText: {
     color: '#000',
     fontWeight: '600',
+  },
+  // ✅ NEW: Auto-selection hint
+  autoHint: {
+    fontSize: 12,
+    color: '#666',
+    textAlign: 'center',
+    marginTop: 8,
+    fontStyle: 'italic',
   },
 
   // Time Section

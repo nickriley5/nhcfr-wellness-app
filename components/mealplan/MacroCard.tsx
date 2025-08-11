@@ -17,9 +17,22 @@ const MacroCard: React.FC<MacroCardProps> = ({ label, logged, target, unit, vari
     calories: styles.calorieColor,
   }[variant];
 
+  const textColor = {
+    protein: '#4FC3F7',
+    carb: '#81C784',
+    fat: '#F06292',
+    calories: '#FFD54F',
+  }[variant];
+
   const [flipped, setFlipped] = useState(false);
   const fadeAnim = useState(new Animated.Value(1))[0];
   const remaining = Math.max(0, target - logged);
+  const overAmount = logged > target ? logged - target : 0; // ✅ Calculate how much over
+
+  // ✅ Check if user exceeded their target
+  const isOverTarget = logged > target;
+  const displayTextColor = isOverTarget ? '#F06292' : textColor; // Red if over target
+  const remainingTextColor = remaining > 0 ? textColor : '#F06292';
 
   const toggleFlip = () => {
     Animated.sequence([
@@ -33,19 +46,31 @@ const MacroCard: React.FC<MacroCardProps> = ({ label, logged, target, unit, vari
       <Animated.View style={[{ opacity: fadeAnim }, styles.animatedContainer]}>
         {!flipped ? (
           <>
-            <Text style={styles.macroValue}>
-              {Math.min(logged, target)} / {target}
+            {/* ✅ FIXED: Show actual logged amount, not capped at target */}
+            <Text style={[styles.macroValue, { color: displayTextColor }]}>
+              {logged} / {target}
               {variant === 'calories' ? '' : ` ${unit}`}
             </Text>
             <Text style={styles.macroLabel}>{label}</Text>
+            {/* ✅ Show over/under indicator */}
+            {isOverTarget && (
+              <Text style={styles.overTargetText}>
+                +{overAmount}{variant === 'calories' ? '' : unit} over
+              </Text>
+            )}
           </>
         ) : (
           <>
-            <Text style={styles.macroValue}>
-              {remaining}
+            <Text style={[styles.macroValue, { color: remainingTextColor }]}>
+              {isOverTarget ? overAmount : remaining}
               {variant === 'calories' ? '' : ` ${unit}`}
             </Text>
-            <Text style={styles.macroLabel}>Remaining</Text>
+            <Text style={styles.macroLabel}>
+              {isOverTarget
+                ? `${overAmount}${variant === 'calories' ? '' : unit} Over`
+                : 'Remaining'
+              }
+            </Text>
           </>
         )}
       </Animated.View>
@@ -80,8 +105,16 @@ const styles = StyleSheet.create({
     marginTop: 4,
     textAlign: 'center',
   },
+  // ✅ NEW: Style for over-target indicator
+  overTargetText: {
+    color: '#F06292',
+    fontSize: 10,
+    marginTop: 2,
+    textAlign: 'center',
+    fontWeight: '500',
+  },
   calorieColor: { borderColor: '#FFD54F' },
-  proteinColor: { borderColor: '#4FC3F7', color: '#4FC3F7' },
-  carbColor: { borderColor: '#81C784', color: '#81C784' },
-  fatColor: { borderColor: '#F06292', color: '#F06292' },
+  proteinColor: { borderColor: '#4FC3F7'},
+  carbColor: { borderColor: '#81C784'},
+  fatColor: { borderColor: '#F06292'},
 });
