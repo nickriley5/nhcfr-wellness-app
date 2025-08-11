@@ -71,6 +71,9 @@ interface MealCardProps {
   photoUri?: string | null;
   foodItems?: FoodItem[];
   originalDescription?: string;
+  mealType?: string;       // e.g., 'breakfast' | 'snack' | 'lunch' | 'dinner' | ...
+  mealEmoji?: string;      // e.g., '🍳'
+  plannedTime?: string;    // 'HH:mm'
 }
 
 /* -------------------------- MAIN -------------------------- */
@@ -179,6 +182,9 @@ const MealPlanScreen: React.FC = () => {
           photoUri: data.photoUri || null,
           foodItems: data.foodItems || [],
           originalDescription: data.originalDescription || '',
+          mealType: data.mealType || 'unknown',
+          mealEmoji: data.mealEmoji || '🍽️',
+          plannedTime: data.plannedTime || null,
         };
       });
       setLoggedMeals(meals);
@@ -269,6 +275,31 @@ const MealPlanScreen: React.FC = () => {
   };
 
   /* ----------------- MERGE / DEDUPE HELPERS + ADAPTERS ----------------- */
+
+  const MEAL_LABELS: Record<string, string> = {
+  breakfast: 'Breakfast',
+  snack: 'Snack',
+  lunch: 'Lunch',
+  dinner: 'Dinner',
+  preworkout: 'Pre-Workout',
+  postworkout: 'Post-Workout',
+  unknown: 'Meal',
+};
+
+const prettyMealLabel = (id?: string) => MEAL_LABELS[id || 'unknown'] || 'Meal';
+
+const prettyTime = (time?: string | null) => {
+  if (!time) {return '';}
+  try {
+    const [h, m] = time.split(':').map(Number);
+    const d = new Date();
+    d.setHours(h ?? 0, m ?? 0, 0, 0);
+    return format(d, 'h:mm a');
+  } catch {
+    return time;
+  }
+};
+
 
   // Treat your existing FoodItem as the storage shape
   type StorageFoodItem = FoodItem;
@@ -619,15 +650,25 @@ const MealPlanScreen: React.FC = () => {
             <Text style={styles.subheading}>Today's Meals</Text>
 
             {loggedMeals.length === 0 ? (
-              <View style={styles.emptyMealsContainer}>
-                <Text style={styles.emptyMealsEmoji}>🍽️</Text>
-                <Text style={styles.emptyMealsText}>No meals logged yet.</Text>
-                <Text style={styles.emptyMealsSubtext}>Start tracking your nutrition to reach your goals</Text>
-                <DashboardButton text="Log Your First Meal" variant="green" onPress={() => setShowMealLoggingModal(true)} />
-              </View>
-            ) : (
-              loggedMeals.map((meal) => <MealCard key={meal.id} {...meal} onEdit={handleEditMeal} />)
-            )}
+  <View style={styles.emptyMealsContainer}>
+    <Text style={styles.emptyMealsEmoji}>🍽️</Text>
+    <Text style={styles.emptyMealsText}>No meals logged yet.</Text>
+    <Text style={styles.emptyMealsSubtext}>Start tracking your nutrition to reach your goals</Text>
+    <DashboardButton text="Log Your First Meal" variant="green" onPress={() => setShowMealLoggingModal(true)} />
+  </View>
+) : (
+  loggedMeals.map((meal) => (
+    <View key={meal.id} style={styles.mealBlock}>
+      <Text style={styles.mealMeta}>
+        {meal.mealEmoji || '🍽️'} {prettyMealLabel(meal.mealType)}
+        {meal.plannedTime ? ` • ${prettyTime(meal.plannedTime)}` : ''}
+      </Text>
+
+      <MealCard {...meal} onEdit={handleEditMeal} />
+    </View>
+  ))
+)}
+
           </>
         )}
       </ScrollView>
@@ -783,4 +824,12 @@ const styles = StyleSheet.create({
   currentDate: { color: '#fff', fontSize: 16, fontWeight: '600' },
   dateText: { color: '#fff', fontSize: 16, fontWeight: '600' },
   navButton: { flex: 1, marginHorizontal: 4 },
+  mealBlock: { marginBottom: 12 },
+mealMeta: {
+  color: '#aaa',
+  fontSize: 12,
+  marginLeft: 4,
+  marginBottom: 6,
+},
+
 });

@@ -25,7 +25,7 @@ interface QuickFood {
   protein: number;
   carbs: number;
   fat: number;
-  category: 'recent' | 'favorites' | 'quick-add';
+  category: 'recent' | 'favorites';
   lastUsed?: Date;
   timesLogged?: number;
 }
@@ -38,19 +38,17 @@ interface Props {
 }
 
 const QuickFavoritesModal: React.FC<Props> = ({ visible, onClose, onFoodLogged, mealContext }) => {
-  const [selectedCategory, setSelectedCategory] = useState<string>('recent');
+  const [selectedCategory, setSelectedCategory] = useState<'recent' | 'favorites'>('recent');
   const [loggingFood, setLoggingFood] = useState<string | null>(null);
   const [recentMeals, setRecentMeals] = useState<QuickFood[]>([]);
   const [loadingRecent, setLoadingRecent] = useState(false);
+  const [favoriteMeals, setFavoriteMeals] = useState<QuickFood[]>([]);
   const [showDescribeModal, setShowDescribeModal] = useState(false);
 
-
-  // 🔥 QUICK ADD FOODS (most commonly used)
-
   const categories = [
-  { id: 'recent', name: 'Recent', emoji: '🕒', description: 'Your last 10 logged meals' },
-  { id: 'favorites', name: 'Saved Meals', emoji: '⭐', description: 'Meals you’ve saved to reuse' },
-];
+    { id: 'recent', name: 'Recent', emoji: '🕒', description: 'Your last 10 logged meals' },
+    { id: 'favorites', name: 'Saved Meals', emoji: '⭐', description: 'Meals you’ve saved to reuse' },
+  ] as const;
 
   // Load recent meals when modal opens and recent tab is selected
   useEffect(() => {
@@ -59,18 +57,18 @@ const QuickFavoritesModal: React.FC<Props> = ({ visible, onClose, onFoodLogged, 
     }
   }, [visible, selectedCategory]);
 
+  // Load favorites when modal opens and favorites tab is selected
   useEffect(() => {
-  if (visible && selectedCategory === 'favorites') {
-    loadFavoriteMeals();
-  }
-}, [visible, selectedCategory]);
-
+    if (visible && selectedCategory === 'favorites') {
+      loadFavoriteMeals();
+    }
+  }, [visible, selectedCategory]);
 
   const loadRecentMeals = async () => {
     setLoadingRecent(true);
     try {
       const uid = auth.currentUser?.uid;
-      if (!uid) {return;}
+      if (!uid) { return; }
 
       // Get recent meals from the last 7 days
       const recent: QuickFood[] = [];
@@ -84,24 +82,24 @@ const QuickFavoritesModal: React.FC<Props> = ({ visible, onClose, onFoodLogged, 
         const snapshot = await getDocs(q);
 
         snapshot.docs.forEach((doc, index) => {
-          const data = doc.data();
+          const data = doc.data() as any;
           recent.push({
             id: `recent-${dateKey}-${index}`,
             name: data.name || 'Unnamed Meal',
-            emoji: data.mealEmoji || '🍽️', // ✅ Use stored meal emoji if available
+            emoji: data.mealEmoji || '🍽️',
             calories: data.calories || 0,
             protein: data.protein || 0,
             carbs: data.carbs || 0,
             fat: data.fat || 0,
             category: 'recent',
-            lastUsed: data.loggedAt?.toDate(),
+            lastUsed: data.loggedAt?.toDate?.() ?? undefined,
           });
         });
 
-        if (recent.length >= 10) {break;}
+        if (recent.length >= 10) { break; }
       }
 
-      setRecentMeals(recent);
+      setRecentMeals(recent.slice(0, 10));
     } catch (error) {
       console.error('Failed to load recent meals:', error);
       Toast.show({
@@ -115,62 +113,47 @@ const QuickFavoritesModal: React.FC<Props> = ({ visible, onClose, onFoodLogged, 
     }
   };
 
-  const [favoriteMeals, setFavoriteMeals] = useState<QuickFood[]>([]);
+  const loadFavoriteMeals = async () => {
+    try {
+      const uid = auth.currentUser?.uid;
+      if (!uid) { return; }
 
-  const getCurrentFoods = (): QuickFood[] => {
-  switch (selectedCategory) {
-    case 'recent':
-      return recentMeals;
-    case 'favorites':
-      return favoriteMeals;
-    default:
-      return [];
-  }
-};
+      const favRef = collection(db, `users/${uid}/favorites`);
+      const snapshot = await getDocs(favRef);
+      const favorites: QuickFood[] = snapshot.docs.map(doc => {
+        const data = doc.data() as any;
+        return {
+          id: doc.id,
+          name: data.name || 'Unnamed Meal',
+          emoji: data.mealEmoji || data.emoji || '🍽️',
+          calories: data.calories || 0,
+          protein: data.protein || 0,
+          carbs: data.carbs || 0,
+          fat: data.fat || 0,
+          category: 'favorites',
+        };
+      });
 
-const loadFavoriteMeals = async () => {
-  try {
-    const uid = auth.currentUser?.uid;
-    if (!uid) {return;}
+      setFavoriteMeals(favorites);
+    } catch (error) {
+      console.error('Failed to load favorites:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Load Failed',
+        text2: 'Could not load favorite meals',
+        position: 'bottom',
+      });
+    }
+  };
 
-    const favRef = collection(db, `users/${uid}/favorites`);
-    const snapshot = await getDocs(favRef);
-    const favorites = snapshot.docs.map(doc => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        name: data.name || 'Unnamed Meal',
-        emoji: data.mealEmoji || '🍽️',
-        calories: data.calories || 0,
-        protein: data.protein || 0,
-        carbs: data.carbs || 0,
-        fat: data.fat || 0,
-        category: 'favorites' as 'favorites',
-      };
-    });
-
-    setFavoriteMeals(favorites);
-  } catch (error) {
-    console.error('Failed to load favorites:', error);
-    Toast.show({
-      type: 'error',
-      text1: 'Load Failed',
-      text2: 'Could not load favorite meals',
-      position: 'bottom',
-    });
-  }
-};
-
-
-  // ✅ ENHANCED: Uses mealContext for proper date/time and meal categorization
+  // Uses mealContext for proper date/time and meal categorization
   const logQuickFood = async (food: QuickFood) => {
     setLoggingFood(food.id);
 
     try {
       const uid = auth.currentUser?.uid;
-      if (!uid) {return;}
+      if (!uid) { return; }
 
-      // ✅ Use meal context date or fallback to today
       const targetDate = mealContext?.date || format(new Date(), 'yyyy-MM-dd');
       const mealLogRef = collection(db, `users/${uid}/mealLogs/${targetDate}/meals`);
 
@@ -180,8 +163,7 @@ const loadFavoriteMeals = async () => {
         protein: food.protein,
         carbs: food.carbs,
         fat: food.fat,
-        source: `QUICK_ADD_${food.category.toUpperCase()}`,
-        // ✅ Include meal context data for better organization
+        source: food.category === 'recent' ? 'QUICK_RECENT' : 'QUICK_FAVORITE',
         mealType: mealContext?.mealType?.id || 'unknown',
         mealEmoji: mealContext?.mealType?.emoji || '🍽️',
         plannedDate: mealContext?.date || format(new Date(), 'yyyy-MM-dd'),
@@ -189,11 +171,8 @@ const loadFavoriteMeals = async () => {
         loggedAt: new Date(),
       });
 
-      if (onFoodLogged) {
-        onFoodLogged();
-      }
+      onFoodLogged?.();
 
-      // ✅ Show success toast
       Toast.show({
         type: 'success',
         text1: 'Meal Added!',
@@ -202,7 +181,6 @@ const loadFavoriteMeals = async () => {
       });
 
       console.log(`✅ Logged: ${food.name} for ${mealContext?.mealType?.label || 'meal'}`);
-
     } catch (error) {
       console.error('Failed to log food:', error);
       Toast.show({
@@ -261,25 +239,27 @@ const loadFavoriteMeals = async () => {
 
     return (
       <View style={styles.emptyState}>
-        <Text style={styles.emptyEmoji}>
-  {selectedCategory === 'recent' ? '🕒' : '⭐'}
-</Text>
+        <Text style={styles.emptyEmoji}>{selectedCategory === 'recent' ? '🕒' : '⭐'}</Text>
         <Text style={styles.emptyText}>
-          {emptyMessages[selectedCategory as keyof typeof emptyMessages]}
+          {emptyMessages[selectedCategory]}
         </Text>
       </View>
     );
   };
 
+  const getCurrentFoods = (): QuickFood[] =>
+    selectedCategory === 'recent' ? recentMeals : favoriteMeals;
+
   const currentFoods = getCurrentFoods();
 
-  // ✅ Dynamic footer text based on meal context
+  // Dynamic footer text based on meal context
   const getFooterText = () => {
     if (mealContext?.mealType) {
       const mealLabel = mealContext.mealType.label;
-      const dateText = mealContext.date === format(new Date(), 'yyyy-MM-dd')
-        ? "today's"
-        : format(new Date(mealContext.date), 'MMM d');
+      const dateText =
+        mealContext.date === format(new Date(), 'yyyy-MM-dd')
+          ? "today's"
+          : format(new Date(mealContext.date), 'MMM d');
       return `💡 Tap any food to add it to ${dateText} ${mealLabel.toLowerCase()}`;
     }
     return '💡 Tap any food to instantly add it to your log';
@@ -297,7 +277,7 @@ const loadFavoriteMeals = async () => {
             </Pressable>
           </View>
 
-          {/* ✅ Show meal context info */}
+          {/* Meal context */}
           {mealContext?.mealType && (
             <View style={styles.mealContextCard}>
               <Text style={styles.mealContextText}>
@@ -323,10 +303,12 @@ const loadFavoriteMeals = async () => {
                 onPress={() => setSelectedCategory(category.id)}
               >
                 <Text style={styles.categoryEmoji}>{category.emoji}</Text>
-                <Text style={[
-                  styles.categoryText,
-                  selectedCategory === category.id && styles.activeCategoryText,
-                ]}>
+                <Text
+                  style={[
+                    styles.categoryText,
+                    selectedCategory === category.id && styles.activeCategoryText,
+                  ]}
+                >
                   {category.name}
                 </Text>
               </Pressable>
@@ -338,76 +320,74 @@ const loadFavoriteMeals = async () => {
             {categories.find(c => c.id === selectedCategory)?.description}
           </Text>
 
-          {/* Food List */}
+          {/* Favorites: Add custom food */}
           {selectedCategory === 'favorites' && (
-  <Pressable
-    style={styles.addFoodButton}
-    onPress={() => setShowDescribeModal(true)}
-  >
-    <Ionicons name="add" size={20} color="#fff" />
-    <Text style={styles.addFoodText}>Add a Custom Food</Text>
-  </Pressable>
-)}
+            <Pressable
+              style={styles.addFoodButton}
+              onPress={() => setShowDescribeModal(true)}
+            >
+              <Ionicons name="add" size={20} color="#fff" />
+              <Text style={styles.addFoodText}>Add a Custom Food</Text>
+            </Pressable>
+          )}
 
-{currentFoods.length === 0 ? (
-  renderEmptyState()
-) : (
-  <FlatList
-    data={currentFoods}
-    renderItem={renderFoodItem}
-    keyExtractor={(item) => item.id}
-    style={styles.foodList}
-    showsVerticalScrollIndicator={false}
-  />
-)}
+          {/* Food List or Empty */}
+          {currentFoods.length === 0 ? (
+            renderEmptyState()
+          ) : (
+            <FlatList
+              data={currentFoods}
+              renderItem={renderFoodItem}
+              keyExtractor={(item) => item.id}
+              style={styles.foodList}
+              showsVerticalScrollIndicator={false}
+            />
+          )}
 
-
-          {/* ✅ Dynamic Footer Info */}
-          <Text style={styles.footerText}>
-            {getFooterText()}
-          </Text>
+          {/* Footer Tip */}
+          <Text style={styles.footerText}>{getFooterText()}</Text>
         </View>
       </View>
+
+      {/* Describe -> Save as Favorite */}
       <DescribeMealModal
-  visible={showDescribeModal}
-  onClose={() => setShowDescribeModal(false)}
-  onMealParsed={async (parsedMeal) => {
-    const uid = auth.currentUser?.uid;
-    if (!uid) {return;}
+        visible={showDescribeModal}
+        onClose={() => setShowDescribeModal(false)}
+        onMealParsed={async (parsedMeal) => {
+          const uid = auth.currentUser?.uid;
+          if (!uid) { return; }
 
-    try {
-      await addDoc(collection(db, `users/${uid}/favorites`), {
-        name: parsedMeal.name,
-        emoji: parsedMeal.emoji || '🍽️',
-        calories: parsedMeal.calories,
-        protein: parsedMeal.protein,
-        carbs: parsedMeal.carbs,
-        fat: parsedMeal.fat,
-        createdAt: new Date(),
-      });
+          try {
+            await addDoc(collection(db, `users/${uid}/favorites`), {
+              name: parsedMeal.name,
+              emoji: parsedMeal.emoji || '🍽️',
+              calories: parsedMeal.calories,
+              protein: parsedMeal.protein,
+              carbs: parsedMeal.carbs,
+              fat: parsedMeal.fat,
+              createdAt: new Date(),
+            });
 
-      Toast.show({
-        type: 'success',
-        text1: 'Meal Saved!',
-        text2: 'You can now reuse this food anytime.',
-        position: 'bottom',
-      });
+            Toast.show({
+              type: 'success',
+              text1: 'Meal Saved!',
+              text2: 'You can now reuse this food anytime.',
+              position: 'bottom',
+            });
 
-      // Reload favorites
-      loadFavoriteMeals();
-      setShowDescribeModal(false);
-    } catch (error) {
-      console.error('Error saving favorite meal:', error);
-      Toast.show({
-        type: 'error',
-        text1: 'Save Failed',
-        text2: 'Could not save meal. Try again.',
-        position: 'bottom',
-      });
-    }
-  }}
-/>
-
+            await loadFavoriteMeals();
+            setShowDescribeModal(false);
+          } catch (error) {
+            console.error('Error saving favorite meal:', error);
+            Toast.show({
+              type: 'error',
+              text1: 'Save Failed',
+              text2: 'Could not save meal. Try again.',
+              position: 'bottom',
+            });
+          }
+        }}
+      />
     </Modal>
   );
 };
@@ -439,7 +419,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#fff',
   },
-  // ✅ NEW: Meal context display
   mealContextCard: {
     backgroundColor: '#1e3a4a',
     borderRadius: 8,
@@ -552,18 +531,18 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   addFoodButton: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  backgroundColor: '#4FC3F7',
-  borderRadius: 10,
-  paddingVertical: 10,
-  paddingHorizontal: 14,
-  marginBottom: 10,
-},
-addFoodText: {
-  color: '#000',
-  fontWeight: '600',
-  marginLeft: 8,
-  fontSize: 14,
-},
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#4FC3F7',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginBottom: 10,
+  },
+  addFoodText: {
+    color: '#000',
+    fontWeight: '600',
+    marginLeft: 8,
+    fontSize: 14,
+  },
 });
