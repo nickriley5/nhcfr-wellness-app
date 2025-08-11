@@ -20,6 +20,10 @@ import { auth, db } from '../firebase';
 import { doc, getDoc, setDoc, collection, getDocs } from 'firebase/firestore';
 import Toast from '../components/Toast';
 import Video from 'react-native-video';
+import { suggestReplacements, UserContext, SlotRule, ExerciseLite } from '../utils/selectExercises';
+import { RULES } from '../utils/slotRule';
+
+
 
 // Define the shape of an exercise object
 interface Exercise {
@@ -40,7 +44,7 @@ const fallbackVideos: Record<string, string> = {
 
 const AdaptWorkoutScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const [workoutExercises, setWorkoutExercises] = useState<Exercise[]>([]);
+  const [_workoutExercises, setWorkoutExercises] = useState<Exercise[]>([]);
   const [adaptedExercises, setAdaptedExercises] = useState<Exercise[]>([]);
   const [similar, setSimilar] = useState<Exercise[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,11 +53,13 @@ const AdaptWorkoutScreen: React.FC = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [currentIndex, setCurrentIndex] = useState<number | null>(null);
   const [showAllReplacements, setShowAllReplacements] = useState(false);
+  const [ruleKey, setRuleKey] = useState<string | null>(null);
+
 
   useEffect(() => {
     const fetchWorkout = async () => {
       const uid = auth.currentUser?.uid;
-      if (!uid) return;
+      if (!uid) {return;}
 
       const docRef = doc(db, 'users', uid, 'program', 'active');
       const docSnap = await getDoc(docRef);
@@ -61,6 +67,12 @@ const AdaptWorkoutScreen: React.FC = () => {
       if (docSnap.exists()) {
         const data = docSnap.data() as any;
         const day = data.currentDay - 1;
+        // try to derive a RULES key from the day title ("Week X: Push" -> "PUSH")
+const rawTitle = data.days[day]?.title ?? '';
+const afterColon = rawTitle.includes(':') ? rawTitle.split(':')[1].trim() : rawTitle;
+const key = afterColon ? afterColon.toUpperCase().replace(/\s+/g, '_') : 'FULL_BODY';
+setRuleKey(key);
+
         const todayExercises: Exercise[] = data.days[day].exercises.map((ex: any) => ({
           ...ex,
           videoUri: fallbackVideos[ex.name] || fallbackVideos.Pushups,
@@ -75,27 +87,70 @@ const AdaptWorkoutScreen: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const fetchSimilar = async () => {
-      if (currentIndex !== null && adaptedExercises[currentIndex]) {
-        const currentExercise = adaptedExercises[currentIndex];
-        const snapshot = await getDocs(collection(db, 'exercises'));
-        const allExercises: Exercise[] = snapshot.docs.map(doc => doc.data() as Exercise);
+  const fetchSimilar = async () => {
+    if (currentIndex === null || !adaptedExercises[currentIndex]) {return;}
 
-        const similarList = allExercises.filter(ex =>
-          ex.name !== currentExercise.name &&
-          (
-            ex.focusArea === currentExercise.focusArea ||
-            (Array.isArray(ex.tags) && Array.isArray(currentExercise.tags) &&
-              ex.tags.some(tag => currentExercise.tags.includes(tag))) ||
-            ex.equipment === 'Bodyweight'
-          )
-        );
-        setSimilar(similarList);
-      }
+    // current exercise from today's plan
+    const cur = adaptedExercises[currentIndex];
+
+    // load full exercise library (Firestore) into ExerciseLite[]
+    const snapshot = await getDocs(collection(db, 'exercises'));
+    const library: ExerciseLite[] = snapshot.docs.map(d => {
+      const r = d.data() as any;
+      return {
+        id: d.id,
+        name: r.name,
+        tags: r.tags ?? [],
+        goalTags: r.goalTags ?? [],
+        patterns: r.patterns,       // ok if undefined
+        equipment: r.equipment,     // ok if undefined
+        coreSet: r.coreSet,         // ok if undefined
+        status: r.status,           // ok if undefined
+      } as ExerciseLite;
+    });
+
+    // find the matching library item by name (if present)
+    const currentLite =
+      library.find(e => e.name?.toLowerCase() === cur.name.toLowerCase()) ||
+      ({
+        id: '__current__',
+        name: cur.name,
+        tags: cur.tags ?? [],
+        patterns: undefined,
+        equipment: undefined,
+      } as ExerciseLite);
+
+    // build user context (fallbacks are safe if you don't have profile data here)
+    const userCtx: UserContext = {
+      goal: 'balanced',
+      level: 'intermediate',
+      equipment: ['db', 'kb', 'barbell', 'pullup_bar', 'rings', 'jumprope', 'medball', 'ghd', 'sled', 'none'],
     };
 
-    fetchSimilar();
-  }, [currentIndex]);
+    // pick a slot rule from RULES using the day title; fall back to the exercise's own tags
+    const baseRule: SlotRule =
+      (ruleKey && (RULES as any)[ruleKey]) ||
+      { includeTags: currentLite.tags ?? [], requireCoreSet: false };
+
+    // get deterministic, rule-aware suggestions
+    const suggestions = suggestReplacements(currentLite, library, userCtx, baseRule, 8);
+
+    // map to your local Exercise shape (add video/thumbnail fallbacks)
+    const mapped = suggestions.map(s => ({
+      name: s.name || '',
+      equipment: Array.isArray(s.equipment) ? s.equipment.join(', ') : (s.equipment as any) || undefined,
+      focusArea: undefined,
+      tags: s.tags ?? [],
+      videoUri: fallbackVideos[s.name || ''] || fallbackVideos.Pushups,
+      thumbnailUri: (snapshot.docs.find(d => (d.data() as any).name === s.name)?.data() as any)?.thumbnailUri,
+    })) as Exercise[];
+
+    setSimilar(mapped);
+  };
+
+  fetchSimilar();
+}, [currentIndex, adaptedExercises, ruleKey]);
+
 
   const handleAdapt = (index: number) => {
     setCurrentIndex(index);
@@ -103,7 +158,7 @@ const AdaptWorkoutScreen: React.FC = () => {
   };
 
   const selectReplacement = (replacement: Exercise) => {
-    if (currentIndex === null) return;
+    if (currentIndex === null) {return;}
     const updated = [...adaptedExercises];
     updated[currentIndex] = {
       ...updated[currentIndex],
@@ -120,11 +175,11 @@ const AdaptWorkoutScreen: React.FC = () => {
   const handleSave = async () => {
     try {
       const uid = auth.currentUser?.uid;
-      if (!uid) return;
-  
+      if (!uid) {return;}
+
       const docRef = doc(db, 'users', uid, 'program', 'active');
       const docSnap = await getDoc(docRef);
-  
+
       if (docSnap.exists()) {
         const data = docSnap.data() as any;
         const day = data.currentDay - 1;
@@ -142,7 +197,12 @@ const AdaptWorkoutScreen: React.FC = () => {
         await setDoc(docRef, data);
         setShowToast(true);
         setTimeout(() => {
-          navigation.navigate('WorkoutDetail', { adapt: true });
+          navigation.navigate('WorkoutDetail', {
+            day: data.days[day],
+            weekIdx: data.currentWeek ?? 0,
+            dayIdx: day,
+            adapt: true,
+          });
         }, 2000);
       }
     } catch (err) {
@@ -210,10 +270,10 @@ const AdaptWorkoutScreen: React.FC = () => {
         <Pressable
           style={[styles.saveButton, styles.secondaryButton]}
           onPress={() =>
-            navigation.navigate('Main', {
-              screen: 'MainTabs',
-              params: { screen: 'Workout' },
-            })
+            navigation.navigate('AppDrawer', {
+  screen: 'MainTabs',
+  params: { screen: 'Workout' },
+})
           }
         >
           <Ionicons name="arrow-back" size={20} color="#fff" style={styles.icon} />
@@ -229,7 +289,7 @@ const AdaptWorkoutScreen: React.FC = () => {
               <>
                 <Text style={styles.modalTitle}>
                   Replacing:{' '}
-                  <Text style={{ color: '#4fc3f7' }}>
+                  <Text style={styles.replacementName}>
                     {adaptedExercises[currentIndex].name}
                   </Text>
                 </Text>
@@ -243,11 +303,11 @@ const AdaptWorkoutScreen: React.FC = () => {
                       style={styles.replacementItem}
                       onPress={() => selectReplacement(item)}
                     >
-                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <View style={styles.rowAlignCenter}>
                         {item.thumbnailUri && (
                           <Image
                             source={{ uri: item.thumbnailUri }}
-                            style={{ width: 50, height: 50, marginRight: 10, borderRadius: 8 }}
+                            style={styles.thumbnailImage}
                           />
                         )}
                         <View>
@@ -264,9 +324,9 @@ const AdaptWorkoutScreen: React.FC = () => {
                 {similar.length > 3 && (
                   <Pressable
                     onPress={() => setShowAllReplacements(prev => !prev)}
-                    style={{ alignItems: 'center', marginVertical: 8 }}
+                    style={styles.showMoreButton}
                   >
-                    <Text style={{ color: '#4fc3f7', fontSize: 14 }}>
+                    <Text style={styles.showMoreText}>
                       {showAllReplacements ? '➖ Show Less' : '➕ Show More'}
                     </Text>
                   </Pressable>
@@ -275,7 +335,7 @@ const AdaptWorkoutScreen: React.FC = () => {
             )}
 
             <Pressable
-              style={[styles.button, { marginTop: 12 }]}
+              style={[styles.button, styles.buttonMarginTop]}
               onPress={() => {
                 setModalVisible(false);
                 setShowAllReplacements(false);
@@ -408,6 +468,30 @@ const styles = StyleSheet.create({
   secondaryButton: {
     marginTop: 10,
     borderColor: '#888',
+  },
+  replacementName: {
+    color: '#4fc3f7',
+  },
+  rowAlignCenter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  thumbnailImage: {
+    width: 50,
+    height: 50,
+    marginRight: 10,
+    borderRadius: 8,
+  },
+  showMoreButton: {
+    alignItems: 'center',
+    marginVertical: 8,
+  },
+  showMoreText: {
+    color: '#4fc3f7',
+    fontSize: 14,
+  },
+  buttonMarginTop: {
+    marginTop: 12,
   },
 });
 

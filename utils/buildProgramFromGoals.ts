@@ -1,5 +1,15 @@
 import { Timestamp } from 'firebase/firestore';
 import { Exercise } from '../types/Exercise';
+import {
+  selectExercisesDeterministic,
+  UserContext,
+  SlotRule,
+  ExerciseLite,
+} from '../utils/selectExercises';
+import { inferEquipmentFromCategory } from './backfillExerciseFields';
+
+
+
 
 export interface PerformanceGoals {
   focus: string[];
@@ -67,6 +77,9 @@ export function buildProgramFromGoals(
   const program: ProgramDay[] = [];
   let currentDate = new Date(startDate);
 
+  // ✅ NEW: keep a small history to avoid repeats across days
+  let recentExerciseIds: string[] = [];
+
   for (let i = 0; i < totalDays; i++) {
     const weekNumber = Math.floor(i / daysPerWeek) + 1;
     let dayTitle = trackSplit[i % daysPerWeek];
@@ -77,16 +90,19 @@ export function buildProgramFromGoals(
     }
 
     const tags = getTagsFromTitle(dayTitle);
-    const exercises = getSmartExercises(
+
+    // ✅ Deterministic selection (no shuffle)
+    const pickResult = getSmartExercises(
       tags,
       fullLibrary,
       equipment,
       goalType,
       experienceLevel,
-      dayTitle
+      dayTitle,
+      recentExerciseIds
     );
 
-    const progressedExercises = exercises.map((ex) =>
+    const progressedExercises = pickResult.exercises.map((ex) =>
       applyProgression(
         {
           ...ex,
@@ -98,6 +114,12 @@ export function buildProgramFromGoals(
         weekNumber
       )
     );
+
+    // update history (cap to last ~30 for variety)
+    recentExerciseIds.push(...pickResult.pickedIds);
+    if (recentExerciseIds.length > 30) {
+      recentExerciseIds = recentExerciseIds.slice(-30);
+    }
 
     const formattedTitle = `Week ${weekNumber}: ${getWorkoutTitle(
       dayTitle,
@@ -116,11 +138,14 @@ export function buildProgramFromGoals(
   return program;
 }
 
+/* -------------------------
+   TAG MAPPING / TITLES
+--------------------------*/
 function getTagsFromTitle(title: string): string[] {
   const map: Record<string, string[]> = {
-    Push: ['push', 'press', 'chest', 'triceps'],
-    Pull: ['pull', 'back', 'biceps', 'row', 'deadlift', 'chin', 'pull-up'],
-    Legs: ['legs', 'quads', 'glutes', 'hinge', 'squat'],
+    Push: ['push', 'press', 'chest', 'triceps', 'upper'],
+    Pull: ['pull', 'back', 'biceps', 'row', 'deadlift', 'chin', 'pull-up', 'upper'],
+    Legs: ['legs', 'quads', 'glutes', 'hinge', 'squat', 'lower'],
     Core: ['core', 'ab'],
     Mobility: ['mobility', 'stretch'],
     Fireground: ['full'], // special-cased below
@@ -136,105 +161,181 @@ function getTagsFromTitle(title: string): string[] {
     Strength: ['strength'],
     Upper: ['upper', 'push', 'pull'],
     Lower: ['lower', 'legs'],
-    'Push + Core': ['push', 'core'],
-    'Pull + Mobility': ['pull', 'mobility'],
+    'Push + Core': ['push', 'core', 'upper'],
+    'Pull + Mobility': ['pull', 'mobility', 'upper'],
   };
   return map[title] || ['full'];
 }
 
 function getWorkoutTitle(dayTitle: string, goalType: string): string {
-  if (dayTitle.includes('Mobility') || dayTitle.includes('Recovery'))
+  if (dayTitle.includes('Mobility') || dayTitle.includes('Recovery')) {
     return 'Mobility & Recovery';
-  if (goalType === 'Lose Fat') return dayTitle;
+  }
+  if (goalType === 'Lose Fat') {
+    return dayTitle;
+  }
   return `${dayTitle} – ${goalType}`;
 }
 
+/* -------------------------
+   DETERMINISTIC SELECTION
+--------------------------*/
+
+const MAX_EX = 8;
+
+function mapGoal(goalType: PerformanceGoals['goalType']): UserContext['goal'] {
+  if (goalType === 'Build Muscle') {return 'hypertrophy';}
+  if (goalType === 'Lose Fat') {return 'conditioning';}
+  return 'balanced';
+}
+
+function mapLevel(level: PerformanceGoals['experienceLevel']): UserContext['level'] {
+  if (level === 'Beginner') {return 'beginner';}
+  if (level === 'Intermediate') {return 'intermediate';}
+  return 'advanced';
+}
+
+// keep your original logic: if a category says "___ only" require it
+function isEquipmentAllowed(ex: Exercise, allowed: string[]): boolean {
+  const cat = ex.category?.toLowerCase() ?? '';
+  if (cat.includes('only')) {
+    return allowed.some((eq) => cat.includes(eq.replace(/s$/, '')));
+  }
+  return true;
+}
+
+function toLite(ex: Exercise): ExerciseLite {
+  const anyEx = ex as any; // ✅ define it
+  const id =
+    anyEx.id ??
+    (ex.name ? ex.name.toLowerCase().replace(/\s+/g, '_') : undefined);
+
+  return {
+    id,
+    name: ex.name,
+    tags: anyEx.tags ?? [],
+    goalTags: anyEx.goalTags ?? [],
+    patterns: anyEx.patterns, // populated by exerciseLibrary backfill
+    equipment: anyEx.equipmentTokens ?? inferEquipmentFromCategory(anyEx.category),
+  };
+}
+
+
+/** deterministic multi-pick with simple rotation */
+function pickDeterministic(
+  pool: ExerciseLite[],
+  user: UserContext,
+  rule: SlotRule,
+  count: number,
+  recent: string[]
+) {
+  const picked: ExerciseLite[] = [];
+  let history = [...recent];
+  let candidatePool = [...pool];
+
+  for (let i = 0; i < count; i++) {
+    const [best] = selectExercisesDeterministic(candidatePool, user, rule, {
+      historyIds: history,
+      maxRecent: 12,
+      limit: 1,
+    });
+    if (!best) {break;}
+    picked.push(best);
+    history.push(best.id);
+    candidatePool = candidatePool.filter((p) => p.id !== best.id);
+  }
+  return { picked, usedHistory: history };
+}
+
+/**
+ * Replaces the old shuffle-based selector.
+ * Returns BOTH the chosen exercises and their IDs so we can update history.
+ */
 function getSmartExercises(
   tags: string[],
   library: Exercise[],
   equipment: string[],
-  goal: string,
-  level: string,
-  dayTitle: string
-): Exercise[] {
-  const MAX_EX = 8;
-
-  // equipment check: based on ex.category (may be undefined)
+  goal: PerformanceGoals['goalType'],
+  level: PerformanceGoals['experienceLevel'],
+  dayTitle: string,
+  recentIds: string[]
+): { exercises: Exercise[]; pickedIds: string[] } {
   const allowed = equipment.map((e) => e.toLowerCase());
-  const isEquipmentAllowed = (ex: Exercise): boolean => {
-    const cat = ex.category?.toLowerCase() ?? '';
-    if (cat.includes('only')) {
-      // e.g. "dumbbell only" → require matching equipment
-      return allowed.some((eq) => cat.includes(eq.replace(/s$/, '')));
-    }
-    return true;
+  const userCtx: UserContext = {
+    goal: mapGoal(goal),
+    level: mapLevel(level),
+    equipment: allowed.includes('bodyweight') ? ['none', ...(allowed as any)] : (allowed as any),
   };
 
-  // 1) Fireground day → only Fireground Readiness drills
-  if (dayTitle === 'Fireground') {
-    const candidates = library.filter(
-      (ex) =>
-        ex.category === 'Fireground Readiness' &&
-        isEquipmentAllowed(ex)
-    );
-    if (candidates.length > 0) {
-      return shuffleArray(candidates).slice(0, MAX_EX);
-    }
-    // fallback → full-body/conditioning moves
-    const fallback = library.filter((ex) =>
-      (ex.tags
-        ?.map((t: string) => t.toLowerCase())
-        .includes('full') ||
-        ex.goalTags
-          ?.map((g: string) => g.toLowerCase())
-          .some((g) => ['conditioning', 'strength'].includes(g))) &&
-      isEquipmentAllowed(ex)
-    );
-    return shuffleArray(fallback).slice(0, MAX_EX);
-  }
-
-  // 2) Normal days
-  // a) strict: tags + equipment + goal
-  let filtered = library.filter((ex) => {
+  // 1) Build a base pool by your original constraints (tags/equipment/category)
+  const basePool = library.filter((ex) => {
     const tagMatch = tags.some((tag) =>
       ex.tags?.map((t: string) => t.toLowerCase()).includes(tag.toLowerCase())
     );
-    const equipMatch = isEquipmentAllowed(ex);
-    const goalMatch =
-      ex.goalTags
-        ?.map((g: string) => g.toLowerCase())
-        .includes(goal.toLowerCase()) ||
-      ex.goalTags?.includes('strength');
-    return tagMatch && equipMatch && goalMatch;
+    const equipMatch = isEquipmentAllowed(ex, allowed);
+    return tagMatch && equipMatch;
   });
 
-  // b) relax goal if too few
-  if (filtered.length < 3) {
-    filtered = library.filter((ex) => {
-      const tagMatch = tags.some((tag) =>
-        ex.tags?.map((t: string) => t.toLowerCase()).includes(tag.toLowerCase())
-      );
-      return tagMatch && isEquipmentAllowed(ex);
-    });
+  // Special-case Fireground day first
+  if (dayTitle === 'Fireground') {
+    const firePool = library.filter(
+      (ex) => ex.category === 'Fireground Readiness' && isEquipmentAllowed(ex, allowed)
+    );
+    const lite = firePool.map(toLite);
+    const rule: SlotRule = {
+      includeTags: ['full', 'conditioning', 'strength'], // generous for fireground
+      requireCoreSet: false, // allow broader pool for now
+      skillCap: userCtx.level,
+    };
+    const { picked } = pickDeterministic(lite, userCtx, rule, Math.min(MAX_EX, lite.length), recentIds);
+    const pickedIds = picked.map((p) => p.id);
+    return { exercises: mapBack(pickedIds, library), pickedIds };
   }
 
-  // c) fallback → any full-body or name match
-  if (filtered.length === 0) {
-    filtered = library.filter(
+  // 2) Goal-STRICT pool (goalTags)
+  let strictPool = basePool.filter((ex) =>
+    (ex.goalTags ?? []).map((g) => g.toLowerCase())
+      .includes(mapGoal(goal))
+  );
+
+  // 3) If too few, relax goal (tags only already applied)
+  let poolToUse = strictPool.length >= 3 ? strictPool : basePool;
+
+  // 4) If still empty, fallback to anything "full" or name contains tag
+  if (poolToUse.length === 0) {
+    poolToUse = library.filter(
       (ex) =>
-        (ex.tags
-          ?.map((t: string) => t.toLowerCase())
-          .includes('full') ||
-          tags.some((tag) =>
-            ex.name.toLowerCase().includes(tag.toLowerCase())
-          )) &&
-        isEquipmentAllowed(ex)
+        ex.tags?.map((t: string) => t.toLowerCase()).includes('full') ||
+        tags.some((tag) => ex.name.toLowerCase().includes(tag.toLowerCase()))
     );
   }
 
-  return shuffleArray(filtered).slice(0, MAX_EX);
+  const litePool = poolToUse.map(toLite);
+
+  // Rule for this day: bias to provided tags, cap by level, don't force coreSet yet
+  const rule: SlotRule = {
+    includeTags: Array.from(new Set(tags)),
+    requireCoreSet: false,
+    skillCap: userCtx.level,
+  };
+
+  const { picked } = pickDeterministic(litePool, userCtx, rule, Math.min(MAX_EX, litePool.length), recentIds);
+  const pickedIds = picked.map((p) => p.id);
+  return { exercises: mapBack(pickedIds, library), pickedIds };
 }
 
+function mapBack(ids: string[], library: Exercise[]): Exercise[] {
+  const byId = new Map<string, Exercise>();
+  for (const ex of library as any[]) {
+    const key = (ex.id ?? ex.name?.toLowerCase().replace(/\s+/g, '_')) as string;
+    byId.set(key, ex);
+  }
+  return ids.map((id) => byId.get(id)).filter(Boolean) as Exercise[];
+}
+
+/* -------------------------
+   SIMPLE PROGRESSION (unchanged)
+--------------------------*/
 function applyProgression(
   exercise: Exercise,
   goal: string,
@@ -244,22 +345,19 @@ function applyProgression(
   const sets = exercise.sets ?? 3;
   let reps = exercise.reps ?? 10;
 
-  if (goal === 'Build Muscle') reps += week;
-  if (goal === 'Lose Fat') reps = Math.max(12, reps + week);
-  if (goal === 'Maintain') reps = 8;
+  if (goal === 'Build Muscle') {
+    reps += week;
+  }
+  if (goal === 'Lose Fat') {
+    reps = Math.max(12, reps + week);
+  }
+  if (goal === 'Maintain') {
+    reps = 8;
+  }
 
   return {
     ...exercise,
     sets,
     reps,
   };
-}
-
-function shuffleArray<T>(array: T[]): T[] {
-  const arr = [...array];
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  return arr;
 }
