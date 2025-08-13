@@ -52,17 +52,17 @@ const CheckOffBlock: React.FC<CheckOffBlockProps> = ({
       }, 1_000);
     }
     return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (intervalRef.current) {clearInterval(intervalRef.current);}
     };
   }, [running]);
 
   /* handlers ------------------------------------------------- */
   const toggleDone = () => {
-    if (intervalRef.current) clearInterval(intervalRef.current);
+    if (intervalRef.current) {clearInterval(intervalRef.current);}
     intervalRef.current = null;
     setRunning(false);
     setDone(prev => !prev);
-    if (!done && isTimed) setTimeLeft(seconds);           // reset if manually un-checking
+    if (!done && isTimed) {setTimeLeft(seconds);}           // reset if manually un-checking
   };
 
   const onPlayPause = () => {
@@ -74,7 +74,7 @@ const CheckOffBlock: React.FC<CheckOffBlockProps> = ({
   };
 
   const onReset = () => {
-    if (intervalRef.current) clearInterval(intervalRef.current);
+    if (intervalRef.current) {clearInterval(intervalRef.current);}
     intervalRef.current = null;
     setRunning(false);
     setTimeLeft(seconds);
@@ -117,7 +117,7 @@ const CheckOffBlock: React.FC<CheckOffBlockProps> = ({
           <Pressable onPress={onPlayPause} style={styles.timerBtn}>
             <Ionicons name={running ? 'pause' : 'play'} size={16} color="#fff" />
           </Pressable>
-          <Pressable onPress={onReset} style={[styles.timerBtn, { marginLeft: 8 }]}>
+          <Pressable onPress={onReset} style={[styles.timerBtn, styles.timerBtnMargin]}>
             <Ionicons name="refresh" size={16} color="#fff" />
           </Pressable>
         </View>
@@ -149,6 +149,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 6,
+  },
+  timerBtnMargin: {
+    marginLeft: 8,
   },
 });
 

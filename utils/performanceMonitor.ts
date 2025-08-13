@@ -6,7 +6,7 @@ export const checkAndAdjustRestDays = async (uid: string) => {
   try {
     const userRef = doc(db, 'users', uid);
     const userSnap = await getDoc(userRef);
-    if (!userSnap.exists()) return;
+    if (!userSnap.exists()) {return;}
 
     const data = userSnap.data();
     const logs = data.workoutLogs || {};
@@ -21,9 +21,9 @@ export const checkAndAdjustRestDays = async (uid: string) => {
     const workoutCount = recentWorkouts.length;
     let lowEnergyCount = 0;
 
-    for (const [date, workout] of recentWorkouts) {
+    for (const [date, _workout] of recentWorkouts) {
       const checkIn = checkIns[date];
-      if (checkIn && checkIn.energy <= 3) lowEnergyCount++;
+      if (checkIn && checkIn.energy <= 3) {lowEnergyCount++;}
     }
 
     // Check if low energy + high volume

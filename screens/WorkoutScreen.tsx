@@ -7,6 +7,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Modal,
+  Alert,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
@@ -15,7 +16,9 @@ import { RootStackParamList } from '../App';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { auth, db } from '../firebase';
 import { doc, getDoc } from 'firebase/firestore';
-import type { ProgramDay } from '../utils/types';
+import type { ProgramDay } from '../types/Exercise';
+import { regenerateActiveProgram } from '../utils/programService';
+
 
 interface StoredState {
   currentDayIndex: number;
@@ -44,7 +47,7 @@ const WorkoutScreen: React.FC = () => {
   useEffect(() => {
     (async () => {
       const uid = auth.currentUser?.uid;
-      if (!uid) return;
+      if (!uid) {return;}
 
       try {
         const snap = await getDoc(doc(db, 'users', uid, 'program', 'active'));
@@ -63,7 +66,7 @@ const WorkoutScreen: React.FC = () => {
 
   /* ───────── 2. BUILD weeksArr ───────── */
   useEffect(() => {
-    if (!state || days.length === 0) return;
+    if (!state || days.length === 0) {return;}
 
     const map: Record<number, ProgramDay[]> = {};
     days.forEach((d) => {
@@ -142,6 +145,30 @@ const WorkoutScreen: React.FC = () => {
           <Pressable onPress={() => navigation.navigate('ExerciseLibrary')} style={styles.iconButton}>
             <Ionicons name="book-outline" size={24} color="#d32f2f" />
           </Pressable>
+          <Pressable
+  onPress={async () => {
+    try {
+      // TEMP default goals. swap to your real user goals later.
+      const goals = {
+        focus: ['strength', 'conditioning'],
+        daysPerWeek: 4,
+        includeFireground: true,
+        durationWeeks: 2,
+        goalType: 'Build Muscle',
+        experienceLevel: 'Intermediate',
+        equipment: ['Bodyweight', 'Dumbbells', 'Kettlebells'],
+      } as const;
+      await regenerateActiveProgram(goals as any);
+      Alert.alert('Program', 'New program generated and saved.');
+    } catch (e: any) {
+      Alert.alert('Error', e?.message ?? 'Failed to regenerate');
+    }
+  }}
+  style={styles.regenerateButton}
+>
+  <Text style={styles.buttonText}>Regenerate Program</Text>
+</Pressable>
+
         </View>
       </View>
 
@@ -397,6 +424,9 @@ dayTabText: {
     backgroundColor: '#d32f2f',
     padding: 12,
     borderRadius: 8,
+  },
+  regenerateButton: {
+    padding: 10,
   },
   buttonText: { color: '#fff', fontWeight: '700' },
 });

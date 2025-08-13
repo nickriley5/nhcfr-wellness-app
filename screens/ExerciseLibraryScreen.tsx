@@ -19,7 +19,6 @@ import {
   getDocs,
   doc,
   setDoc,
-  deleteDoc,
   getDoc,
 } from 'firebase/firestore';
 import { firebaseApp, auth } from '../firebase';
@@ -47,7 +46,7 @@ const ExerciseLibraryScreen: React.FC = () => {
       try {
         const uid = auth.currentUser?.uid;
         const snapshot = await getDocs(collection(db, 'exercises'));
-        const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
         setExercises(list);
 
         if (uid) {
@@ -68,7 +67,7 @@ const ExerciseLibraryScreen: React.FC = () => {
 
   const toggleFavorite = async (exerciseId: string) => {
     const uid = auth.currentUser?.uid;
-    if (!uid) return;
+    if (!uid) {return;}
 
     const newFavorites = new Set(favorites);
     if (favorites.has(exerciseId)) {
@@ -115,7 +114,7 @@ const ExerciseLibraryScreen: React.FC = () => {
                 style={styles.icon}
               />
               <Image source={{ uri: ex.thumbnailUri }} style={styles.thumbnail} />
-              <View style={{ flex: 1 }}>
+              <View style={styles.flex1}>
                 <Text style={styles.exerciseName}>{ex.name}</Text>
                 <Text style={styles.description}>{ex.coachingNotes}</Text>
               </View>
@@ -184,6 +183,9 @@ const styles = StyleSheet.create({
   description: {
     color: '#ccc',
     fontSize: 14,
+  },
+  flex1: {
+    flex: 1,
   },
 });
 

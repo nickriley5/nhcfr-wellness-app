@@ -61,11 +61,11 @@ const ExerciseDetailScreen: React.FC = () => {
     };
 
     fetchExercise();
-  }, [exerciseId]);
+  }, [exerciseId, db]);
 
   const toggleFavorite = async () => {
     const uid = auth.currentUser?.uid;
-    if (!uid) return;
+    if (!uid) {return;}
     try {
       const userRef = doc(db, 'users', uid);
       await updateDoc(userRef, {
@@ -94,7 +94,7 @@ const ExerciseDetailScreen: React.FC = () => {
   }
 
   return (
-    <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={{ flex: 1 }}>
+    <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.gradient}>
       <ScrollView contentContainerStyle={styles.container}>
         <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={24} color="#fff" />
@@ -156,7 +156,7 @@ const ExerciseDetailScreen: React.FC = () => {
             })
           }
         >
-          <Ionicons name="stats-chart" size={18} color="#4fc3f7" style={{ marginRight: 6 }} />
+          <Ionicons name="stats-chart" size={18} color="#4fc3f7" style={styles.iconMarginRight} />
           <Text style={styles.progressText}>View Progress</Text>
         </Pressable>
       </ScrollView>
@@ -165,6 +165,9 @@ const ExerciseDetailScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
+  gradient: {
+    flex: 1,
+  },
   container: {
     padding: 24,
     alignItems: 'center',
@@ -284,6 +287,9 @@ const styles = StyleSheet.create({
   error: {
     fontSize: 18,
     color: '#f00',
+  },
+  iconMarginRight: {
+    marginRight: 6,
   },
 });
 

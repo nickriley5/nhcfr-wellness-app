@@ -26,8 +26,8 @@ export async function generateProgram(uid: string) {
 
   const goals: PerformanceGoals = {
     focus: Array.isArray(storedGoals.focus) ? storedGoals.focus : [storedGoals.focus],
-    daysPerWeek: parseInt(storedGoals.frequency?.split('x')[0] || '3'),
-    durationWeeks: parseInt(storedGoals.duration.split(' ')[0]),
+    daysPerWeek: parseInt(storedGoals.frequency?.split('x')[0] || '3', 10),
+    durationWeeks: parseInt(storedGoals.duration.split(' ')[0], 10),
     includeFireground: storedGoals.firegroundReady,
     goalType: storedGoals.goalType,
     experienceLevel: storedGoals.experienceLevel,

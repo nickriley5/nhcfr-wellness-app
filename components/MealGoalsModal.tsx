@@ -6,8 +6,6 @@ import {
   StyleSheet,
   Pressable,
   ScrollView,
-  TextInput,
-  Switch,
 } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { doc, updateDoc } from 'firebase/firestore';
@@ -45,7 +43,7 @@ const MealGoalsModal: React.FC<MealGoalsModalProps> = ({ visible, currentWeight,
     const projected = new Date();
     projected.setDate(projected.getDate() + weeks * 7);
     setEstDate(projected.toLocaleDateString());
-  }, [rate, targetWeight, goal]);
+  }, [rate, targetWeight, goal, currentWeight]);
 
   const toggleRestriction = (item: string) => {
     setRestrictions(prev =>
@@ -57,7 +55,7 @@ const MealGoalsModal: React.FC<MealGoalsModalProps> = ({ visible, currentWeight,
 
   const savePreferences = async () => {
     const uid = auth.currentUser?.uid;
-    if (!uid || !isComplete) return;
+    if (!uid || !isComplete) {return;}
     setSaving(true);
     try {
       await updateDoc(doc(db, 'users', uid), {
@@ -102,7 +100,7 @@ const MealGoalsModal: React.FC<MealGoalsModalProps> = ({ visible, currentWeight,
     <Modal visible={visible} animationType="slide" transparent>
       <View style={styles.overlay}>
         <View style={styles.modal}>
-          <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
+          <ScrollView contentContainerStyle={styles.scrollContent}>
             <Text style={styles.title}>🍽️ Set Meal Plan Goals</Text>
 
             {renderOptions('Nutrition Goal', goals, goal, setGoal)}
@@ -216,6 +214,7 @@ const styles = StyleSheet.create({
   disabled: { opacity: 0.5 },
   cancelButton: { alignItems: 'center', marginTop: 14 },
   cancelText: { color: '#aaa', fontSize: 14 },
+  scrollContent: { paddingBottom: 20 },
 });
 
 export default MealGoalsModal;

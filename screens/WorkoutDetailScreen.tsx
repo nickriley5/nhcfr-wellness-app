@@ -1,5 +1,5 @@
 // screens/WorkoutDetailScreen.tsx
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useLayoutEffect } from 'react';
 import {
   View,
   Text,
@@ -8,14 +8,12 @@ import {
   ActivityIndicator,
   Pressable,
   TextInput,
-  TouchableOpacity,
   Modal,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import Video from 'react-native-video';
 import Toast from '../components/Toast';
 import PRCelebration from '../components/PRCelebration';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -42,7 +40,6 @@ import VideoToggle from '../components/VideoToggle';
 
 type WorkoutSet = { reps: string; weight: string };
 
-
 /* ───────── helpers ───────── */
 const pretty = (id: string) =>
   id.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
@@ -51,6 +48,10 @@ const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
 const fmtTime = (sec: number) => `${pad(Math.floor(sec / 60))}:${pad(sec % 60)}`;
 const numFromStr = (s?: string) =>
   s ? parseInt(s.match(/\d+/)?.[0] ?? '', 10) : undefined;
+
+/* ───────── util types ───────── */
+type IntervalId = ReturnType<typeof setInterval>;
+type WorkoutDetailRoute = RouteProp<RootStackParamList, 'WorkoutDetail'>;
 
 /* ───────── types ───────── */
 interface FirestoreExercise {
@@ -80,14 +81,159 @@ interface TimedStatus {
   intervalId?: IntervalId;
 }
 
-/* ───────── util types ───────── */
-type IntervalId = ReturnType<typeof setInterval>;
-type WorkoutDetailRoute = RouteProp<RootStackParamList, 'WorkoutDetail'>;
+/* ───────── child component ───────── */
+interface MainExercisesSectionProps {
+  title: string;
+  list: EnrichedExercise[];
+  progress: WorkoutSet[][];
+  lastSession: Record<string, { reps: string; weight: string }[]>;
+  timedRef: React.MutableRefObject<Record<string, TimedStatus[]>>;
+  formatDesc: (ex: EnrichedExercise) => string;
+  startTimedSet: (exId: string, setIdx: number, targetSec: number) => void;
+  toggleMode: (exId: string, setIdx: number) => void;
+  updateInput: (
+    exIdx: number,
+    setIdx: number,
+    field: 'reps' | 'weight',
+    val: string
+  ) => void;
+  onPressChart: (exerciseId: string) => void;
+}
+
+const MainExercisesSection: React.FC<MainExercisesSectionProps> = ({
+  title,
+  list,
+  progress,
+  lastSession,
+  timedRef,
+  formatDesc,
+  startTimedSet,
+  toggleMode,
+  updateInput,
+  onPressChart,
+}) => {
+  return (
+    <>
+      <Text style={styles.sectionHeader}>{title}</Text>
+
+      {list.map((ex, exIdx) => {
+        const isComplete = progress[exIdx]?.every((s) => s.reps && s.weight);
+        const last = lastSession[ex.id] ?? [];
+
+        return (
+          <View key={ex.id} style={[styles.card, isComplete && styles.cardDone]}>
+            {/* header */}
+            <View style={styles.cardHeader}>
+              <Text style={[styles.cardTitle, isComplete && styles.cardTitleDone]}>
+                {ex.name}
+              </Text>
+
+              <Pressable onPress={() => onPressChart(ex.id)}>
+                <Ionicons name="stats-chart" size={20} color="#4fc3f7" />
+              </Pressable>
+
+              {/* ○ / ✔︎ toggle */}
+              <Pressable
+                onPress={() => {
+                  const next = progress.map((sets, i) =>
+                    i === exIdx
+                      ? sets.map((_s) =>
+                          isComplete ? { reps: '', weight: '' } : { reps: '✓', weight: '✓' }
+                        )
+                      : sets
+                  );
+                  next[exIdx].forEach((s, j) => {
+                    updateInput(exIdx, j, 'reps', s.reps);
+                    updateInput(exIdx, j, 'weight', s.weight);
+                  });
+                }}
+              >
+                <Ionicons
+                  name={isComplete ? 'checkmark-circle' : 'ellipse-outline'}
+                  size={28}
+                  color={isComplete ? '#66bb6a' : '#bbb'}
+                />
+              </Pressable>
+            </View>
+
+            <Text style={styles.recommend}>
+              {formatDesc(ex)} • RPE {ex.rpe}
+            </Text>
+
+            {/* video */}
+            {!!ex.videoUri && <VideoToggle uri={ex.videoUri} />}
+
+            {/* sets */}
+            {Array.from({ length: ex.setsCount }).map((_, si) => {
+              if (ex.type === 'time') {
+                const t = timedRef.current[ex.id][si];
+                return (
+                  <View key={si} style={styles.setBlock}>
+                    <View style={styles.setRow}>
+                      <Text style={styles.setLabel}>Set {si + 1}</Text>
+                      <Text style={styles.timerDigits}>
+                        {fmtTime(t.mode === 'countdown' ? Math.max(0, t.seconds) : t.seconds)}
+                      </Text>
+                      <Pressable onPress={() => startTimedSet(ex.id, si, ex.repsCount)}>
+                        <Ionicons
+                          name={t.running ? 'pause-circle' : 'play-circle'}
+                          size={28}
+                          color="#4caf50"
+                        />
+                      </Pressable>
+                      <Pressable onPress={() => toggleMode(ex.id, si)} style={styles.ml6}>
+                        <Ionicons name="swap-horizontal" size={22} color="#fff" />
+                      </Pressable>
+                    </View>
+                    {t.done && <Text style={styles.lastTxt}>Done ✔</Text>}
+                  </View>
+                );
+              }
+
+              // regular reps / weight
+              const set = progress[exIdx][si];
+              return (
+                <View key={si} style={styles.setBlock}>
+                  <View style={styles.setRow}>
+                    <Text style={styles.setLabel}>Set {si + 1}</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="reps"
+                      placeholderTextColor="#777"
+                      keyboardType="number-pad"
+                      editable={!isComplete}
+                      value={String(set.reps ?? '')}
+                      onChangeText={(t) => updateInput(exIdx, si, 'reps', t)}
+                    />
+
+                    <TextInput
+                      style={styles.input}
+                      placeholder="lbs"
+                      placeholderTextColor="#777"
+                      keyboardType="decimal-pad"
+                      editable={!isComplete}
+                      value={String(set.weight ?? '')}
+                      onChangeText={(t) => updateInput(exIdx, si, 'weight', t)}
+                    />
+                  </View>
+                  {last[si] && (
+                    <Text style={styles.lastTxt}>
+                      Last: {last[si].reps} reps @ {last[si].weight} lbs
+                    </Text>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        );
+      })}
+    </>
+  );
+};
 
 /* ───────── component ───────── */
 const WorkoutDetailScreen: React.FC = () => {
-  const navigation =
-    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { params } = useRoute<WorkoutDetailRoute>();
   const { day, weekIdx, dayIdx } = params;
 
@@ -100,14 +246,11 @@ const WorkoutDetailScreen: React.FC = () => {
   const [cooldown, setCooldown] = useState<EnrichedExercise[]>([]);
 
   /* -------- inputs -------- */
- const [progress, setProgress] = useState<WorkoutSet[][]>(() =>
-  day.exercises.map((blk: ExerciseBlock) =>
-    Array.from({ length: blk.sets ?? 1 }).map(
-      () => ({ reps: '', weight: '' } as WorkoutSet)
+  const [progress, setProgress] = useState<WorkoutSet[][]>(() =>
+    day.exercises.map((blk: ExerciseBlock) =>
+      Array.from({ length: blk.sets ?? 1 }).map(() => ({ reps: '', weight: '' } as WorkoutSet))
     )
-  )
-);
-
+  );
 
   const [lastSession, setLastSession] = useState<
     Record<string, { reps: string; weight: string }[]>
@@ -121,13 +264,35 @@ const WorkoutDetailScreen: React.FC = () => {
   // per-exercise timers  ➜  { exerciseId: TimedStatus[] }
   const timedRef = useRef<Record<string, TimedStatus[]>>({});
 
-  /* -------- pop-ups -------- */
-  const [videoPlaying, setVideoPlaying] = useState<string | null>(null);
-  const [showToast, setShowToast] = useState(false);
+  /* -------- toasts & pop-ups -------- */
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [nextUp, setNextUp] = useState<string | null>(null);
   const [summaryVisible, setSummaryVisible] = useState(false);
   const [prMsgs, setPrMsgs] = useState<string[]>([]);
   const [showPR, setShowPR] = useState(false);
+
+  /* ---- header: Adapt button ---- */
+  // Move headerRight button out of render to avoid inline component definition
+  const HeaderRightButton = React.useCallback(() => (
+    <Pressable
+      onPress={() => navigation.navigate('AdaptWorkout')}
+      disabled={workState === 'running'}
+      style={({ pressed }) => ({
+        opacity: pressed || workState === 'running' ? 0.6 : 1,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+      })}
+      accessibilityLabel="Adapt workout"
+    >
+      <Ionicons name="swap-horizontal" size={22} color="#fff" />
+    </Pressable>
+  ), [navigation, workState]);
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: HeaderRightButton,
+    });
+  }, [navigation, workState, HeaderRightButton]);
 
   /* ── enrichment ── */
   const enrich = async (blk: ExerciseBlock): Promise<EnrichedExercise> => {
@@ -142,11 +307,10 @@ const WorkoutDetailScreen: React.FC = () => {
           : 'https://www.w3schools.com/html/mov_bbb.mp4',
       setsCount: meta.sets ?? blk.sets ?? 3,
       repsCount:
-  meta.reps ??
-  (blk.repsOrDuration.toLowerCase().includes('min')
-    ? (numFromStr(blk.repsOrDuration) ?? 1) * 60
-    : numFromStr(blk.repsOrDuration) ?? 8),
-
+        meta.reps ??
+        (blk.repsOrDuration.toLowerCase().includes('min')
+          ? (numFromStr(blk.repsOrDuration) ?? 1) * 60
+          : numFromStr(blk.repsOrDuration) ?? 8),
       rpe: blk.rpe,
       type:
         meta.type ??
@@ -173,39 +337,34 @@ const WorkoutDetailScreen: React.FC = () => {
           Array.from({ length: ex.setsCount }).map(() => ({
             reps: '',
             weight: '',
-          })),
+          }))
         );
 
         /* timer state */
         const timerInit: Record<string, TimedStatus[]> = {};
         [...w, ...m, ...c].forEach((ex) => {
           if (ex.type === 'time') {
-            timerInit[ex.id] = Array.from({ length: ex.setsCount }).map(
-              () => ({
-                running: false,
-                seconds: 0,
-                done: false,
-                mode: 'stopwatch',
-              }),
-            );
+            timerInit[ex.id] = Array.from({ length: ex.setsCount }).map(() => ({
+              running: false,
+              seconds: 0,
+              done: false,
+              mode: 'stopwatch',
+            }));
           }
         });
         timedRef.current = timerInit;
 
         /* last-session lookup */
         const uid = auth.currentUser?.uid;
-        const last: Record<
-          string,
-          { reps: string; weight: string }[]
-        > = {};
+        const last: Record<string, { reps: string; weight: string }[]> = {};
         if (uid) {
           for (const ex of m) {
             const q = await getDocs(
               query(
                 collection(db, 'users', uid, 'workoutLogs'),
                 orderBy('completedAt', 'desc'),
-                limit(5),
-              ),
+                limit(5)
+              )
             );
             for (const d of q.docs) {
               const data: any = d.data();
@@ -228,22 +387,19 @@ const WorkoutDetailScreen: React.FC = () => {
         }
       } catch (err) {
         console.error(err);
-        if (alive) setLoading(false);
+        if (alive) {setLoading(false);}
       }
     })();
     return () => {
       alive = false;
-      if (globalTimer.current) clearInterval(globalTimer.current);
+      if (globalTimer.current) {clearInterval(globalTimer.current);}
     };
   }, [day]);
 
   /* ── GLOBAL TIMER EFFECT ── */
   useEffect(() => {
     if (workState === 'running') {
-      globalTimer.current = setInterval(
-        () => setElapsedSec((s) => s + 1),
-        1000,
-      );
+      globalTimer.current = setInterval(() => setElapsedSec((prev) => prev + 1), 1000);
     } else if (globalTimer.current) {
       clearInterval(globalTimer.current);
       globalTimer.current = null;
@@ -254,53 +410,40 @@ const WorkoutDetailScreen: React.FC = () => {
   const formatDesc = (ex: EnrichedExercise) =>
     ex.type === 'time'
       ? `${ex.setsCount}×${
-          ex.repsCount % 60 === 0
-            ? `${ex.repsCount / 60} min`
-            : `${ex.repsCount} sec`
+          ex.repsCount % 60 === 0 ? `${ex.repsCount / 60} min` : `${ex.repsCount} sec`
         }`
       : `${ex.setsCount}×${ex.repsCount} reps`;
 
-const updateInput = (
-  exIdx: number,
-  setIdx: number,
-  field: 'reps' | 'weight',
-  val: string
-) => {
-  setProgress((prev) =>
-    prev.map((exerciseSets, i) =>
-      i === exIdx
-        ? exerciseSets.map((set, j) =>
-            j === setIdx ? { ...set, [field]: val } : set
-          )
-        : exerciseSets
-    )
-  );
-};
-
-  const setsDone = (arr: { reps: string; weight: string }[]) =>
-    arr.every((s) => s.reps && s.weight);
-
-  const toggleVideo = (id: string) =>
-    setVideoPlaying((prev) => (prev === id ? null : id));
+  const updateInput = (
+    exIdx: number,
+    setIdx: number,
+    field: 'reps' | 'weight',
+    val: string
+  ) => {
+    setProgress((prev) =>
+      prev.map((exerciseSets, i) =>
+        i === exIdx
+          ? exerciseSets.map((set, j) => (j === setIdx ? { ...set, [field]: val } : set))
+          : exerciseSets
+      )
+    );
+  };
 
   /* ── PER-SET TIMER HANDLERS ── */
   const startTimedSet = (exId: string, setIdx: number, targetSec: number) => {
     const status = timedRef.current[exId]?.[setIdx];
-    if (!status || status.running || status.done) return;
+    if (!status || status.running || status.done) {return;}
 
     status.running = true;
     status.seconds = status.mode === 'countdown' ? targetSec : 0;
 
     const id = setInterval(() => {
-      if (!status.running) return; // safety
+      if (!status.running) {return;} // safety
 
-      status.seconds =
-        status.mode === 'countdown'
-          ? status.seconds - 1
-          : status.seconds + 1;
+      status.seconds = status.mode === 'countdown' ? status.seconds - 1 : status.seconds + 1;
 
       // kick a re-render
-      setElapsedSec((s) => s);
+      setElapsedSec((_prev) => _prev);
 
       if (status.mode === 'countdown' && status.seconds <= 0) {
         clearInterval(status.intervalId as IntervalId);
@@ -315,14 +458,14 @@ const updateInput = (
 
   const toggleMode = (exId: string, setIdx: number) => {
     const status = timedRef.current[exId]?.[setIdx];
-    if (!status || status.running) return;
+    if (!status || status.running) {return;}
     status.mode = status.mode === 'stopwatch' ? 'countdown' : 'stopwatch';
-    setElapsedSec((s) => s); // force paint
+    setElapsedSec((_prev) => _prev); // force paint
   };
 
   const markTimedSetComplete = (exId: string, setIdx: number) => {
     const exIndex = main.findIndex((e) => e.id === exId);
-    if (exIndex === -1) return;
+    if (exIndex === -1) {return;}
     setProgress((p) => {
       const next = [...p];
       next[exIndex][setIdx] = { reps: '✓', weight: '✓' };
@@ -341,7 +484,7 @@ const updateInput = (
   /* ── SAVE ── */
   const saveWorkout = async () => {
     const uid = auth.currentUser?.uid;
-    if (!uid) return;
+    if (!uid) {return;}
 
     const logId = Date.now().toString();
     const payload = main.map((ex, i) => ({
@@ -364,10 +507,7 @@ const updateInput = (
     try {
       const batch = writeBatch(db);
       batch.set(doc(db, 'users', uid, 'workoutLogs', logId), log);
-      batch.update(
-        doc(db, 'users', uid, 'program', 'active'),
-        { currentDay: increment(1) },
-      );
+      batch.update(doc(db, 'users', uid, 'program', 'active'), { currentDay: increment(1) });
       await batch.commit();
       await checkAndAdjustRestDays(uid);
 
@@ -376,14 +516,12 @@ const updateInput = (
       main.forEach((ex, i) =>
         progress[i].forEach((s) => {
           const w = Number(s.weight);
-          if (!isNaN(w)) prs[ex.id] = Math.max(prs[ex.id] || 0, w);
-        }),
+          if (!isNaN(w)) {prs[ex.id] = Math.max(prs[ex.id] || 0, w);}
+        })
       );
-      const newPRs = Object.entries(prs).map(
-        ([k, v]) => `${pretty(k)}: ${v} lbs`,
-      );
+      const newPRs = Object.entries(prs).map(([k, v]) => `${pretty(k)}: ${v} lbs`);
 
-      setShowToast(true);
+      setToastMessage('Workout saved!');
       if (newPRs.length) {
         setPrMsgs(newPRs);
         setShowPR(true);
@@ -391,177 +529,19 @@ const updateInput = (
       setSummaryVisible(true);
     } catch (e) {
       console.error(e);
-      alert('Could not save workout.');
+      setToastMessage('Could not save workout.');
     }
   };
 
   /* ── SUMMARY CALCS ── */
   const setsPlanned = useMemo(
     () => main.reduce((sum, ex) => sum + ex.setsCount, 0),
-    [main],
+    [main]
   );
   const setsCompleted = useMemo(
     () => progress.flat().filter((s) => s.reps || s.weight).length,
-    [progress],
+    [progress]
   );
-
-/* ── SECTION COMPONENT ── */
-const Section = ({
-  title,
-  list,
-  trackSets,
-}: {
-  title: string;
-  list: EnrichedExercise[];
-  trackSets?: boolean;
-}) => (
-  <>
-    <Text style={styles.sectionHeader}>{title}</Text>
-
-    {list.map((ex, exIdx) => {
-      const isComplete =
-        trackSets && progress[exIdx]?.every((s) => s.reps && s.weight);
-
-      const last = lastSession[ex.id] ?? [];
-      const videoOpen = videoPlaying === ex.id;
-
-      return (
-        <View
-          key={ex.id}
-          style={[styles.card, isComplete && styles.cardDone]}>
-          {/* header */}
-          <View style={styles.cardHeader}>
-            <Text
-              style={[
-                styles.cardTitle,
-                isComplete && styles.cardTitleDone,
-              ]}>
-              {ex.name}
-            </Text>
-
-            {trackSets && (
-              <Pressable
-                onPress={() =>
-                  navigation.navigate('ProgressChart', {
-                    exerciseName: ex.id,
-                  })
-                }>
-                <Ionicons name="stats-chart" size={20} color="#4fc3f7" />
-              </Pressable>
-            )}
-
-            {/* ○ / ✔︎ toggle */}
-            {trackSets && (
-              <Pressable
-                onPress={() =>
-                  setProgress((prev) => {
-                    const next = [...prev];
-                    next[exIdx] = next[exIdx].map((s) =>
-                      isComplete
-                        ? { reps: '', weight: '' }
-                        : { reps: '✓', weight: '✓' },
-                    );
-                    return next;
-                  })
-                }>
-                <Ionicons
-                  name={isComplete ? 'checkmark-circle' : 'ellipse-outline'}
-                  size={28}
-                  color={isComplete ? '#66bb6a' : '#bbb'}
-                />
-              </Pressable>
-            )}
-          </View>
-
-          <Text style={styles.recommend}>
-            {formatDesc(ex)} • RPE {ex.rpe}
-          </Text>
-
-          {/* video */}
-          {!!ex.videoUri && <VideoToggle uri={ex.videoUri} />}
-
-          {/* sets */}
-          {trackSets &&
-            Array.from({ length: ex.setsCount }).map((_, si) => {
-              if (ex.type === 'time') {
-                const t = timedRef.current[ex.id][si];
-                return (
-                  <View key={si} style={styles.setBlock}>
-                    <View style={styles.setRow}>
-                      <Text style={styles.setLabel}>Set {si + 1}</Text>
-                      <Text style={styles.timerDigits}>
-                        {fmtTime(
-                          t.mode === 'countdown'
-                            ? Math.max(0, t.seconds)
-                            : t.seconds,
-                        )}
-                      </Text>
-                      <Pressable
-                        onPress={() =>
-                          startTimedSet(ex.id, si, ex.repsCount)
-                        }>
-                        <Ionicons
-                          name={t.running ? 'pause-circle' : 'play-circle'}
-                          size={28}
-                          color="#4caf50"
-                        />
-                      </Pressable>
-                      <Pressable
-                        onPress={() => toggleMode(ex.id, si)}
-                        style={{ marginLeft: 6 }}>
-                        <Ionicons
-                          name="swap-horizontal"
-                          size={22}
-                          color="#fff"
-                        />
-                      </Pressable>
-                    </View>
-                    {t.done && <Text style={styles.lastTxt}>Done ✔</Text>}
-                  </View>
-                );
-              }
-
-              // regular reps / weight
-              const set = progress[exIdx][si];
-              return (
-                <View key={si} style={styles.setBlock}>
-                  <View style={styles.setRow}>
-                    <Text style={styles.setLabel}>Set {si + 1}</Text>
-                    <TextInput
-  style={styles.input}
-  placeholder="reps"
-  placeholderTextColor="#777"
-  keyboardType="number-pad"      // ← was "numeric"
-  editable={!isComplete}
-  value={String(set.reps ?? '')}
-  onChangeText={(t) => updateInput(exIdx, si, 'reps', t)}
-/>
-
-<TextInput
-  style={styles.input}
-  placeholder="lbs"
-  placeholderTextColor="#777"
-  keyboardType="decimal-pad"     // ← was "numeric"
-  editable={!isComplete}
-  value={String(set.weight ?? '')}
-  onChangeText={(t) => updateInput(exIdx, si, 'weight', t)}
-/>
-
-                  </View>
-                  {last[si] && (
-                    <Text style={styles.lastTxt}>
-                      Last: {last[si].reps} reps @ {last[si].weight} lbs
-                    </Text>
-                  )}
-                </View>
-              );
-            })}
-        </View>
-      );
-    })}
-  </>
-);
-
 
   /* -------- render -------- */
   if (loading) {
@@ -572,118 +552,112 @@ const Section = ({
     );
   }
 
-  /* bar colour */
-  const barColor =
-    workState === 'running'
-      ? '#2e7d32'
-      : workState === 'paused'
-      ? '#f9a825'
-      : workState === 'stopped'
-      ? '#c62828'
-      : '#333';
-
   return (
     <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}></KeyboardAvoidingView>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.flex1}
+      />
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
         <Text style={styles.title}>{day.title}</Text>
+
+        {/* Adapt CTA */}
+        <Pressable
+          style={styles.adaptBtn}
+          onPress={() => navigation.navigate('AdaptWorkout')}
+          disabled={workState === 'running'}
+        >
+          <Ionicons name="swap-horizontal" size={20} color="#fff" style={styles.iconRight} />
+          <Text style={styles.btnTxt}>Adapt Today’s Workout</Text>
+        </Pressable>
+
         {/* WARM-UP – check-off style */}
-{/* WARM-UP – check-off style */}
-<View style={styles.section}>
-  <Text style={styles.sectionTitle}>Warm-up</Text>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Warm-up</Text>
+          {warmup.map((ex) => (
+            <CheckOffBlock
+              key={ex.id}
+              id={ex.id}
+              name={ex.name}
+              sets={ex.setsCount}
+              repsOrDuration={formatDesc(ex).split('×')[1]}
+              videoUri={ex.videoUri}
+              isTimed={ex.type === 'time'}
+              seconds={ex.repsCount}
+            />
+          ))}
+        </View>
 
-  {warmup.map((ex, idx) => (
-    <CheckOffBlock
-      key={ex.id}
-      id={ex.id}
-      name={ex.name}
-      sets={ex.setsCount}
-      repsOrDuration={formatDesc(ex).split('×')[1]}
-      videoUri={ex.videoUri}
-      isTimed={ex.type === 'time'}
-      seconds={ex.repsCount}
-    />
-  ))}
-</View>
+        {/* MAIN WORK */}
+        <MainExercisesSection
+          title="Exercises"
+          list={main}
+          progress={progress}
+          lastSession={lastSession}
+          timedRef={timedRef}
+          formatDesc={formatDesc}
+          startTimedSet={startTimedSet}
+          toggleMode={toggleMode}
+          updateInput={updateInput}
+          onPressChart={(exerciseId) =>
+            navigation.navigate('ProgressChart', { exerciseName: exerciseId })
+          }
+        />
 
-{/* MAIN WORK – leave this as is */}
-<Section title="Exercises" list={main} trackSets />
-
-{/* COOL-DOWN – check-off style */}
-<View style={styles.section}>
-  <Text style={styles.sectionTitle}>Cool-down</Text>
-
-  {cooldown.map((ex, idx) => (
-    <CheckOffBlock
-      key={ex.id}
-      id={ex.id}
-      name={ex.name}
-      sets={ex.setsCount}
-      repsOrDuration={formatDesc(ex).split('×')[1]}
-      videoUri={ex.videoUri}
-      isTimed={ex.type === 'time'}
-      seconds={ex.repsCount}
-    />
-  ))}
-</View>
-
-
+        {/* COOL-DOWN – check-off style */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Cool-down</Text>
+          {cooldown.map((ex) => (
+            <CheckOffBlock
+              key={ex.id}
+              id={ex.id}
+              name={ex.name}
+              sets={ex.setsCount}
+              repsOrDuration={formatDesc(ex).split('×')[1]}
+              videoUri={ex.videoUri}
+              isTimed={ex.type === 'time'}
+              seconds={ex.repsCount}
+            />
+          ))}
+        </View>
 
         <Pressable
           style={styles.saveBtn}
           onPress={saveWorkout}
-          disabled={workState === 'running'}>
-          <Ionicons
-            name="save"
-            size={20}
-            color="#fff"
-            style={{ marginRight: 8 }}
-          />
+          disabled={workState === 'running'}
+        >
+          <Ionicons name="save" size={20} color="#fff" style={styles.iconRight} />
           <Text style={styles.btnTxt}>Save Workout</Text>
         </Pressable>
+
         <Pressable
           style={[styles.saveBtn, styles.backBtn]}
           onPress={() => navigation.goBack()}
-          disabled={workState === 'running'}>
-          <Ionicons
-            name="arrow-back"
-            size={20}
-            color="#fff"
-            style={{ marginRight: 8 }}
-          />
+          disabled={workState === 'running'}
+        >
+          <Ionicons name="arrow-back" size={20} color="#fff" style={styles.iconRight} />
           <Text style={styles.btnTxt}>Back</Text>
         </Pressable>
       </ScrollView>
 
-    <EnhancedTimerBar
-  seconds={elapsedSec}
-  state={workState}
-  onStart={() => setWorkState('running')}
-  onPause={() => setWorkState('paused')}
-  onStop={() => setWorkState('stopped')}
-/>
-
+      <EnhancedTimerBar
+        seconds={elapsedSec}
+        state={workState}
+        onStart={() => setWorkState('running')}
+        onPause={() => setWorkState('paused')}
+        onStop={() => setWorkState('stopped')}
+      />
 
       {/* SUMMARY MODAL */}
       <Modal visible={summaryVisible} transparent animationType="fade">
         <View style={styles.modalBackdrop}>
           <View style={styles.summaryBox}>
             <Text style={styles.summaryTitle}>Session Complete</Text>
-            <Text style={styles.summaryText}>
-              Total time: {fmtTime(elapsedSec)}
-            </Text>
-            <Text style={styles.summaryText}>
-              Sets: {setsCompleted}/{setsPlanned}
-            </Text>
+            <Text style={styles.summaryText}>Total time: {fmtTime(elapsedSec)}</Text>
+            <Text style={styles.summaryText}>Sets: {setsCompleted}/{setsPlanned}</Text>
             {prMsgs.length > 0 && (
               <>
-                <Text
-                  style={[
-                    styles.summaryText,
-                    { marginTop: 8, fontWeight: '700' },
-                  ]}>
-                  🔥 New PRs:
-                </Text>
+                <Text style={[styles.summaryText, styles.summarySubheading]}>🔥 New PRs:</Text>
                 {prMsgs.map((m) => (
                   <Text key={m} style={styles.summaryText}>
                     • {m}
@@ -691,9 +665,7 @@ const Section = ({
                 ))}
               </>
             )}
-            <Pressable
-              style={[styles.saveBtn, { marginTop: 16 }]}
-              onPress={() => setSummaryVisible(false)}>
+            <Pressable style={[styles.saveBtn, styles.mt16]} onPress={() => setSummaryVisible(false)}>
               <Text style={styles.btnTxt}>Close</Text>
             </Pressable>
           </View>
@@ -701,18 +673,10 @@ const Section = ({
       </Modal>
 
       {/* toasts & celebrations */}
-      {showToast && (
-        <Toast message="Workout saved!" onClose={() => setShowToast(false)} />
-      )}
-      {nextUp && (
-        <Toast message={`Next: ${nextUp}`} onClose={() => setNextUp(null)} />
-      )}
+      {toastMessage && <Toast message={toastMessage} onClose={() => setToastMessage(null)} />}
+      {nextUp && <Toast message={`Next: ${nextUp}`} onClose={() => setNextUp(null)} />}
       {showPR && (
-        <PRCelebration
-          visible={showPR}
-          messages={prMsgs}
-          onClose={() => setShowPR(false)}
-        />
+        <PRCelebration visible={showPR} messages={prMsgs} onClose={() => setShowPR(false)} />
       )}
     </LinearGradient>
   );
@@ -726,7 +690,7 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '700',
     color: '#d32f2f',
-    marginBottom: 20,
+    marginBottom: 12,
     textAlign: 'center',
   },
   sectionHeader: {
@@ -788,21 +752,19 @@ const styles = StyleSheet.create({
     width: 60,
     textAlign: 'center',
   },
-  /* video */
-  videoBox: {
-    width: '100%',
-    aspectRatio: 16 / 9,
-    backgroundColor: '#000',
-    marginBottom: 12,
-    borderRadius: 8,
-    overflow: 'hidden',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  video: { width: '100%', height: '100%' },
-  playOverlay: { alignItems: 'center', justifyContent: 'center' },
-  playText: { color: '#fff', fontSize: 14, marginTop: 4 },
   /* buttons */
+  adaptBtn: {
+    backgroundColor: '#2a2a2a',
+    borderWidth: 1.5,
+    borderColor: '#4fc3f7',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    marginBottom: 12,
+    justifyContent: 'center',
+  },
   saveBtn: {
     backgroundColor: '#2a2a2a',
     borderWidth: 1.5,
@@ -817,24 +779,6 @@ const styles = StyleSheet.create({
   },
   backBtn: { marginTop: 12, borderColor: '#888' },
   btnTxt: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  /* timer bar */
-  timerBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-    paddingVertical: 10,
-  },
-  timerMain: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#fff',
-    fontVariant: ['tabular-nums'],
-    fontFamily: 'monospace',
-  },
   /* summary */
   modalBackdrop: {
     flex: 1,
@@ -856,17 +800,25 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   summaryText: { color: '#fff', textAlign: 'center', marginVertical: 2 },
-  section: {
-  marginTop: 20,
-  paddingHorizontal: 16,
-},
-sectionTitle: {
-  fontSize: 18,
-  fontWeight: '600',
-  color: '#fff',
-  marginBottom: 10,
-},
 
+  /* sections */
+  section: {
+    marginTop: 20,
+    paddingHorizontal: 16,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#fff',
+    marginBottom: 10,
+  },
+
+  /* extracted replacements for inline styles */
+  ml6: { marginLeft: 6 },
+  flex1: { flex: 1 },
+  iconRight: { marginRight: 8 },
+  summarySubheading: { marginTop: 8, fontWeight: '700' },
+  mt16: { marginTop: 16 },
 });
 
 export default WorkoutDetailScreen;

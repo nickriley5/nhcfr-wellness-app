@@ -37,7 +37,7 @@ const ProgramListScreen = () => {
             </Text>
           </Pressable>
         )}
-        contentContainerStyle={{ paddingBottom: 40 }}
+        contentContainerStyle={styles.flatListContent}
       />
     </View>
   );
@@ -96,5 +96,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#888',
     textAlign: 'center',
+  },
+  flatListContent: {
+    paddingBottom: 40,
   },
 });

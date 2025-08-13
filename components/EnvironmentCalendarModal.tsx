@@ -34,7 +34,7 @@ const EnvironmentCalendarModal = ({
   useEffect(() => {
     const loadData = async () => {
       const uid = auth.currentUser?.uid;
-      if (!uid) return;
+      if (!uid) {return;}
 
       const profileSnap = await getDoc(doc(db, 'users', uid));
       const profile = profileSnap.data();
@@ -61,7 +61,7 @@ const EnvironmentCalendarModal = ({
       }
     };
 
-    if (visible) loadData();
+    if (visible) {loadData();}
   }, [visible]);
 
   const handleSelect = (day: string, value: string) => {
@@ -80,7 +80,7 @@ const EnvironmentCalendarModal = ({
     }
 
     const uid = auth.currentUser?.uid;
-    if (!uid) return;
+    if (!uid) {return;}
 
     await updateDoc(doc(db, 'users', uid), {
       'schedule.environmentMap': selections,

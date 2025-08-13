@@ -45,7 +45,7 @@ const ProgressChartScreen: React.FC = () => {
     const fetchLogs = async () => {
       try {
         const uid = auth.currentUser?.uid;
-        if (!uid) return;
+        if (!uid) {return;}
 
         const logRef = collection(db, 'users', uid, 'workoutLogs');
         const snapshot = await getDocs(logRef);
@@ -79,12 +79,12 @@ const ProgressChartScreen: React.FC = () => {
           if (exercise) {
             let value = 0;
             if (chartType === 'weight') {
-              value = exercise.sets.reduce((acc, set) => acc + parseInt(set.weight || '0'), 0);
+              value = exercise.sets.reduce((acc, set) => acc + parseInt(set.weight || '0', 10), 0);
             } else if (chartType === 'reps') {
-              value = exercise.sets.reduce((acc, set) => acc + parseInt(set.reps || '0'), 0);
+              value = exercise.sets.reduce((acc, set) => acc + parseInt(set.reps || '0', 10), 0);
             } else if (chartType === 'volume') {
               value = exercise.sets.reduce(
-                (acc, set) => acc + (parseInt(set.reps || '0') * parseInt(set.weight || '0')),
+                (acc, set) => acc + (parseInt(set.reps || '0', 10) * parseInt(set.weight || '0', 10)),
                 0
               );
             }
@@ -103,7 +103,7 @@ const ProgressChartScreen: React.FC = () => {
     };
 
     fetchLogs();
-  }, [chartType, dateRange]);
+  }, [chartType, dateRange, exerciseName]);
 
   if (loading) {
     return (
@@ -161,7 +161,7 @@ const ProgressChartScreen: React.FC = () => {
               labelColor: () => '#fff',
               propsForDots: { r: '4', strokeWidth: '2', stroke: '#fff' },
             }}
-            style={{ marginVertical: 16, borderRadius: 10 }}
+            style={styles.chart}
           />
         )}
       </ScrollView>
@@ -230,6 +230,10 @@ const styles = StyleSheet.create({
     color: '#aaa',
     fontStyle: 'italic',
     marginTop: 40,
+  },
+  chart: {
+    marginVertical: 16,
+    borderRadius: 10,
   },
 });
 

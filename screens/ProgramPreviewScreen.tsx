@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Pressable, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, Pressable, StyleSheet, ScrollView, Alert } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
@@ -40,7 +40,7 @@ const ProgramPreviewScreen: React.FC = () => {
   const handleStartProgram = async () => {
     try {
       const uid = auth.currentUser?.uid;
-      if (!uid) throw new Error('User not authenticated');
+      if (!uid) {throw new Error('User not authenticated');}
 
       await setDoc(
         doc(db, 'users', uid, 'program', 'active'),
@@ -61,7 +61,7 @@ const ProgramPreviewScreen: React.FC = () => {
       });
     } catch (err) {
       console.error('Error starting program:', err);
-      alert('There was an issue starting the program.');
+      Alert.alert('Error', 'There was an issue starting the program.');
     }
   };
 

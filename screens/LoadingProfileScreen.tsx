@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, ScrollView, Pressable } from 'react-native';
+import { Text, TextInput, StyleSheet, ScrollView, Pressable, Alert } from 'react-native';
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
 
@@ -47,7 +47,7 @@ const ProfileSetupScreen = ({ navigation }: any) => {
 
   const handleSubmit = async () => {
     const uid = auth().currentUser?.uid;
-    if (!uid) return;
+    if (!uid) {return;}
 
     try {
       await firestore().collection('users').doc(uid).set({
@@ -68,7 +68,7 @@ const ProfileSetupScreen = ({ navigation }: any) => {
       navigation.replace('Main');
     } catch (error) {
       console.error(error);
-      alert('Failed to save profile');
+      Alert.alert('Error', 'Failed to save profile');
     }
   };
 
@@ -117,7 +117,7 @@ const ProfileSetupScreen = ({ navigation }: any) => {
           onPress={() => toggleRestriction(item)}
           style={[
             styles.optionButton,
-            restrictions.includes(item) && styles.selected
+            restrictions.includes(item) && styles.selected,
           ]}>
           <Text style={styles.optionText}>{item}</Text>
         </Pressable>

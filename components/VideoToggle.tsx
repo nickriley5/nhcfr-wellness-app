@@ -1,6 +1,6 @@
 // components/VideoToggle.tsx
 import React, { useState } from 'react';
-import { View, Text, Pressable, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import Video from 'react-native-video';
 
@@ -11,10 +11,10 @@ interface VideoToggleProps {
 const VideoToggle: React.FC<VideoToggleProps> = ({ uri }) => {
   const [expanded, setExpanded] = useState(false);
 
-  if (!uri) return null;
+  if (!uri) {return null;}
 
   return (
-    <View style={{ marginTop: 10 }}>
+    <View style={styles.container}>
       {!expanded ? (
         <Pressable
           onPress={() => setExpanded(true)}
@@ -43,6 +43,9 @@ const VideoToggle: React.FC<VideoToggleProps> = ({ uri }) => {
 };
 
 const styles = StyleSheet.create({
+  container: {
+    marginTop: 10,
+  },
   toggleBtn: {
     flexDirection: 'row',
     alignItems: 'center',

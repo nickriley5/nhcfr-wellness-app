@@ -48,7 +48,7 @@ const WorkoutHistoryScreen: React.FC = () => {
     const fetchLogs = async () => {
       try {
         const uid = auth.currentUser?.uid;
-        if (!uid) return;
+        if (!uid) {return;}
 
         const logRef = collection(db, 'users', uid, 'workoutLogs');
         const q = query(logRef, orderBy('completedAt', 'desc'));
@@ -91,11 +91,11 @@ const WorkoutHistoryScreen: React.FC = () => {
     log.exercises.forEach(ex => {
       freqMap[ex.name] = (freqMap[ex.name] || 0) + 1;
       ex.sets.forEach(set => {
-        const reps = parseInt(set.reps);
+        const reps = parseInt(set.reps, 10);
         const weight = parseFloat(set.weight);
         if (!isNaN(reps) && !isNaN(weight)) {
           totalVolume += reps * weight;
-          if (weight > heaviest) heaviest = weight;
+          if (weight > heaviest) {heaviest = weight;}
         }
       });
     });
@@ -336,7 +336,7 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     marginLeft: 8,
-  },  
+  },
 });
 
 export default WorkoutHistoryScreen;

@@ -64,7 +64,7 @@ const PerformanceGoalsModal: React.FC<PerformanceGoalsModalProps> = ({
 
   const savePreferences = async () => {
     const uid = auth.currentUser?.uid;
-    if (!uid || !isComplete) return;
+    if (!uid || !isComplete) {return;}
 
     if (!fullExerciseLibrary || fullExerciseLibrary.length === 0) {
       Alert.alert('Error', 'Exercise library is not loaded. Try again later.');
@@ -74,8 +74,8 @@ const PerformanceGoalsModal: React.FC<PerformanceGoalsModalProps> = ({
     setSaving(true);
 
     try {
-      const daysPerWeek = parseInt(frequency);
-      const durationWeeks = parseInt(duration.split(' ')[0]);
+      const daysPerWeek = parseInt(frequency, 10);
+      const durationWeeks = parseInt(duration.split(' ')[0], 10);
 
       const performanceGoals: PerformanceGoals = {
         goalType: goalType as PerformanceGoals['goalType'],
@@ -102,12 +102,12 @@ const PerformanceGoalsModal: React.FC<PerformanceGoalsModalProps> = ({
             level: ex.level,
           };
 
-          if (ex.description) cleanedExercise.description = ex.description;
-          if (ex.focusArea) cleanedExercise.focusArea = ex.focusArea;
-          if (ex.coachingNotes) cleanedExercise.coachingNotes = ex.coachingNotes;
-          if (ex.swapOptions) cleanedExercise.swapOptions = ex.swapOptions;
-          if (ex.videoUrl) cleanedExercise.videoUrl = ex.videoUrl;
-          if (ex.thumbnailUri) cleanedExercise.thumbnailUri = ex.thumbnailUri;
+          if (ex.description) {cleanedExercise.description = ex.description;}
+          if (ex.focusArea) {cleanedExercise.focusArea = ex.focusArea;}
+          if (ex.coachingNotes) {cleanedExercise.coachingNotes = ex.coachingNotes;}
+          if (ex.swapOptions) {cleanedExercise.swapOptions = ex.swapOptions;}
+          if (ex.videoUrl) {cleanedExercise.videoUrl = ex.videoUrl;}
+          if (ex.thumbnailUri) {cleanedExercise.thumbnailUri = ex.thumbnailUri;}
 
           if (ex.isTimed) {
             cleanedExercise.isTimed = true;
@@ -187,7 +187,7 @@ const PerformanceGoalsModal: React.FC<PerformanceGoalsModalProps> = ({
     <Modal visible={visible} animationType="slide" transparent>
       <View style={styles.overlay}>
         <View style={styles.modal}>
-          <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
+          <ScrollView contentContainerStyle={styles.scrollContent}>
             <Text style={styles.title}>🏋️ Set Performance Goals</Text>
 
             {renderSingleSelect('Main Goal', goals, goalType, setGoalType)}
@@ -196,7 +196,7 @@ const PerformanceGoalsModal: React.FC<PerformanceGoalsModalProps> = ({
             {renderMultiSelect('Training Focus', trainingFocusOptions, trainingFocus, setTrainingFocus)}
             {renderSingleSelect('Training Days / Week', frequencies, frequency, setFrequency)}
 
-            <View style={[styles.block, { flexDirection: 'row', justifyContent: 'space-between' }]}>
+            <View style={[styles.block, styles.rowBetween]}>
               <Text style={styles.label}>Include Fireground Readiness</Text>
               <Switch value={firegroundReady} onValueChange={setFiregroundReady} />
             </View>
@@ -228,6 +228,7 @@ const styles = StyleSheet.create({
   label: { color: '#aaa', fontSize: 14, marginBottom: 6 },
   block: { marginBottom: 16 },
   optionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  rowBetween: { flexDirection: 'row', justifyContent: 'space-between' },
   option: {
     backgroundColor: '#333',
     paddingVertical: 10,
@@ -249,6 +250,7 @@ const styles = StyleSheet.create({
   disabled: { opacity: 0.5 },
   cancelButton: { alignItems: 'center', marginTop: 14 },
   cancelText: { color: '#aaa', fontSize: 14 },
+  scrollContent: { paddingBottom: 20 },
 });
 
 export default PerformanceGoalsModal;

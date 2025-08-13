@@ -142,13 +142,31 @@ const AppNavigator = () => {
     <Stack.Screen name="AppDrawer" component={DrawerNavigation} />
     <Stack.Screen name="CheckIn" component={CheckInScreen} />
     <Stack.Screen name="MacroCalculator" component={MacroCalculatorScreen} />
-    <Stack.Screen name="WorkoutDetail" component={WorkoutDetailScreen} />
+    <Stack.Screen
+  name="WorkoutDetail"
+  component={WorkoutDetailScreen}
+  options={{
+    headerShown: true,
+    title: 'Workout',
+    headerStyle: { backgroundColor: '#121212' },
+    headerTintColor: '#fff',
+  }}
+/>
     <Stack.Screen name="ExerciseLibrary" component={require('./screens/ExerciseLibraryScreen').default} />
     <Stack.Screen name="ExerciseDetail" component={require('./screens/ExerciseDetailScreen').default} />
     <Stack.Screen name="WorkoutHistory" component={WorkoutHistoryScreen} />
     <Stack.Screen name="ProgressChart" component={ProgressChartScreen} />
     <Stack.Screen name="PRTracker" component={PRTrackerScreen} options={{ headerShown: false }} />
-    <Stack.Screen name="AdaptWorkout" component={AdaptWorkoutScreen} />
+    <Stack.Screen
+  name="AdaptWorkout"
+  component={AdaptWorkoutScreen}
+  options={{
+    headerShown: true,
+    title: 'Adapt Today',
+    headerStyle: { backgroundColor: '#121212' },
+    headerTintColor: '#fff',
+  }}
+/>
     <Stack.Screen name="Goals" component={GoalsScreen} />
     <Stack.Screen name="EditProfile" component={EditProfileScreen} />
     <Stack.Screen name="ProgramList" component={ProgramListScreen} />

@@ -23,7 +23,7 @@ const GoalsScreen = () => {
   useEffect(() => {
     const fetchGoals = async () => {
       const uid = auth.currentUser?.uid;
-      if (!uid) return;
+      if (!uid) {return;}
       try {
         const docSnap = await getDoc(doc(db, 'users', uid));
         if (docSnap.exists()) {
@@ -42,7 +42,7 @@ const GoalsScreen = () => {
 
   const saveGoals = async () => {
     const uid = auth.currentUser?.uid;
-    if (!uid) return;
+    if (!uid) {return;}
     try {
       await updateDoc(doc(db, 'users', uid), {
         goalWeight,
@@ -62,7 +62,7 @@ const GoalsScreen = () => {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ padding: 24 }}>
+    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
       <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
         <Ionicons name="arrow-back" size={20} color="#fff" />
         <Text style={styles.backText}>Back</Text>
@@ -75,17 +75,17 @@ const GoalsScreen = () => {
       <Text style={styles.infoText}>Restrictions: {restrictions.length > 0 ? restrictions.join(', ') : 'None'}</Text>
 
       <Pressable style={styles.thinButton} onPress={() => openEditModal('goals')}>
-        <Ionicons name="create-outline" size={20} color="#fff" style={{ marginRight: 10 }} />
+        <Ionicons name="create-outline" size={20} color="#fff" style={styles.iconMarginRight} />
         <Text style={styles.thinButtonText}>Edit Fitness & Diet Goals</Text>
       </Pressable>
 
       <Pressable style={styles.thinButton} onPress={() => openEditModal('meal')}>
-        <Ionicons name="fast-food-outline" size={20} color="#fff" style={{ marginRight: 10 }} />
+        <Ionicons name="fast-food-outline" size={20} color="#fff" style={styles.iconMarginRight} />
         <Text style={styles.thinButtonText}>Change Meal Program</Text>
       </Pressable>
 
       <Pressable style={styles.thinButton} onPress={() => openEditModal('workout')}>
-        <Ionicons name="barbell-outline" size={20} color="#fff" style={{ marginRight: 10 }} />
+        <Ionicons name="barbell-outline" size={20} color="#fff" style={styles.iconMarginRight} />
         <Text style={styles.thinButtonText}>Change Workout Program</Text>
       </Pressable>
 
@@ -105,9 +105,9 @@ const GoalsScreen = () => {
                   onChange={i => setGoalWeight(weightOptions[i])}
                   visibleRest={2}
                   itemHeight={40}
-                  containerStyle={{ height: 160, backgroundColor: '#2a2a2a' }}
-                  selectedIndicatorStyle={{ borderTopWidth: 1, borderBottomWidth: 1, borderColor: '#d32f2f' }}
-                  itemTextStyle={{ color: '#d32f2f', fontSize: 16 }}
+                  containerStyle={styles.wheelPickerContainer}
+                  selectedIndicatorStyle={styles.selectedIndicator}
+                  itemTextStyle={styles.wheelPickerItemText}
                 />
                 <Text style={styles.label}>Dietary Preference</Text>
                 <WheelPicker
@@ -116,9 +116,9 @@ const GoalsScreen = () => {
                   onChange={i => setDietPreference(dietOptions[i])}
                   visibleRest={2}
                   itemHeight={40}
-                  containerStyle={{ height: 160, backgroundColor: '#2a2a2a' }}
-                  selectedIndicatorStyle={{ borderTopWidth: 1, borderBottomWidth: 1, borderColor: '#d32f2f' }}
-                  itemTextStyle={{ color: '#d32f2f', fontSize: 16 }}
+                  containerStyle={styles.wheelPickerContainer}
+                  selectedIndicatorStyle={styles.selectedIndicator}
+                  itemTextStyle={styles.wheelPickerItemText}
                 />
                 <Text style={styles.label}>Restrictions</Text>
                 <WheelPicker
@@ -129,21 +129,21 @@ const GoalsScreen = () => {
                   )}
                   visibleRest={2}
                   itemHeight={40}
-                  containerStyle={{ height: 160, backgroundColor: '#2a2a2a' }}
-                  selectedIndicatorStyle={{ borderTopWidth: 1, borderBottomWidth: 1, borderColor: '#d32f2f' }}
-                  itemTextStyle={{ color: '#d32f2f', fontSize: 16 }}
+                  containerStyle={styles.wheelPickerContainer}
+                  selectedIndicatorStyle={styles.selectedIndicator}
+                  itemTextStyle={styles.wheelPickerItemText}
                 />
               </>
             )}
 
             {editType !== 'goals' && <Text style={styles.infoText}>Customization coming soon...</Text>}
 
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 16 }}>
-              <Pressable style={[styles.thinButton, { flex: 1, marginRight: 10 }]} onPress={() => setModalVisible(false)}>
+            <View style={styles.buttonRow}>
+              <Pressable style={[styles.thinButton, styles.flexButtonLeft]} onPress={() => setModalVisible(false)}>
                 <Text style={styles.thinButtonText}>Cancel</Text>
               </Pressable>
               {editType === 'goals' && (
-                <Pressable style={[styles.thinButton, { flex: 1 }]} onPress={saveGoals}>
+                <Pressable style={[styles.thinButton, styles.flexButtonRight]} onPress={saveGoals}>
                   <Text style={styles.thinButtonText}>Save</Text>
                 </Pressable>
               )}
@@ -157,6 +157,7 @@ const GoalsScreen = () => {
 
 const styles = StyleSheet.create({
   container: { backgroundColor: '#121212', flex: 1 },
+  contentContainer: { padding: 24 },
   title: { fontSize: 22, fontWeight: '700', color: '#fff', marginBottom: 20 },
   infoText: { color: '#ddd', fontSize: 16, marginBottom: 8 },
   label: { color: '#ccc', fontSize: 14, marginTop: 10 },
@@ -200,6 +201,34 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     marginLeft: 8,
+  },
+  iconMarginRight: {
+    marginRight: 10,
+  },
+  wheelPickerContainer: {
+    height: 160,
+    backgroundColor: '#2a2a2a',
+  },
+  selectedIndicator: {
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#d32f2f',
+  },
+  wheelPickerItemText: {
+    color: '#d32f2f',
+    fontSize: 16,
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 16,
+  },
+  flexButtonLeft: {
+    flex: 1,
+    marginRight: 10,
+  },
+  flexButtonRight: {
+    flex: 1,
   },
 });
 

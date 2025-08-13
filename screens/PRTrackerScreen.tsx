@@ -36,7 +36,7 @@ const PRTrackerScreen: React.FC = () => {
     const fetchPRs = async () => {
       try {
         const uid = auth.currentUser?.uid;
-        if (!uid) return;
+        if (!uid) {return;}
 
         const logRef = collection(db, 'users', uid, 'workoutLogs');
         const snapshot = await getDocs(logRef);
@@ -52,7 +52,7 @@ const PRTrackerScreen: React.FC = () => {
           log.exercises.forEach(ex => {
             ex.sets.forEach(set => {
               const weight = parseFloat(set.weight);
-              const reps = parseInt(set.reps);
+              const reps = parseInt(set.reps, 10);
               if (!isNaN(weight) && !isNaN(reps)) {
                 if (!exerciseMap[ex.name] || weight > exerciseMap[ex.name].weight) {
                   exerciseMap[ex.name] = {
