@@ -16,7 +16,7 @@ import LinearGradient from 'react-native-linear-gradient';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import Toast from '../components/Toast';
 import PRCelebration from '../components/PRCelebration';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp, StackActions } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
 import { auth, db } from '../firebase';
@@ -244,6 +244,13 @@ const WorkoutDetailScreen: React.FC = () => {
   const [warmup, setWarmup] = useState<EnrichedExercise[]>([]);
   const [main, setMain] = useState<EnrichedExercise[]>([]);
   const [cooldown, setCooldown] = useState<EnrichedExercise[]>([]);
+
+  function navigateToWorkoutRoot() {
+  // hop to the Workout tab if you use tabs
+  navigation.getParent?.()?.navigate?.('Workout');
+  // then clear this stack back to its root so Adapt/Detail aren’t left behind
+  navigation.dispatch(StackActions.popToTop());
+}
 
   /* -------- inputs -------- */
   const [progress, setProgress] = useState<WorkoutSet[][]>(() =>
@@ -507,7 +514,7 @@ const WorkoutDetailScreen: React.FC = () => {
     try {
       const batch = writeBatch(db);
       batch.set(doc(db, 'users', uid, 'workoutLogs', logId), log);
-      batch.update(doc(db, 'users', uid, 'program', 'active'), { currentDay: increment(1) });
+      batch.update(doc(db, 'users', uid, 'program', 'active'), { 'metadata.currentDay': increment(1) });
       await batch.commit();
       await checkAndAdjustRestDays(uid);
 
@@ -665,7 +672,12 @@ const WorkoutDetailScreen: React.FC = () => {
                 ))}
               </>
             )}
-            <Pressable style={[styles.saveBtn, styles.mt16]} onPress={() => setSummaryVisible(false)}>
+            <Pressable style={[styles.saveBtn, styles.mt16]}
+            onPress={() => {
+    setSummaryVisible(false);
+    navigateToWorkoutRoot(); // Navigate when summary is closed
+  }}
+>
               <Text style={styles.btnTxt}>Close</Text>
             </Pressable>
           </View>

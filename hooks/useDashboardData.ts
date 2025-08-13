@@ -10,7 +10,7 @@ import {
 } from 'firebase/firestore';
 import { Exercise, ProgramDay } from '../types/Exercise';
 
-export function useDashboardData(view: 'week' | 'month' | 'all') {
+export function useDashboardData(view: 'week' | 'month' | 'all', bump: number = 0) {
   const [moodData, setMoodData] = useState<number[]>([]);
   const [energyData, setEnergyData] = useState<number[]>([]);
   const [hasCheckedInToday, setHasCheckedInToday] = useState(true);
@@ -91,7 +91,7 @@ export function useDashboardData(view: 'week' | 'month' | 'all') {
     };
 
     fetchAll();
-  }, [view]);
+  }, [view, bump]);
 
   return {
     moodData,

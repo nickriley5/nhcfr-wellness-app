@@ -10,7 +10,7 @@ import {
   Alert,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -42,6 +42,36 @@ const WorkoutScreen: React.FC = () => {
   const [selectedWeekIdx, setSelectedWeekIdx] = useState(0);
   const [selectedDayIdx, setSelectedDayIdx] = useState(0);
   const [showFullSchedule, setShowFullSchedule] = useState(false);
+
+  const fetchProgram = async () => {
+  const uid = auth.currentUser?.uid;
+  if (!uid) {return;}
+  try {
+    const snap = await getDoc(doc(db, 'users', uid, 'program', 'active'));
+    if (snap.exists()) {
+      const data = snap.data();
+      setState({ currentDayIndex: data.metadata.currentDay - 1 });
+      setDays(data.days as ProgramDay[]);
+    } else {
+      setDays([]);                // or your array state setter
+      setState({ currentDayIndex: 0 }); // safe default
+      // setProgram(null);           // if you keep a program object in state
+}
+  } catch (err) {
+    console.error('Error loading program:', err);
+  }
+};
+
+useEffect(() => { fetchProgram(); }, []);
+
+useFocusEffect(
+  React.useCallback(() => {
+    fetchProgram();
+    return () => {};
+  }, [])
+);
+
+
 
   /* ───────── 1. LOAD PROGRAM ───────── */
   useEffect(() => {

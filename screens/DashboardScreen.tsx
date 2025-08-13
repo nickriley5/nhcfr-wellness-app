@@ -12,6 +12,7 @@ import LinearGradient from 'react-native-linear-gradient';
 import {
   useNavigation,
   CompositeNavigationProp,
+  useFocusEffect,
 } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -32,7 +33,9 @@ import GenerateButtons from '../components/Dashboard/GenerateButtons';
 import CheckInButton from '../components/Dashboard/CheckInButton';
 import { useDashboardData } from '../hooks/useDashboardData';
 import { auth, db } from '../firebase';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc } from 'firebase/firestore';
+
+
 
 export default function DashboardScreen() {
   const navigation = useNavigation<
@@ -48,6 +51,7 @@ export default function DashboardScreen() {
   const [showMealModal, setShowMealModal] = useState(false);
   const [showWorkoutModal, setShowWorkoutModal] = useState(false);
   const [showCalendarModal, setShowCalendarModal] = useState(false);
+  const [bump, setBump] = useState(0);
 
   // ✅ NEW: GoalSettings modal state
   const [showGoalSettingsModal, setShowGoalSettingsModal] = useState(false);
@@ -61,7 +65,12 @@ export default function DashboardScreen() {
     programExists,
     mealPlanExists,
     exerciseLibrary,
-  } = useDashboardData(view);
+  } = useDashboardData(view, bump);
+
+  useFocusEffect(React.useCallback(() => {
+  setBump(b => b + 1);
+  return () => {};
+}, []));
 
   useEffect(() => {
     Animated.loop(
@@ -125,6 +134,24 @@ export default function DashboardScreen() {
           onSetSchedule={() => setShowCalendarModal(true)}
           onViewHistory={() => navigation.navigate('WorkoutHistory')}
         />
+
+{__DEV__ && (
+  <View style={styles.devSection}>
+    <Text style={styles.devLabel}>Dev</Text>
+    <Text
+      onPress={async () => {
+        const uid = auth.currentUser?.uid;
+        if (!uid) {return;}
+        await deleteDoc(doc(db, 'users', uid, 'program', 'active'));
+        Alert.alert('Program', 'Active program reset.');
+        setBump(b => b + 1);
+      }}
+      style={styles.resetProgramText}>
+      Reset Active Program
+    </Text>
+  </View>
+)}
+
       </ScrollView>
 
       {/* Old Meal modal stays available if needed elsewhere */}
@@ -231,5 +258,19 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.85)',
     justifyContent: 'center',
+  },
+
+  // Dev section style
+  devSection: {
+    marginTop: 12,
+  },
+  devLabel: {
+    color: '#aaa',
+    fontSize: 12,
+    marginBottom: 6,
+  },
+  resetProgramText: {
+    color: '#ff6b6b',
+    textDecorationLine: 'underline',
   },
 });

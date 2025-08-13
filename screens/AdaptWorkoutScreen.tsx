@@ -213,7 +213,9 @@ const AdaptWorkoutScreen: React.FC = () => {
         if (!progSnap.exists()) {throw new Error('No active program');}
 
         const data = progSnap.data() as any;
-        const dayIdx = (data.currentDay ?? 1) - 1;
+        const curDay = data?.metadata?.currentDay ?? data?.currentDay ?? 1;
+        const dayIdx = Math.max(0, curDay - 1);
+
         const blocks: any[] = data.days?.[dayIdx]?.exercises ?? [];
 
         // Enrich today’s items
@@ -356,7 +358,7 @@ const AdaptWorkoutScreen: React.FC = () => {
       });
 
       data.days[dayIdx].exercises = merged;
-      await setDoc(ref, data);
+      await setDoc(ref, data, { merge: true });
       setShowToast(true);
 
       setTimeout(() => {
