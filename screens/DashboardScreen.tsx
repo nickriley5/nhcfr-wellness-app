@@ -481,8 +481,19 @@ export default function DashboardScreen() {
   return (
     <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.header}>Your Dashboard</Text>
-        <Text style={styles.subheader}>Train for duty. Fuel for life. 🔥</Text>
+        {/* Header with Calendar Button */}
+        <View style={styles.headerRow}>
+          <View style={styles.headerContent}>
+            <Text style={styles.header}>Your Dashboard</Text>
+            <Text style={styles.subheader}>Train for duty. Fuel for life. 🔥</Text>
+          </View>
+          <Pressable
+            style={styles.calendarButton}
+            onPress={() => console.log('Calendar pressed')} // Placeholder for now
+          >
+            <Text style={styles.calendarIcon}>📅</Text>
+          </Pressable>
+        </View>
 
         <ProfileCompletionBanner
           percent={completionPercent}
@@ -1054,5 +1065,24 @@ const styles = StyleSheet.create({
     color: '#ffb3a6',
     marginBottom: 3,
     lineHeight: 18,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    width: '100%',
+    marginBottom: 10,
+  },
+  headerContent: {
+    flex: 1,
+  },
+  calendarButton: {
+    backgroundColor: '#2a2a2a',
+    padding: 10,
+    borderRadius: 8,
+    marginLeft: 10,
+  },
+  calendarIcon: {
+    fontSize: 20,
   },
 });
