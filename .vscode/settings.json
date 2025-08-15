@@ -1,0 +1,35 @@
+{
+  "files.watcherExclude": {
+    "**/.git/**": true,
+    "**/node_modules/**": true,
+    "**/dist/**": true,
+    "**/build/**": true,
+    "**/android/.gradle/**": true,
+    "**/android/build/**": true,
+    "**/ios/Pods/**": true,
+    "**/ios/DerivedData/**": true
+  },
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/dist": true,
+    "**/build": true,
+    "**/android/.gradle": true,
+    "**/android/build": true,
+    "**/ios/Pods": true,
+    "**/ios/DerivedData": true
+  },
+  "typescript.tsserver.watchOptions": {
+    "watchFile": "dynamicPriorityPolling",
+    "watchDirectory": "dynamicPriorityPolling",
+    "fallbackPolling": "dynamicPriorityPolling",
+    "synchronousWatchDirectory": false,
+    "excludeDirectories": [
+      "**/node_modules",
+      "**/.git",
+      "**/dist",
+      "**/build",
+      "**/android",
+      "**/ios"
+    ]
+  }
+}

@@ -9,6 +9,8 @@ import {
   orderBy,
   query,
   onSnapshot,
+  where,
+  Timestamp,
 } from 'firebase/firestore';
 import { Exercise, ProgramDay } from '../types/Exercise';
 import { format } from 'date-fns';
@@ -105,22 +107,49 @@ export function useDashboardData(view: 'week' | 'month' | 'all', bump: number = 
       setMealPlanExists(mealSnap.exists());
 
       // Check-ins (mood/energy series + today check)
-      const checkSnap = await getDocs(
-        query(collection(db, 'users', user.uid, 'checkIns'), orderBy('timestamp', 'asc'))
-      );
-      const entries = checkSnap.docs.map((d) => d.data());
-      const todayStr = new Date().toDateString();
-      const last = checkSnap.docs[checkSnap.docs.length - 1];
-      if (!last || new Date(last.data().timestamp?.toDate()).toDateString() !== todayStr) {
-        setHasCheckedInToday(false);
-      } else {
-        setHasCheckedInToday(true);
+      // Calculate date range based on view parameter
+      const now = new Date();
+      let startDate = new Date();
+      switch (view) {
+        case 'week':
+          startDate.setDate(now.getDate() - 7);
+          break;
+        case 'month':
+          startDate.setMonth(now.getMonth() - 1);
+          break;
+        case 'all':
+          startDate = new Date(0); // Beginning of time
+          break;
       }
 
-      const limited =
-        view === 'week' ? entries.slice(-7) : view === 'month' ? entries.slice(-30) : entries;
-      setMoodData(limited.map((e: any) => Number(e.mood ?? 0)));
-      setEnergyData(limited.map((e: any) => Number(e.energy ?? 0)));
+      // Query with date range filter for efficient loading
+      console.log(`🔍 Loading check-ins for view: ${view}, startDate: ${startDate.toISOString()}`);
+      const checkSnap = await getDocs(
+        query(
+          collection(db, 'users', user.uid, 'checkIns'),
+          where('timestamp', '>=', Timestamp.fromDate(startDate)),
+          orderBy('timestamp', 'asc')
+        )
+      );
+      const entries = checkSnap.docs.map((d) => d.data());
+      console.log(`📊 Found ${entries.length} check-in entries:`, entries.map(e => ({
+        mood: e.mood,
+        energy: e.energy,
+        timestamp: e.timestamp?.toDate?.()?.toISOString?.() || 'No timestamp',
+      })));
+
+      // Check if user has checked in today
+      const todayStr = new Date().toDateString();
+      const hasToday = entries.some((entry: any) =>
+        entry.timestamp?.toDate().toDateString() === todayStr
+      );
+      setHasCheckedInToday(hasToday);
+
+      // Use all entries (they're already filtered by date range)
+      setMoodData(entries.map((e: any) => Number(e.mood ?? 0)));
+      setEnergyData(entries.map((e: any) => Number(e.energy ?? 0)));
+      console.log(`📈 Set mood data: [${entries.map((e: any) => Number(e.mood ?? 0)).join(', ')}]`);
+      console.log(`⚡ Set energy data: [${entries.map((e: any) => Number(e.energy ?? 0)).join(', ')}]`);
 
       // Profile completion + current weight
       const profileSnap = await getDoc(doc(db, 'users', user.uid));
@@ -137,7 +166,7 @@ export function useDashboardData(view: 'week' | 'month' | 'all', bump: number = 
         setCompletionPercent(
           Math.round((fields.filter(Boolean).length / fields.length) * 100)
         );
-        setCurrentWeight(Number(profile.weight) || 180);
+        setCurrentWeight(Number(profile.currentWeight || profile.weight) || 180);
       }
 
       // Exercise library (used by generator)

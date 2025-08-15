@@ -12,102 +12,125 @@ type Props = {
   onLogFoodPress: () => void;
 };
 
-function Row({ label, row }: { label: string; row: MacroRow }) {
-  const rem = row.remaining ?? (row.goal != null ? Math.max(0, row.goal - row.eaten) : undefined);
-  return (
-    <View style={styles.rowContainer}>
-      <Text style={styles.label}>{label}</Text>
-      <Text style={styles.value}>
-        {row.eaten.toFixed(0)}
-        {row.goal != null ? ` / ${row.goal.toFixed(0)}` : ''}{rem != null ? ` • Rem ${rem.toFixed(0)}` : ''}
-      </Text>
-    </View>
-  );
-}
-
 export default memo(function MacroSnapshotTile({ calories, protein, carbs, fat, onLogFoodPress }: Props) {
-  const remaining = calories.remaining ?? (calories.goal != null ? Math.max(0, calories.goal - calories.eaten) : undefined);
-
   return (
-    <View style={styles.tileContainer}>
-      <Text style={styles.header}>Macro Snapshot</Text>
-
-      <View style={styles.remainingContainer}>
-        <Text style={styles.remainingText}>
-          Remaining: <Text style={styles.remainingValue}>
-            {remaining != null ? remaining.toFixed(0) : '—'}
-          </Text>
-        </Text>
-        <Text style={styles.infoText}>
-          Eaten / Goal shown below (uses your per-item totals when available)
-        </Text>
+    <View style={styles.container}>
+      <View style={styles.headerRow}>
+        <Text style={styles.header}>Macro Snapshot</Text>
+        <Pressable onPress={onLogFoodPress} style={styles.logButton}>
+          <Text style={styles.logButtonText}>+ Log Food</Text>
+        </Pressable>
       </View>
 
-      <Row label="Calories" row={calories} />
-      <Row label="Protein"  row={protein} />
-      <Row label="Carbs"    row={carbs} />
-      <Row label="Fat"      row={fat} />
+      {/* 🔥 MacroCard Style Grid - Exactly like MealPlanScreen */}
+      <View style={styles.macroRowTop}>
+        {/* Calories Card */}
+        <View style={[styles.macroCard, styles.calorieColor]}>
+          <Text style={[styles.macroValue, styles.calorieText]}>
+            {calories.eaten.toFixed(0)} / {calories.goal?.toFixed(0) || '0'}
+          </Text>
+          <Text style={styles.macroLabel}>Calories</Text>
+        </View>
 
-      <View style={styles.logFoodContainer}>
-        <Pressable
-          onPress={onLogFoodPress}
-          style={styles.logFoodButton}>
-          <Text style={styles.logFoodText}>Log Food</Text>
-        </Pressable>
+        {/* Protein Card */}
+        <View style={[styles.macroCard, styles.proteinColor]}>
+          <Text style={[styles.macroValue, styles.proteinText]}>
+            {protein.eaten.toFixed(0)} / {protein.goal?.toFixed(0) || '0'} g
+          </Text>
+          <Text style={styles.macroLabel}>Protein</Text>
+        </View>
+
+        {/* Carbs Card */}
+        <View style={[styles.macroCard, styles.carbColor]}>
+          <Text style={[styles.macroValue, styles.carbText]}>
+            {carbs.eaten.toFixed(0)} / {carbs.goal?.toFixed(0) || '0'} g
+          </Text>
+          <Text style={styles.macroLabel}>Carbs</Text>
+        </View>
+
+        {/* Fat Card */}
+        <View style={[styles.macroCard, styles.fatColor]}>
+          <Text style={[styles.macroValue, styles.fatText]}>
+            {fat.eaten.toFixed(0)} / {fat.goal?.toFixed(0) || '0'} g
+          </Text>
+          <Text style={styles.macroLabel}>Fat</Text>
+        </View>
       </View>
     </View>
   );
 });
 
 const styles = StyleSheet.create({
-  tileContainer: {
-    backgroundColor: '#121822',
+  // ✨ MealPlan aesthetic
+  container: {
+    backgroundColor: '#1f1f1f',
     borderRadius: 16,
-    padding: 14,
-    marginBottom: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#333',
   },
-  logFoodContainer: {
-    flexDirection: 'row',
-    marginTop: 12,
-  },
-  logFoodButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    backgroundColor: '#33d6a6',
-  },
-  logFoodText: {
-    color: '#0b0f14',
-    fontWeight: '700',
-  },
-  header: {
-    color: '#e6edf3',
-    fontWeight: '600',
-    marginBottom: 6,
-  },
-  label: {
-    color: '#c2cfdd',
-  },
-  value: {
-    color: '#8ea0b6',
-  },
-  rowContainer: {
+
+  headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 6,
+    alignItems: 'center',
+    marginBottom: 20,
   },
-  remainingContainer: {
-    marginBottom: 10,
+  header: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#fff',
   },
-  remainingText: {
-    color: '#c2cfdd',
+  logButton: {
+    backgroundColor: '#33d6a6',
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
   },
-  remainingValue: {
-    color: '#e6edf3',
+  logButtonText: {
+    color: '#000',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+
+  // 🔥 Exact MacroCard Style from MealPlan
+  macroRowTop: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  macroCard: {
+    width: '48%',
+    paddingVertical: 16,
+    backgroundColor: '#1f1f1f',
+    borderRadius: 14,
+    marginBottom: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+  },
+  macroValue: {
+    color: '#fff',
+    fontSize: 18,
     fontWeight: '700',
+    textAlign: 'center',
   },
-  infoText: {
-    color: '#8ea0b6',
-    fontSize: 12,
+  macroLabel: {
+    color: '#aaa',
+    fontSize: 14,
+    marginTop: 4,
+    textAlign: 'center',
   },
+
+  // Macro Colors - Exact match to MacroCard
+  calorieColor: { borderColor: '#FFD54F' },
+  proteinColor: { borderColor: '#4FC3F7' },
+  carbColor: { borderColor: '#81C784' },
+  fatColor: { borderColor: '#F06292' },
+
+  // Text Colors
+  calorieText: { color: '#FFD54F' },
+  proteinText: { color: '#4FC3F7' },
+  carbText: { color: '#81C784' },
+  fatText: { color: '#F06292' },
 });

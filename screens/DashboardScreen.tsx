@@ -12,7 +12,6 @@ import {
   PermissionsAndroid,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
-import Ionicons from 'react-native-vector-icons/Ionicons';
 import {
   useNavigation,
   CompositeNavigationProp,
@@ -32,7 +31,9 @@ import Toast from 'react-native-toast-message';
 import { TabParamList, RootStackParamList } from '../App';
 import ProfileCompletionBanner from '../components/Profile/ProfileCompletionBanner';
 import MoodEnergySection from '../components/Dashboard/MoodEnergySection';
-import MacroCard from '../components/mealplan/MacroCard'; // ✅ fixed path
+import WeightTrackingCard from '../components/Dashboard/WeightTrackingCard';
+import NutritionInsightsCard from '../components/Dashboard/NutritionInsightsCard';
+import MacroSnapshotTile from '../components/Dashboard/MacroSnapshotTile';
 import MealLoggingModal, { MealContext } from '../components/mealplan/MealLoggingModal';
 import DescribeMealModal from '../components/mealplan/DescribeMealModal';
 import CameraModal from '../components/mealplan/CameraModal';
@@ -53,6 +54,13 @@ export default function DashboardScreen() {
   const [view, setView] = useState<'week' | 'month' | 'all'>('week');
   const [pulseAnim] = useState(new Animated.Value(1));
   const [bump, setBump] = useState(0);
+
+  // NEW: Wellness tracking states
+  const [hydrationToday, _setHydrationToday] = useState({ currentOz: 0, goalOz: 64 });
+  const [sleepLastNight, _setSleepLastNight] = useState({ hours: 0, quality: 0 });
+  const [readinessScore, setReadinessScore] = useState(0);
+  const [_nextShift, _setNextShift] = useState<Date | null>(null);
+  const [_showGlobalCalendar, _setShowGlobalCalendar] = useState(false);
 
   // ✅ MODAL STATES
   const [showMealLoggingModal, setShowMealLoggingModal] = useState(false);
@@ -96,7 +104,7 @@ export default function DashboardScreen() {
     programExists,
     todayInfo,
     macrosToday,
-  } = useDashboardData(view, bump); // ✅ removed unused currentWeight/exerciseLibrary
+  } = useDashboardData(view, bump);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -104,6 +112,40 @@ export default function DashboardScreen() {
       return () => {};
     }, [])
   );
+
+  // NEW: Calculate readiness score based on available data
+  useEffect(() => {
+    const calculateReadiness = () => {
+      const lastMood = moodData[moodData.length - 1] || 0;
+      const lastEnergy = energyData[energyData.length - 1] || 0;
+
+      // Only calculate if we have mood/energy data
+      if (lastMood === 0 || lastEnergy === 0) {
+        setReadinessScore(0);
+        return;
+      }
+
+      // Sleep component (0-5 scale)
+      const sleepScore = sleepLastNight.hours > 0
+        ? (sleepLastNight.hours / 8) * (sleepLastNight.quality / 5) * 5
+        : 3; // Default neutral if no sleep data
+
+      // Hydration component (0-5 scale)
+      const hydrationScore = Math.min(5, (hydrationToday.currentOz / hydrationToday.goalOz) * 5);
+
+      // Weighted readiness calculation
+      const score = (
+        lastMood * 0.35 +           // 35% mood
+        lastEnergy * 0.35 +         // 35% energy
+        sleepScore * 0.20 +         // 20% sleep
+        hydrationScore * 0.10       // 10% hydration
+      );
+
+      setReadinessScore(score);
+    };
+
+    calculateReadiness();
+  }, [moodData, energyData, sleepLastNight, hydrationToday]);
 
   // ✅ Load program information and schedule status
   useEffect(() => {
@@ -285,6 +327,28 @@ export default function DashboardScreen() {
     ).start();
   }, [pulseAnim]);
 
+  // NEW: Readiness helper functions
+  const getReadinessColor = (score: number) => {
+    if (score >= 4) { return '#33d6a6'; }  // High - green
+    if (score >= 3) { return '#ffa726'; }  // Medium - orange
+    return '#ff6b47';                      // Low - red
+  };
+
+  const getReadinessLevel = (score: number) => {
+    if (score >= 4) { return 'High'; }
+    if (score >= 3) { return 'Medium'; }
+    return 'Low';
+  };
+
+  const getReadinessMessage = (score: number) => {
+    if (score >= 4.5) { return 'Perfect day to push for PRs!'; }
+    if (score >= 4) { return 'High readiness - go for it!'; }
+    if (score >= 3.5) { return 'Good to go with planned workout'; }
+    if (score >= 3) { return 'Moderate readiness - listen to your body'; }
+    if (score >= 2) { return 'Consider lighter intensity today'; }
+    return 'Focus on recovery and rest';
+  };
+
   // ✅ Camera permission handler
   const requestCameraPermission = async (): Promise<boolean> => {
     if (Platform.OS === 'ios') {return true;}
@@ -426,9 +490,67 @@ export default function DashboardScreen() {
           onPress={() => navigation.navigate('Profile')}
         />
 
-        {/* Today’s Workout */}
+        {/* 🔥 Refactored Macro Snapshot */}
+        <MacroSnapshotTile
+          calories={macrosToday.calories}
+          protein={macrosToday.protein}
+          carbs={macrosToday.carbs}
+          fat={macrosToday.fat}
+          onLogFoodPress={() => setShowMealLoggingModal(true)}
+        />
+
+        {/* Mood & Energy Trends */}
+        <MoodEnergySection
+          view={view}
+          moodData={moodData}
+          energyData={energyData}
+          onViewChange={setView}
+        />
+
+        {/* Readiness */}
         <View style={styles.tile}>
-          <Text style={styles.tileHeader}>Today’s Workout</Text>
+          <Text style={styles.tileHeader}>Readiness</Text>
+          {hasCheckedInToday ? (
+            <>
+              {readinessScore > 0 ? (
+                <>
+                  <View style={styles.readinessDisplay}>
+                    <Text style={[styles.readinessScore, { color: getReadinessColor(readinessScore) }]}>
+                      {readinessScore.toFixed(1)}/5.0
+                    </Text>
+                    <Text style={[styles.readinessLevel, { color: getReadinessColor(readinessScore) }]}>
+                      {getReadinessLevel(readinessScore)}
+                    </Text>
+                  </View>
+                  <Text style={styles.readinessMessage}>
+                    {getReadinessMessage(readinessScore)}
+                  </Text>
+                </>
+              ) : (
+                <Text style={styles.mutedText}>
+                  Ready to roll. Keep the streak going.
+                </Text>
+              )}
+            </>
+          ) : (
+            <>
+              <Text style={styles.mutedText}>No check-in today.</Text>
+              <Text style={styles.helperText}>
+                Log mood & energy to populate readiness.
+              </Text>
+              <Pressable
+                style={[styles.btn, styles.btnPrimary]}
+                onPress={() => navigation.navigate('CheckIn')}
+              >
+                <Text style={styles.btnPrimaryText}>Check-In</Text>
+              </Pressable>
+            </>
+          )}
+        </View>
+
+        {/* Today's Workout - Enhanced with more context */}
+        <View style={styles.tile}>
+          <Text style={styles.tileHeader}>Today's Workout</Text>
           {programExists && programInfo ? (
             <>
               {!programInfo.hasSchedule ? (
@@ -546,7 +668,7 @@ export default function DashboardScreen() {
                     style={styles.linkWrap}
                     onPress={() =>
                       navigation
-                        .getParent<NativeStackNavigationProp<RootStackParamList>>() // ✅ parent stack navigate
+                        .getParent<NativeStackNavigationProp<RootStackParamList>>()
                         ?.navigate('WorkoutHistory')
                     }
                   >
@@ -611,7 +733,7 @@ export default function DashboardScreen() {
                 style={styles.linkWrap}
                 onPress={() =>
                   navigation
-                    .getParent<NativeStackNavigationProp<RootStackParamList>>() // ✅ parent stack navigate
+                    .getParent<NativeStackNavigationProp<RootStackParamList>>()
                     ?.navigate('WorkoutHistory')
                 }
               >
@@ -638,107 +760,15 @@ export default function DashboardScreen() {
           )}
         </View>
 
-        {/* Readiness */}
-        <View style={styles.tile}>
-          <Text style={styles.tileHeader}>Readiness</Text>
-          {hasCheckedInToday ? (
-            <Text style={styles.mutedText}>
-              Ready to roll. Keep the streak going.
-            </Text>
-          ) : (
-            <>
-              <Text style={styles.mutedText}>No check-in today.</Text>
-              <Text style={styles.helperText}>
-                Log mood & energy to populate readiness.
-              </Text>
-              <Pressable
-                style={[styles.btn, styles.btnPrimary]}
-                onPress={() => navigation.navigate('CheckIn')}
-              >
-                <Text style={styles.btnPrimaryText}>Check-In</Text>
-              </Pressable>
-            </>
-          )}
-        </View>
-
-        {/* Mood & Energy Trends */}
-        <MoodEnergySection
-          view={view}
-          moodData={moodData}
-          energyData={energyData}
-          onViewChange={setView}
+        {/* Weight Tracking */}
+        <WeightTrackingCard
+          onWeightUpdated={() => setBump((b) => b + 1)}
         />
 
-        {/* Macro Snapshot — uses MacroCard to match Meal Plan */}
-        <View style={styles.tile}>
-          <View style={styles.tileHeaderRow}>
-            <Text style={styles.tileHeader}>Macro Snapshot</Text>
-            <Pressable
-              style={styles.logFoodButton}
-              onPress={() => setShowMealLoggingModal(true)}
-            >
-              <Ionicons name="add" size={20} color="#0b0f14" />
-            </Pressable>
-          </View>
-          {macrosToday.hasMeals || macrosToday.calories.goal != null ? (
-            <>
-              <Text style={styles.macroRemaining}>
-                Remaining:{' '}
-                {macrosToday.calories.remaining != null
-                  ? `${macrosToday.calories.remaining.toFixed(0)} kcal`
-                  : '—'}
-              </Text>
-
-              <View style={styles.macroGrid}>
-                <MacroCard
-                  label="Calories"
-                  logged={macrosToday.calories.eaten}
-                  target={macrosToday.calories.goal ?? 0}
-                  unit="kcal"
-                  variant="calories"
-                />
-                <MacroCard
-                  label="Protein"
-                  logged={macrosToday.protein.eaten}
-                  target={macrosToday.protein.goal ?? 0}
-                  unit="g"
-                  variant="protein"
-                />
-                <MacroCard
-                  label="Carbs"
-                  logged={macrosToday.carbs.eaten}
-                  target={macrosToday.carbs.goal ?? 0}
-                  unit="g"
-                  variant="carb"
-                />
-                <MacroCard
-                  label="Fat"
-                  logged={macrosToday.fat.eaten}
-                  target={macrosToday.fat.goal ?? 0}
-                  unit="g"
-                  variant="fat"
-                />
-              </View>
-            </>
-          ) : (
-            <>
-              <Text style={styles.mutedText}>No meals logged yet.</Text>
-              <Text style={styles.helperText}>
-                Log a meal to see Remaining • Eaten / Goal for today.
-              </Text>
-              <Pressable
-                style={[styles.btn, styles.btnSecondary]}
-                onPress={() =>
-                  navigation
-                    .getParent<NativeStackNavigationProp<RootStackParamList>>()
-                    ?.navigate('MainTabs', { screen: 'MealPlan' })
-                }
-              >
-                <Text style={styles.btnSecondaryText}>Log Food</Text>
-              </Pressable>
-            </>
-          )}
-        </View>
+        {/* Nutrition Insights */}
+        <NutritionInsightsCard
+          onMacroUpdated={() => setBump((b) => b + 1)}
+        />
 
         {/* Dev helper */}
         {__DEV__ && (
@@ -842,118 +872,187 @@ function summarizeMains(day: any) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  content: { padding: 24, alignItems: 'center' },
+  content: { padding: 16, alignItems: 'center' },
 
-  header: { fontSize: 26, fontWeight: '700', color: '#d32f2f', marginBottom: 4 },
-  subheader: { fontSize: 16, color: '#ccc', marginBottom: 16 },
+  header: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#fff',
+    marginBottom: 4,
+  },
+  subheader: {
+    fontSize: 16,
+    color: '#aaa',
+    marginBottom: 20,
+    fontWeight: '500',
+  },
 
+  // ✨ MealPlan aesthetic - dark theme
   tile: {
     width: '100%',
-    backgroundColor: '#0c151f',
+    backgroundColor: '#1f1f1f',
     borderRadius: 16,
     padding: 16,
-    marginBottom: 12,
+    marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#152436',
+    borderColor: '#333',
   },
   tileHeader: {
-    color: '#e6edf3',
+    color: '#fff',
+    fontWeight: '600',
+    marginBottom: 12,
+    fontSize: 20,
+  },
+
+  workoutTitle: {
+    color: '#fff',
+    fontSize: 18,
     fontWeight: '700',
-    marginBottom: 8,
-    fontSize: 16,
+    marginBottom: 6,
   },
-  tileHeaderRow: {
+  workoutMeta: {
+    color: '#aaa',
+    fontSize: 13,
+    marginBottom: 12,
+    lineHeight: 18,
+  },
+
+  rowButtons: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  logFoodButton: {
-    backgroundColor: '#33d6a6',
-    borderRadius: 20,
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  workoutTitle: { color: '#e6edf3', fontSize: 16, fontWeight: '600', marginBottom: 4 },
-  workoutMeta: { color: '#8ea0b6', fontSize: 12, marginBottom: 10 },
-
-  rowButtons: { flexDirection: 'row', gap: 10 },
-  btn: {
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  btnPrimary: { backgroundColor: '#33d6a6', borderColor: '#33d6a6' },
-  btnPrimaryText: { color: '#0b0f14', fontWeight: '700' },
-  btnSecondary: { borderColor: '#2a3a52' },
-  btnSecondaryText: { color: '#c2cfdd', fontWeight: '600' },
-
-  linkWrap: { marginTop: 10 },
-  linkText: { color: '#8ea0b6', textDecorationLine: 'underline', fontSize: 12 },
-
-  mutedText: { color: '#8ea0b6' },
-  helperText: { color: '#c2cfdd', marginTop: 4 },
-
-  macroRemaining: { color: '#e6edf3', fontWeight: '700', marginBottom: 8 },
-  macroGrid: {
+    gap: 12,
     marginTop: 4,
-    rowGap: 10,
-    columnGap: 10,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
+  },
+  btn: {
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    borderRadius: 14,
+    borderWidth: 1,
+    flex: 1,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  btnPrimary: {
+    backgroundColor: '#33d6a6',
+    borderColor: '#33d6a6',
+    shadowColor: '#33d6a6',
+    shadowOpacity: 0.3,
+  },
+  btnPrimaryText: {
+    color: '#000',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  btnSecondary: {
+    borderColor: '#444',
+    backgroundColor: 'rgba(68, 68, 68, 0.2)',
+  },
+  btnSecondaryText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 15,
   },
 
-  devSection: { marginTop: 12, width: '100%' },
-  devLabel: { color: '#aaa', fontSize: 12, marginBottom: 6 },
+  linkWrap: { marginTop: 14 },
+  linkText: {
+    color: '#4FC3F7',
+    textDecorationLine: 'underline',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+
+  mutedText: {
+    color: '#aaa',
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  helperText: {
+    color: '#fff',
+    marginTop: 6,
+    fontSize: 13,
+    lineHeight: 18,
+    opacity: 0.8,
+  },
+
+  // NEW: Readiness display styles
+  readinessDisplay: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 8,
+  },
+  readinessScore: {
+    fontSize: 24,
+    fontWeight: '800',
+  },
+  readinessLevel: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  readinessMessage: {
+    color: '#aaa',
+    fontSize: 14,
+    lineHeight: 20,
+    fontStyle: 'italic',
+  },
+
+  devSection: { marginTop: 16, width: '100%' },
+  devLabel: { color: '#aaa', fontSize: 12, marginBottom: 8 },
   resetProgramText: { color: '#ff6b6b', textDecorationLine: 'underline' },
 
-  // ✅ Workout Summary Styles
+  // ✨ Enhanced Workout Summary Styles
   summaryStats: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    marginTop: 12,
-    marginBottom: 8,
-    paddingVertical: 12,
-    backgroundColor: '#1a2332',
-    borderRadius: 12,
+    marginTop: 16,
+    marginBottom: 12,
+    paddingVertical: 16,
+    backgroundColor: '#1f1f1f',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#333',
   },
   statBlock: {
     alignItems: 'center',
     flex: 1,
   },
   statNumber: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#33d6a6',
-    marginBottom: 2,
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#4FC3F7',
+    marginBottom: 4,
   },
   statLabel: {
     fontSize: 12,
-    color: '#8ea0b6',
+    color: '#aaa',
     textAlign: 'center',
+    fontWeight: '500',
+    opacity: 0.9,
   },
   prSection: {
-    marginTop: 8,
-    padding: 12,
-    backgroundColor: '#2a1f1f',
-    borderRadius: 8,
-    borderLeftWidth: 3,
+    marginTop: 12,
+    padding: 16,
+    backgroundColor: '#2a1f28',
+    borderRadius: 12,
+    borderLeftWidth: 4,
     borderLeftColor: '#ff6b47',
+    borderWidth: 1,
+    borderColor: '#3d2d35',
   },
   prTitle: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 15,
+    fontWeight: '700',
     color: '#ff6b47',
-    marginBottom: 4,
+    marginBottom: 6,
+    letterSpacing: 0.2,
   },
   prText: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#ffb3a6',
-    marginBottom: 2,
+    marginBottom: 3,
+    lineHeight: 18,
   },
 });

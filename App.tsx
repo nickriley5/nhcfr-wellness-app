@@ -60,6 +60,7 @@ export type RootStackParamList = {
   Register: undefined;
   AppDrawer: NavigatorScreenParams<RootDrawerParamList>;
   CheckIn: undefined;
+  WeighIn: undefined;
   WorkoutDetail: {
     day: ProgramDay;
     weekIdx: number;

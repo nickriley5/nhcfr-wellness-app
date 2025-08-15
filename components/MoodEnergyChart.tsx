@@ -11,8 +11,10 @@ const MoodEnergyChart = ({ moodData, energyData }: {
   if (moodData.length === 0 || energyData.length === 0) {
     return (
       <View style={styles.container}>
-        <Text style={styles.title}>Mood & Energy Trends</Text>
-        <Text style={styles.placeholder}>No check-in data available yet.</Text>
+        <Text style={styles.placeholder}>
+          No check-in data available yet.{'\n'}
+          Start logging your daily mood and energy levels to see trends.
+        </Text>
       </View>
     );
   }
@@ -39,27 +41,27 @@ const MoodEnergyChart = ({ moodData, energyData }: {
           datasets: [
             {
               data: moodData,
-              color: () => '#d32f2f',
-              strokeWidth: 2,
+              color: () => '#4FC3F7', // Blue for mood
+              strokeWidth: 3,
             },
             {
               data: energyData,
-              color: () => '#f57c00',
-              strokeWidth: 2,
+              color: () => '#81C784', // Green for energy
+              strokeWidth: 3,
             },
           ],
           legend: ['Mood', 'Energy'],
         }}
-        width={screenWidth - 32}
-        height={220}
+        width={screenWidth - 64}
+        height={200}
         chartConfig={{
-          backgroundGradientFrom: '#1e1e1e',
-          backgroundGradientTo: '#121212',
+          backgroundGradientFrom: '#1f1f1f',
+          backgroundGradientTo: '#1f1f1f',
           decimalPlaces: 0,
           color: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
-          labelColor: () => '#ccc',
+          labelColor: () => '#aaa',
           propsForDots: {
-            r: '4',
+            r: '5',
             strokeWidth: '2',
             stroke: '#fff',
           },
@@ -73,32 +75,26 @@ const MoodEnergyChart = ({ moodData, energyData }: {
 
 const styles = StyleSheet.create({
   container: {
-    marginTop: 24,
-    paddingHorizontal: 16,
-    backgroundColor: '#1e1e1e',
-    borderRadius: 16,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-    elevation: 10,
+    backgroundColor: 'transparent', // Let MoodEnergySection handle the container
+    paddingVertical: 8,
   },
   title: {
-    color: '#d32f2f',
-    fontSize: 18,
+    color: '#fff',
+    fontSize: 16,
     fontWeight: '600',
-    marginBottom: 12,
+    marginBottom: 8,
     textAlign: 'center',
   },
   placeholder: {
-    color: '#999',
+    color: '#aaa',
     textAlign: 'center',
     fontSize: 14,
-    paddingVertical: 20,
+    paddingVertical: 40,
+    lineHeight: 20,
   },
   chart: {
     borderRadius: 12,
+    marginVertical: 8,
   },
 });
 

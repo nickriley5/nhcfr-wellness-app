@@ -72,22 +72,25 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   readinessTitle: {
-    color: '#e6edf3',
+    color: '#fff',
     fontWeight: '600',
     marginBottom: 6,
+    fontSize: 18,
   },
   readinessValue: {
-    color: '#c2cfdd',
+    color: '#fff',
+    fontSize: 16,
   },
   readinessSubText: {
-    color: '#8ea0b6',
+    color: '#aaa',
+    fontSize: 14,
   },
   miniTrendContainer: {
     marginTop: 8,
   },
   last7DaysLabel: {
-    color: '#8ea0b6',
-    fontSize: 12,
+    color: '#aaa',
+    fontSize: 14,
     marginBottom: 4,
   },
   trendRow: {
@@ -95,16 +98,18 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   trendGlyph: {
-    color: '#c2cfdd',
-    fontSize: 16,
+    color: '#fff',
+    fontSize: 18,
     marginRight: 4,
   },
   noCheckInsText: {
-    color: '#8ea0b6',
+    color: '#aaa',
+    fontSize: 16,
   },
   checkInInfoText: {
-    color: '#c2cfdd',
+    color: '#aaa',
     marginTop: 4,
+    fontSize: 14,
   },
   checkInRow: {
     flexDirection: 'row',
