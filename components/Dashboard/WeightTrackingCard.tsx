@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,6 @@ import {
   Alert,
   Dimensions,
 } from 'react-native';
-import Ionicons from 'react-native-vector-icons/Ionicons';
 import { LineChart } from 'react-native-chart-kit';
 import { auth, db } from '../../firebase';
 import {
@@ -45,9 +44,13 @@ interface WeightTrackingCardProps {
   onWeightUpdated?: () => void;
 }
 
+export interface WeightTrackingCardRef {
+  openWeightModal: () => void;
+}
+
 type TimeRange = 'week' | 'month' | 'year';
 
-const WeightTrackingCard: React.FC<WeightTrackingCardProps> = ({ onWeightUpdated }) => {
+const WeightTrackingCard = forwardRef<WeightTrackingCardRef, WeightTrackingCardProps>(({ onWeightUpdated }, ref) => {
   const [timeRange, setTimeRange] = useState<TimeRange>('month');
   const [weightEntries, setWeightEntries] = useState<WeightEntry[]>([]);
   const [weightGoal, setWeightGoal] = useState<WeightGoal | null>(null);
@@ -124,6 +127,10 @@ const WeightTrackingCard: React.FC<WeightTrackingCardProps> = ({ onWeightUpdated
   useEffect(() => {
     loadWeightData();
   }, [loadWeightData]);
+
+  useImperativeHandle(ref, () => ({
+    openWeightModal: () => setShowInputModal(true),
+  }));
 
   const handleAddWeight = async () => {
     const uid = auth.currentUser?.uid;
@@ -316,15 +323,7 @@ const WeightTrackingCard: React.FC<WeightTrackingCardProps> = ({ onWeightUpdated
   return (
     <>
       <View style={styles.tile}>
-        <View style={styles.tileHeaderRow}>
-          <Text style={styles.tileHeader}>Weight Tracking</Text>
-          <Pressable
-            style={styles.addButton}
-            onPress={() => setShowInputModal(true)}
-          >
-            <Ionicons name="add" size={20} color="#0b0f14" />
-          </Pressable>
-        </View>
+        <Text style={styles.tileHeader}>Weight Tracking</Text>
 
         {/* Current Weight Display */}
         <View style={styles.currentWeightRow}>
@@ -462,7 +461,9 @@ const WeightTrackingCard: React.FC<WeightTrackingCardProps> = ({ onWeightUpdated
       </Modal>
     </>
   );
-};
+});
+
+WeightTrackingCard.displayName = 'WeightTrackingCard';
 
 const styles = StyleSheet.create({
   tile: {

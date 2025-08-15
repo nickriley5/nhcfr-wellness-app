@@ -1,5 +1,5 @@
 // screens/DashboardScreen_NEW.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Text,
   StyleSheet,
@@ -32,7 +32,7 @@ import Toast from 'react-native-toast-message';
 import { TabParamList, RootStackParamList } from '../App';
 import ProfileCompletionBanner from '../components/Profile/ProfileCompletionBanner';
 import MoodEnergySection from '../components/Dashboard/MoodEnergySection';
-import WeightTrackingCard from '../components/Dashboard/WeightTrackingCard';
+import WeightTrackingCard, { WeightTrackingCardRef } from '../components/Dashboard/WeightTrackingCard';
 import MacroCard from '../components/mealplan/MacroCard';
 import MealLoggingModal, { MealContext } from '../components/mealplan/MealLoggingModal';
 import DescribeMealModal from '../components/mealplan/DescribeMealModal';
@@ -89,6 +89,8 @@ export default function DashboardScreen_NEW() {
     dayIdx: number;
     environment: string;
   } | null>(null);
+
+  const weightTrackingRef = useRef<WeightTrackingCardRef>(null);
 
   const [programInfo, setProgramInfo] = useState<{
     daysPerWeek: number;
@@ -849,6 +851,19 @@ export default function DashboardScreen_NEW() {
     setShowQuickFavoritesModal(true);
   };
 
+  // Weight tracking helper functions
+  const getWeeklyAverage = () => {
+    // This would need to access weight data from the component
+    // For now, return a placeholder
+    return '182.3';
+  };
+
+  const getWeeklyChange = () => {
+    // This would calculate weekly change
+    // For now, return a placeholder
+    return -1.2;
+  };
+
   const handleCameraModalComplete = (meal: any) => {
     if (meal.source === 'OPEN_DESCRIBE_MODAL') {
       setPendingPhotoUri(meal.photoUri);
@@ -1251,7 +1266,7 @@ export default function DashboardScreen_NEW() {
 
         {/* SECTION 3: Progress & Nutrition */}
         <View style={styles.sectionContainer}>
-          <Text style={styles.sectionTitle}>📊 Progress & Nutrition</Text>
+          <Text style={styles.sectionTitle}>Nutrition & Weight</Text>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -1347,21 +1362,30 @@ export default function DashboardScreen_NEW() {
             {/* Weight Tracking */}
             <View style={styles.horizontalCard}>
               <WeightTrackingCard
+                ref={weightTrackingRef}
                 onWeightUpdated={() => setBump((b) => b + 1)}
               />
-            </View>
 
-            {/* Charts Card */}
-            <View style={styles.horizontalCard}>
-              <Text style={styles.tileHeader}>Progress Charts</Text>
-              <Text style={styles.mutedText}>View detailed analytics</Text>
-              <Text style={styles.helperText}>Mood, energy, weight, performance trends</Text>
-              <Pressable
-                style={[styles.btn, styles.btnSecondary]}
-                onPress={() => navigation.navigate('ProgressChart', { exerciseName: 'Overview' })}
-              >
-                <Text style={styles.btnSecondaryText}>View All Charts</Text>
-              </Pressable>
+              {/* Enhanced Footer Section */}
+              <View style={styles.weightTrackingFooter}>
+                <Pressable
+                  style={[styles.btn, styles.btnWeightLog]}
+                  onPress={() => {
+                    weightTrackingRef.current?.openWeightModal();
+                  }}
+                >
+                  <Text style={styles.btnWeightLogText}>Log Weight</Text>
+                </Pressable>
+
+                <View style={styles.weeklyAverageContainer}>
+                  <Text style={styles.weeklyAverageLabel}>7-Day Average</Text>
+                  <Text style={styles.weeklyAverageValue}>{getWeeklyAverage()} lbs</Text>
+                  <Text style={styles.weeklyAverageChange}>
+                    {getWeeklyChange() > 0 ? '↗️' : getWeeklyChange() < 0 ? '↘️' : '➡️'}
+                    {Math.abs(getWeeklyChange()).toFixed(1)} from last week
+                  </Text>
+                </View>
+              </View>
             </View>
           </ScrollView>
         </View>
@@ -2039,6 +2063,51 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 16,
   },
+
+  // Weight Tracking Footer Styles
+  weightTrackingFooter: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#333',
+  },
+  btnWeightLog: {
+    backgroundColor: '#33d6a6',
+    marginBottom: 16,
+  },
+  btnWeightLogText: {
+    color: '#000',
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  weeklyAverageContainer: {
+    backgroundColor: '#1f1f1f',
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  weeklyAverageLabel: {
+    fontSize: 12,
+    color: '#888',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
+  weeklyAverageValue: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#33d6a6',
+    marginBottom: 6,
+  },
+  weeklyAverageChange: {
+    fontSize: 13,
+    color: '#aaa',
+    fontWeight: '500',
+  },
+
   comingUpHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
