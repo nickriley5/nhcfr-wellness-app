@@ -7,8 +7,8 @@ import {
   TextInput,
   Modal,
   Alert,
-  Dimensions,
 } from 'react-native';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import { LineChart } from 'react-native-chart-kit';
 import { auth, db } from '../../firebase';
 import {
@@ -58,6 +58,11 @@ const WeightTrackingCard = forwardRef<WeightTrackingCardRef, WeightTrackingCardP
   const [inputWeight, setInputWeight] = useState('');
   const [inputNotes, setInputNotes] = useState('');
   const [loading, setLoading] = useState(true);
+
+  // Expose methods to parent component via ref
+  useImperativeHandle(ref, () => ({
+    openWeightModal: () => setShowInputModal(true),
+  }));
 
   const loadWeightData = useCallback(async () => {
     const uid = auth.currentUser?.uid;
@@ -127,10 +132,6 @@ const WeightTrackingCard = forwardRef<WeightTrackingCardRef, WeightTrackingCardP
   useEffect(() => {
     loadWeightData();
   }, [loadWeightData]);
-
-  useImperativeHandle(ref, () => ({
-    openWeightModal: () => setShowInputModal(true),
-  }));
 
   const handleAddWeight = async () => {
     const uid = auth.currentUser?.uid;
@@ -323,7 +324,15 @@ const WeightTrackingCard = forwardRef<WeightTrackingCardRef, WeightTrackingCardP
   return (
     <>
       <View style={styles.tile}>
-        <Text style={styles.tileHeader}>Weight Tracking</Text>
+        <View style={styles.tileHeaderRow}>
+          <Text style={styles.tileHeader}>Weight Tracking</Text>
+          <Pressable
+            style={styles.addButton}
+            onPress={() => setShowInputModal(true)}
+          >
+            <Ionicons name="add" size={20} color="#0b0f14" />
+          </Pressable>
+        </View>
 
         {/* Current Weight Display */}
         <View style={styles.currentWeightRow}>
@@ -377,24 +386,47 @@ const WeightTrackingCard = forwardRef<WeightTrackingCardRef, WeightTrackingCardP
           <View style={styles.chartContainer}>
             <LineChart
               data={getChartData()}
-              width={Dimensions.get('window').width - 80}
-              height={200}
+              width={260} // Reduced width to fit better in horizontal card with labels
+              height={180} // Slightly reduced height for better proportions
               chartConfig={{
                 backgroundColor: '#1f1f1f',
                 backgroundGradientFrom: '#1f1f1f',
                 backgroundGradientTo: '#1f1f1f',
-                decimalPlaces: 1,
+                decimalPlaces: 0, // Remove decimals for cleaner integer display
                 color: (opacity = 1) => `rgba(79, 195, 247, ${opacity})`, // #4FC3F7 blue
                 labelColor: (opacity = 1) => `rgba(170, 170, 170, ${opacity})`, // #aaa
                 style: { borderRadius: 16 },
                 propsForDots: {
-                  r: '5',
+                  r: '3',
                   strokeWidth: '2',
                   stroke: '#4FC3F7',
+                },
+                formatYLabel: (value) => {
+                  // Ensure full numbers are displayed (e.g., 195 not 95)
+                  const num = Math.round(parseFloat(value));
+                  return num.toString();
+                },
+                propsForVerticalLabels: {
+                  fontSize: 10,
+                  fill: '#aaa',
+                },
+                propsForHorizontalLabels: {
+                  fontSize: 9,
+                  fill: '#aaa',
                 },
               }}
               bezier={useBezier}
               style={styles.chart}
+              withVerticalLabels={true}
+              withHorizontalLabels={true}
+              withInnerLines={false}
+              withOuterLines={false}
+              yAxisLabel=""
+              yAxisSuffix=""
+              segments={3} // Fewer segments for cleaner look in smaller space
+              fromZero={false} // Don't start from zero to better show weight range
+              yLabelsOffset={8} // Reduced offset for tighter fit
+              xLabelsOffset={5} // Reduced offset for tighter fit
             />
           </View>
         ) : (
@@ -462,8 +494,6 @@ const WeightTrackingCard = forwardRef<WeightTrackingCardRef, WeightTrackingCardP
     </>
   );
 });
-
-WeightTrackingCard.displayName = 'WeightTrackingCard';
 
 const styles = StyleSheet.create({
   tile: {
@@ -548,8 +578,11 @@ const styles = StyleSheet.create({
   },
   chartContainer: {
     alignItems: 'center',
-    overflow: 'hidden',
-    borderRadius: 16,
+    paddingHorizontal: 5, // Reduced padding for tighter fit
+    paddingTop: 5, // Reduced top padding
+    paddingBottom: 10, // Reduced bottom padding
+    marginHorizontal: -5, // Compensate for horizontal padding
+    overflow: 'visible', // Allow labels to be fully visible
   },
   chart: {
     borderRadius: 16,

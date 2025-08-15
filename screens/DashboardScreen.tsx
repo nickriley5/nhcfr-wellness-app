@@ -650,8 +650,8 @@ export default function DashboardScreen() {
                     {todayInfo.day.title ?? 'Workout'}
                   </Text>
                   <Text style={styles.workoutMeta}>
-                    {summarizeMains(todayInfo.day)} • {countSets(todayInfo.day)} sets • ~
-                    {estimateTime(todayInfo.day)} min
+                    Forecast: {summarizeMains(todayInfo.day)} • {countSets(todayInfo.day)} sets • ~
+                    {estimateTime(todayInfo.day)} min estimated
                   </Text>
 
                   <View style={styles.rowButtons}>
@@ -715,8 +715,8 @@ export default function DashboardScreen() {
                 {todayInfo.day.title ?? 'Workout'}
               </Text>
               <Text style={styles.workoutMeta}>
-                {summarizeMains(todayInfo.day)} • {countSets(todayInfo.day)} sets • ~
-                {estimateTime(todayInfo.day)} min
+                Forecast: {summarizeMains(todayInfo.day)} • {countSets(todayInfo.day)} sets • ~
+                {estimateTime(todayInfo.day)} min estimated
               </Text>
 
               <View style={styles.rowButtons}>
@@ -918,14 +918,15 @@ const styles = StyleSheet.create({
   workoutTitle: {
     color: '#fff',
     fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 6,
+    fontWeight: '600', // Consistent with other dashboard components
+    marginBottom: 8,
   },
   workoutMeta: {
     color: '#aaa',
-    fontSize: 13,
-    marginBottom: 12,
-    lineHeight: 18,
+    fontSize: 14, // Slightly larger for better readability
+    marginBottom: 16,
+    lineHeight: 20,
+    fontWeight: '500',
   },
 
   rowButtons: {
@@ -935,57 +936,56 @@ const styles = StyleSheet.create({
   },
   btn: {
     paddingVertical: 12,
-    paddingHorizontal: 18,
-    borderRadius: 14,
+    paddingHorizontal: 16,
+    borderRadius: 12, // Consistent with other dashboard components
     borderWidth: 1,
     flex: 1,
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 2,
+    shadowRadius: 2,
+    elevation: 1,
   },
   btnPrimary: {
     backgroundColor: '#33d6a6',
     borderColor: '#33d6a6',
-    shadowColor: '#33d6a6',
-    shadowOpacity: 0.3,
   },
   btnPrimaryText: {
-    color: '#000',
-    fontWeight: '700',
-    fontSize: 15,
+    color: '#0b0f14', // Consistent with other dashboard components
+    fontWeight: '600', // Slightly lighter weight
+    fontSize: 14,
   },
   btnSecondary: {
-    borderColor: '#444',
-    backgroundColor: 'rgba(68, 68, 68, 0.2)',
+    borderColor: '#333', // Consistent with tile borders
+    backgroundColor: 'transparent',
   },
   btnSecondaryText: {
-    color: '#fff',
+    color: '#aaa', // Consistent muted text color
     fontWeight: '600',
-    fontSize: 15,
+    fontSize: 14,
   },
 
-  linkWrap: { marginTop: 14 },
+  linkWrap: { marginTop: 16 }, // Slightly more spacing
   linkText: {
     color: '#4FC3F7',
     textDecorationLine: 'underline',
-    fontSize: 13,
-    fontWeight: '500',
+    fontSize: 14, // Consistent with other dashboard text
+    fontWeight: '600',
   },
 
   mutedText: {
     color: '#aaa',
-    fontSize: 15,
+    fontSize: 16,
     lineHeight: 22,
+    fontWeight: '500',
   },
   helperText: {
-    color: '#fff',
+    color: '#aaa', // Changed from #fff to consistent muted text
     marginTop: 6,
-    fontSize: 13,
-    lineHeight: 18,
-    opacity: 0.8,
+    fontSize: 14, // Slightly larger for better readability
+    lineHeight: 20,
+    fontWeight: '500',
   },
 
   // NEW: Readiness display styles

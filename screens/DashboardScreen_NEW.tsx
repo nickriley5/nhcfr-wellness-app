@@ -1093,8 +1093,8 @@ export default function DashboardScreen_NEW() {
                         {getEnvironmentIcon(programInfo.todayEnvironment)} {todayInfo.day.title ?? 'Workout'}
                       </Text>
                       <Text style={styles.workoutMeta}>
-                        {getEnvironmentLabel(programInfo.todayEnvironment)} • {summarizeMains(todayInfo.day)} • {countSets(todayInfo.day)} sets • ~
-                        {estimateTime(todayInfo.day)} min
+                        Forecast: {getEnvironmentLabel(programInfo.todayEnvironment)} • {summarizeMains(todayInfo.day)} • {countSets(todayInfo.day)} sets • ~
+                        {estimateTime(todayInfo.day)} min estimated
                       </Text>
 
                       <View style={styles.rowButtons}>
@@ -1153,8 +1153,9 @@ export default function DashboardScreen_NEW() {
                   )}
                 </>
               ) : (
-                <>
-                  <Text style={styles.workoutTitle}>No Program Active</Text>
+                <View style={styles.noProgramState}>
+                  <Text style={styles.noProgramIcon}>🏋️‍♂️</Text>
+                  <Text style={styles.mutedText}>No Program Active</Text>
                   <Text style={styles.helperText}>
                     Select a workout program to get started with structured training.
                   </Text>
@@ -1164,7 +1165,7 @@ export default function DashboardScreen_NEW() {
                   >
                     <Text style={styles.btnPrimaryText}>Choose Program</Text>
                   </Pressable>
-                </>
+                </View>
               )}
             </View>
 
@@ -1561,7 +1562,7 @@ function estimateTime(day: any) {
 function countSets(day: any) {
   if (!day) {return 0;}
   const all = [...(day.warmup || []), ...(day.exercises || []), ...(day.cooldown || [])];
-  return all.reduce((acc, ex) => acc + (Array.isArray(ex?.sets) ? ex.sets.length : 1), 0);
+  return all.reduce((acc, ex) => acc + (typeof ex?.sets === 'number' ? ex.sets : 1), 0);
 }
 
 function summarizeMains(day: any) {
@@ -1901,6 +1902,16 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
   },
   noCheckInIcon: {
+    fontSize: 32,
+    marginBottom: 8,
+  },
+
+  // No program state styles
+  noProgramState: {
+    alignItems: 'center',
+    paddingVertical: 16,
+  },
+  noProgramIcon: {
     fontSize: 32,
     marginBottom: 8,
   },
