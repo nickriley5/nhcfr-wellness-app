@@ -49,9 +49,6 @@ export default function MoodEnergySection({
     <View style={styles.tile}>
       <View style={styles.headerRow}>
         <Text style={styles.tileHeader}>Mood & Energy Trends</Text>
-        <Text style={styles.entryCount}>
-          {moodData.length} entries
-        </Text>
       </View>
 
       <View style={styles.rangeRow}>
@@ -76,7 +73,7 @@ export default function MoodEnergySection({
           <LineChart
             data={data}
             width={chartWidth || 1}
-            height={180}
+            height={200}
             bezier={useBezier}
             segments={4}
             transparent={true}

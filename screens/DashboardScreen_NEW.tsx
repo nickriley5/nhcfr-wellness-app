@@ -31,7 +31,7 @@ import Toast from 'react-native-toast-message';
 
 import { TabParamList, RootStackParamList } from '../App';
 import ProfileCompletionBanner from '../components/Profile/ProfileCompletionBanner';
-import MoodEnergyChart from '../components/MoodEnergyChart';
+import MoodEnergySection from '../components/Dashboard/MoodEnergySection';
 import WeightTrackingCard from '../components/Dashboard/WeightTrackingCard';
 import MacroCard from '../components/mealplan/MacroCard';
 import MealLoggingModal, { MealContext } from '../components/mealplan/MealLoggingModal';
@@ -54,7 +54,7 @@ export default function DashboardScreen_NEW() {
     >
   >();
 
-  const [view, _setView] = useState<'week' | 'month' | 'all'>('week');
+  const [view, setView] = useState<'week' | 'month' | 'all'>('week');
   const [pulseAnim] = useState(new Animated.Value(1));
   const [bump, setBump] = useState(0);
 
@@ -470,61 +470,79 @@ export default function DashboardScreen_NEW() {
         {/* SECTION 1: Wellness & Readiness */}
         <View style={styles.sectionContainer}>
           <Text style={styles.sectionTitle}>🔥 Wellness & Readiness</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.horizontalScroll}
-            contentContainerStyle={styles.horizontalContent}
-          >
-            {/* Readiness Card */}
-            <View style={styles.horizontalCard}>
-              <Text style={styles.tileHeader}>Readiness</Text>
-              {hasCheckedInToday ? (
-                <>
-                  {readinessScore > 0 ? (
-                    <>
-                      <View style={styles.readinessDisplay}>
-                        <Text style={[styles.readinessScore, { color: getReadinessColor(readinessScore) }]}>
-                          {readinessScore.toFixed(1)}/5.0
-                        </Text>
-                        <Text style={[styles.readinessLevel, { color: getReadinessColor(readinessScore) }]}>
-                          {getReadinessLevel(readinessScore)}
-                        </Text>
-                      </View>
-                      <Text style={styles.readinessMessage}>
-                        {getReadinessMessage(readinessScore)}
-                      </Text>
-                    </>
-                  ) : (
-                    <Text style={styles.mutedText}>
-                      Ready to roll. Keep the streak going.
-                    </Text>
-                  )}
-                </>
-              ) : (
-                <>
-                  <Text style={styles.mutedText}>No check-in today.</Text>
-                  <Text style={styles.helperText}>
-                    Log mood & energy to populate readiness.
-                  </Text>
-                  <Pressable
-                    style={[styles.btn, styles.btnPrimary]}
-                    onPress={() => navigation.navigate('CheckIn')}
-                  >
-                    <Text style={styles.btnPrimaryText}>Check-In</Text>
-                  </Pressable>
-                </>
+
+          {/* Unified Readiness + Trends Card */}
+          <View style={styles.tile}>
+            <View style={styles.headerRow}>
+              <Text style={styles.tileHeader}>Today's Readiness</Text>
+              {hasCheckedInToday && (
+                <Pressable
+                  style={styles.checkInButton}
+                  onPress={() => navigation.navigate('CheckIn')}
+                >
+                  <Text style={styles.checkInButtonText}>Update</Text>
+                </Pressable>
               )}
             </View>
 
-            {/* Mood & Energy Chart */}
-            <View style={styles.horizontalCard}>
-              <MoodEnergyChart
-                moodData={moodData}
-                energyData={energyData}
-              />
-            </View>
-          </ScrollView>
+            {hasCheckedInToday ? (
+              <>
+                {/* Readiness Score Row */}
+                <View style={styles.readinessRow}>
+                  <View style={styles.readinessMain}>
+                    <Text style={[styles.readinessScore, { color: getReadinessColor(readinessScore) }]}>
+                      {readinessScore.toFixed(1)}/5.0
+                    </Text>
+                    <Text style={[styles.readinessLevel, { color: getReadinessColor(readinessScore) }]}>
+                      {getReadinessLevel(readinessScore)}
+                    </Text>
+                  </View>
+
+                  {/* Current Stats */}
+                  <View style={styles.currentStats}>
+                    <View style={styles.statItem}>
+                      <Text style={styles.statValue}>{moodData[moodData.length - 1] || '–'}</Text>
+                      <Text style={styles.readinessStatLabel}>Mood</Text>
+                    </View>
+                    <View style={styles.statItem}>
+                      <Text style={styles.statValue}>{energyData[energyData.length - 1] || '–'}</Text>
+                      <Text style={styles.readinessStatLabel}>Energy</Text>
+                    </View>
+                  </View>
+                </View>
+
+                <View style={[styles.readinessMessageCard, { backgroundColor: getReadinessColor(readinessScore) + '20', borderColor: getReadinessColor(readinessScore) }]}>
+                  <Text style={[styles.readinessMessage, { color: getReadinessColor(readinessScore) }]}>
+                    {getReadinessMessage(readinessScore)}
+                  </Text>
+                </View>
+
+                {/* Embedded Trends Chart */}
+                <View style={styles.embeddedChart}>
+                  <MoodEnergySection
+                    view={view}
+                    moodData={moodData}
+                    energyData={energyData}
+                    onViewChange={setView}
+                  />
+                </View>
+              </>
+            ) : (
+              <View style={styles.noCheckInState}>
+                <Text style={styles.noCheckInIcon}>📊</Text>
+                <Text style={styles.mutedText}>No check-in today</Text>
+                <Text style={styles.helperText}>
+                  Track your mood & energy to get your daily readiness score
+                </Text>
+                <Pressable
+                  style={[styles.btn, styles.btnPrimary]}
+                  onPress={() => navigation.navigate('CheckIn')}
+                >
+                  <Text style={styles.btnPrimaryText}>Check-In Now</Text>
+                </Pressable>
+              </View>
+            )}
+          </View>
         </View>
 
         {/* SECTION 2: Today's Training */}
@@ -1073,6 +1091,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     fontStyle: 'italic',
+    textAlign: 'center',
+    fontWeight: '600',
+  },
+  readinessMessageCard: {
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 12,
   },
 
   devSection: { marginTop: 16, width: '100%' },
@@ -1154,5 +1180,77 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
+  },
+
+  // Chart centering
+  chartContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+  },
+
+  // Enhanced readiness styles
+  quickStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginVertical: 12,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 8,
+  },
+  statItem: {
+    alignItems: 'center',
+  },
+  statValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#4FC3F7',
+    marginBottom: 2,
+  },
+  readinessStatLabel: {
+    fontSize: 11,
+    color: '#aaa',
+    fontWeight: '500',
+  },
+  noCheckInState: {
+    alignItems: 'center',
+    paddingVertical: 16,
+  },
+  noCheckInIcon: {
+    fontSize: 32,
+    marginBottom: 8,
+  },
+
+  // Unified readiness card styles
+  checkInButton: {
+    backgroundColor: 'rgba(79, 195, 247, 0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#4FC3F7',
+  },
+  checkInButtonText: {
+    color: '#4FC3F7',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  readinessRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  readinessMain: {
+    flex: 1,
+  },
+  currentStats: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  embeddedChart: {
+    marginTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#333',
+    paddingTop: 16,
   },
 });
