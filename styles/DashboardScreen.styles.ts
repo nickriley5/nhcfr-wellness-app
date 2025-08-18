@@ -945,4 +945,17 @@ export const dashboardStyles = StyleSheet.create({
   modalScrollContainer: {
     paddingBottom: 20,
   },
+
+  // Header with icon styles
+  headerWithIcon: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  prHeaderContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
 });

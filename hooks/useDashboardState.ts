@@ -50,7 +50,7 @@ export function useDashboardState(bump: number, programExists: boolean) {
     goalOz: 64,
     containerOz: 16,
   });
-  
+
   const [programInfo, setProgramInfo] = useState<ProgramInfo | null>(null);
   const [tomorrowInfo, setTomorrowInfo] = useState<TomorrowInfo | null>(null);
   const [todayWorkoutSummary, setTodayWorkoutSummary] = useState<WorkoutSummary | null>(null);
@@ -433,21 +433,29 @@ export function useDashboardState(bump: number, programExists: boolean) {
 
       try {
         const today = new Date().toISOString().split('T')[0];
+
+        // Always load user's current preferences from profile first
+        const profileDoc = await getDoc(doc(db, 'users', uid));
+        const defaultGoal = profileDoc.exists() ? profileDoc.data().hydrationGoalOz || 64 : 64;
+        const defaultContainer = profileDoc.exists() ? profileDoc.data().hydrationContainerOz || 16 : 16;
+
+        // Then check if there's a daily log with current progress
         const hydrationDoc = await getDoc(doc(db, 'users', uid, 'hydrationLogs', today));
 
         if (hydrationDoc.exists()) {
           const data = hydrationDoc.data();
           setHydrationToday({
             currentOz: data.currentOz || 0,
-            goalOz: data.goalOz || 64,
-            containerOz: data.containerOz || 16,
+            goalOz: data.goalOz || defaultGoal, // Use profile goal if not set in daily log
+            containerOz: defaultContainer, // Always use profile container preference
           });
         } else {
-          // Load user's default goal from profile
-          const profileDoc = await getDoc(doc(db, 'users', uid));
-          const defaultGoal = profileDoc.exists() ? profileDoc.data().hydrationGoalOz || 64 : 64;
-          const defaultContainer = profileDoc.exists() ? profileDoc.data().hydrationContainerOz || 16 : 16;
-          setHydrationToday({ currentOz: 0, goalOz: defaultGoal, containerOz: defaultContainer });
+          // No daily log yet, use profile defaults
+          setHydrationToday({
+            currentOz: 0,
+            goalOz: defaultGoal,
+            containerOz: defaultContainer,
+          });
         }
       } catch (error) {
         console.error('Error loading hydration data:', error);

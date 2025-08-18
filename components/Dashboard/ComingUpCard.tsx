@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -7,6 +7,7 @@ import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { dashboardStyles } from '../../styles/DashboardScreen.styles';
 import { TabParamList, RootStackParamList } from '../../App';
+import { TomorrowPreviewModal } from '../Modals/TomorrowPreviewModal';
 
 type DashboardNavigationProp = CompositeNavigationProp<
   BottomTabNavigationProp<TabParamList, 'Dashboard'>,
@@ -23,7 +24,7 @@ interface TomorrowInfo {
 
 interface ComingUpCardProps {
   tomorrowInfo: TomorrowInfo | null;
-  navigation: DashboardNavigationProp;
+  _navigation: DashboardNavigationProp;
   getEnvironmentIcon: (environment: string) => string;
   getEnvironmentLabel: (environment: string) => string;
   summarizeMains: (day: any) => string;
@@ -33,28 +34,15 @@ interface ComingUpCardProps {
 
 export const ComingUpCard: React.FC<ComingUpCardProps> = ({
   tomorrowInfo,
-  navigation,
+  _navigation,
   getEnvironmentIcon,
   getEnvironmentLabel,
   summarizeMains,
   countSets,
   estimateTime,
 }) => {
-  const getTimeUntilTomorrow = () => {
-    const now = new Date();
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(6, 0, 0, 0); // Assume workouts start at 6 AM
-
-    const diff = tomorrow.getTime() - now.getTime();
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-
-    if (hours > 0) {
-      return `${hours}h ${minutes}m`;
-    }
-    return `${minutes}m`;
-  };
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  // Removed countdown timer function
 
   const getTomorrowPreview = () => {
     const tomorrowData = tomorrowInfo;
@@ -62,7 +50,8 @@ export const ComingUpCard: React.FC<ComingUpCardProps> = ({
     if (!tomorrowData) {
       return (
         <View style={dashboardStyles.noPreviewContainer}>
-          <Text style={dashboardStyles.noPreviewText}>📋 Set up your weekly schedule</Text>
+          <Ionicons name="calendar-outline" size={24} color="#666" />
+          <Text style={dashboardStyles.noPreviewText}>Set up your weekly schedule</Text>
           <Text style={dashboardStyles.noPreviewSubtext}>to see tomorrow's workout preview</Text>
         </View>
       );
@@ -72,7 +61,8 @@ export const ComingUpCard: React.FC<ComingUpCardProps> = ({
       return (
         <View style={dashboardStyles.restPreviewNew}>
           <View style={dashboardStyles.restHeaderNew}>
-            <Text style={dashboardStyles.restTitleNew}>🛌 Rest Day</Text>
+            <Ionicons name="bed-outline" size={20} color="#ffa726" />
+            <Text style={dashboardStyles.restTitleNew}>Rest Day</Text>
             <View style={dashboardStyles.restBadge}>
               <Text style={dashboardStyles.restBadgeText}>Recovery</Text>
             </View>
@@ -80,15 +70,15 @@ export const ComingUpCard: React.FC<ComingUpCardProps> = ({
           <Text style={dashboardStyles.restSubtitleNew}>Focus on recovery and preparation</Text>
           <View style={dashboardStyles.restActivities}>
             <View style={dashboardStyles.restActivity}>
-              <Text style={dashboardStyles.restActivityIcon}>🧘‍♂️</Text>
+              <Ionicons name="body-outline" size={16} color="#33d6a6" />
               <Text style={dashboardStyles.restActivityText}>Mobility</Text>
             </View>
             <View style={dashboardStyles.restActivity}>
-              <Text style={dashboardStyles.restActivityIcon}>💧</Text>
+              <Ionicons name="water-outline" size={16} color="#33d6a6" />
               <Text style={dashboardStyles.restActivityText}>Hydration</Text>
             </View>
             <View style={dashboardStyles.restActivity}>
-              <Text style={dashboardStyles.restActivityIcon}>😴</Text>
+              <Ionicons name="moon-outline" size={16} color="#33d6a6" />
               <Text style={dashboardStyles.restActivityText}>Sleep</Text>
             </View>
           </View>
@@ -107,35 +97,24 @@ export const ComingUpCard: React.FC<ComingUpCardProps> = ({
               {getEnvironmentLabel(tomorrowData.environment)} • {summarizeMains(tomorrowData.day)}
             </Text>
           </View>
-          <View style={dashboardStyles.intensityBadge}>
-            <Text style={dashboardStyles.intensityBadgeText}>💪 PUSH</Text>
-          </View>
         </View>
 
         <View style={dashboardStyles.previewStatsNew}>
           <View style={dashboardStyles.previewStatNew}>
-            <Text style={dashboardStyles.previewStatIconNew}>🏋️</Text>
+            <Ionicons name="barbell-outline" size={16} color="#33d6a6" />
             <Text style={dashboardStyles.previewStatNumberNew}>{(tomorrowData.day?.exercises || []).length}</Text>
             <Text style={dashboardStyles.previewStatLabelNew}>exercises</Text>
           </View>
           <View style={dashboardStyles.previewStatNew}>
-            <Text style={dashboardStyles.previewStatIconNew}>📊</Text>
+            <Ionicons name="stats-chart-outline" size={16} color="#33d6a6" />
             <Text style={dashboardStyles.previewStatNumberNew}>{countSets(tomorrowData.day)}</Text>
             <Text style={dashboardStyles.previewStatLabelNew}>sets</Text>
           </View>
           <View style={dashboardStyles.previewStatNew}>
-            <Text style={dashboardStyles.previewStatIconNew}>⏱️</Text>
+            <Ionicons name="time-outline" size={16} color="#33d6a6" />
             <Text style={dashboardStyles.previewStatNumberNew}>{estimateTime(tomorrowData.day)}</Text>
             <Text style={dashboardStyles.previewStatLabelNew}>min</Text>
           </View>
-        </View>
-
-        {/* Highlight Exercise Preview */}
-        <View style={dashboardStyles.highlightExercise}>
-          <Text style={dashboardStyles.highlightTitle}>Featured Exercise</Text>
-          <Text style={dashboardStyles.highlightExerciseName}>
-            🔥 {tomorrowData.day?.exercises?.[0]?.name || 'Primary Movement'}
-          </Text>
         </View>
       </View>
     );
@@ -154,7 +133,7 @@ export const ComingUpCard: React.FC<ComingUpCardProps> = ({
               <Text style={dashboardStyles.tileHeaderClean}>Coming Up</Text>
             </View>
             <Text style={dashboardStyles.comingUpSubtitle}>
-              {getTimeUntilTomorrow()} until next session
+              Tomorrow's session
             </Text>
           </View>
           <View style={dashboardStyles.dayIndicator}>
@@ -167,26 +146,28 @@ export const ComingUpCard: React.FC<ComingUpCardProps> = ({
         {getTomorrowPreview()}
 
         <View style={dashboardStyles.comingUpActions}>
-          {!tomorrowInfo?.isRestDay && (
-            <Pressable
-              style={[dashboardStyles.btn, dashboardStyles.btnPreviewSecondary]}
-              onPress={() => {
-                const tomorrowData = tomorrowInfo;
-                if (tomorrowData?.day) {
-                  navigation.navigate('WorkoutDetail', {
-                    day: tomorrowData.day,
-                    weekIdx: tomorrowData.weekIdx,
-                    dayIdx: tomorrowData.dayIdx,
-                  });
-                }
-              }}
-            >
-              <Ionicons name="eye-outline" size={16} color="#33d6a6" />
-              <Text style={dashboardStyles.btnPreviewSecondaryText}>Preview</Text>
-            </Pressable>
-          )}
+          <Pressable
+            style={[dashboardStyles.btn, dashboardStyles.btnPreviewSecondary]}
+            onPress={() => setShowPreviewModal(true)}
+          >
+            <Ionicons name="eye-outline" size={16} color="#33d6a6" />
+            <Text style={dashboardStyles.btnPreviewSecondaryText}>
+              {tomorrowInfo?.isRestDay ? 'Rest Day Tips' : 'Preview'}
+            </Text>
+          </Pressable>
         </View>
       </LinearGradient>
+
+      <TomorrowPreviewModal
+        visible={showPreviewModal}
+        onClose={() => setShowPreviewModal(false)}
+        tomorrowInfo={tomorrowInfo}
+        getEnvironmentIcon={getEnvironmentIcon}
+        getEnvironmentLabel={getEnvironmentLabel}
+        _summarizeMains={summarizeMains}
+        countSets={countSets}
+        estimateTime={estimateTime}
+      />
     </View>
   );
 };

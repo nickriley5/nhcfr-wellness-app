@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text } from 'react-native';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import { dashboardStyles } from '../../styles/DashboardScreen.styles';
 
 interface ConsistencyData {
@@ -21,7 +22,10 @@ export const DedicationCard: React.FC<DedicationCardProps> = ({
   return (
     <View style={dashboardStyles.horizontalCard}>
       <View style={dashboardStyles.streakHeader}>
-        <Text style={dashboardStyles.tileHeader}>🔥 Dedication</Text>
+        <View style={dashboardStyles.headerWithIcon}>
+          <Ionicons name="flame-outline" size={18} color="#ff6b47" />
+          <Text style={dashboardStyles.tileHeader}>Dedication</Text>
+        </View>
         <View style={dashboardStyles.streakBadge}>
           <Text style={dashboardStyles.streakNumber}>{consistencyData.workoutStreak}</Text>
           <Text style={dashboardStyles.streakLabel}>day streak</Text>
@@ -31,19 +35,19 @@ export const DedicationCard: React.FC<DedicationCardProps> = ({
       {/* Consistency Metrics */}
       <View style={dashboardStyles.consistencyGrid}>
         <View style={dashboardStyles.consistencyItem}>
-          <Text style={dashboardStyles.consistencyEmoji}>💪</Text>
+          <Ionicons name="barbell-outline" size={20} color="#33d6a6" />
           <Text style={dashboardStyles.consistencyValue}>
             {consistencyData.workoutsCompleted}/{consistencyData.workoutsPlanned}
           </Text>
           <Text style={dashboardStyles.consistencyLabel}>Workouts</Text>
         </View>
         <View style={dashboardStyles.consistencyItem}>
-          <Text style={dashboardStyles.consistencyEmoji}>🍎</Text>
+          <Ionicons name="restaurant-outline" size={20} color="#ffa726" />
           <Text style={dashboardStyles.consistencyValue}>{consistencyData.mealsLogged}/7</Text>
           <Text style={dashboardStyles.consistencyLabel}>Meals</Text>
         </View>
         <View style={dashboardStyles.consistencyItem}>
-          <Text style={dashboardStyles.consistencyEmoji}>💧</Text>
+          <Ionicons name="water-outline" size={20} color="#4fc3f7" />
           <Text style={dashboardStyles.consistencyValue}>{consistencyData.hydrationDays}/7</Text>
           <Text style={dashboardStyles.consistencyLabel}>Hydration</Text>
         </View>
@@ -51,7 +55,10 @@ export const DedicationCard: React.FC<DedicationCardProps> = ({
 
       {/* Recent PRs */}
       <View style={dashboardStyles.prSection}>
-        <Text style={dashboardStyles.prHeader}>🏆 Recent PRs</Text>
+        <View style={dashboardStyles.prHeaderContainer}>
+          <Ionicons name="trophy-outline" size={16} color="#ffd700" />
+          <Text style={dashboardStyles.prHeader}>Recent PRs</Text>
+        </View>
         {consistencyData.recentPRs.length > 0 ? (
           consistencyData.recentPRs.map((pr, idx) => (
             <Text key={idx} style={dashboardStyles.prItem}>• {pr}</Text>

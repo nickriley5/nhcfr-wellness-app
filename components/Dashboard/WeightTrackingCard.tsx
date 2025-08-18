@@ -48,16 +48,17 @@ export interface WeightTrackingCardRef {
   openWeightModal: () => void;
 }
 
-type TimeRange = 'week' | 'month' | 'year';
+type TimeRange = '7days' | '30days' | '60days';
 
 const WeightTrackingCard = forwardRef<WeightTrackingCardRef, WeightTrackingCardProps>(({ onWeightUpdated }, ref) => {
-  const [timeRange, setTimeRange] = useState<TimeRange>('month');
+  const [timeRange, setTimeRange] = useState<TimeRange>('7days');
   const [weightEntries, setWeightEntries] = useState<WeightEntry[]>([]);
   const [weightGoal, setWeightGoal] = useState<WeightGoal | null>(null);
   const [showInputModal, setShowInputModal] = useState(false);
   const [inputWeight, setInputWeight] = useState('');
   const [inputNotes, setInputNotes] = useState('');
   const [loading, setLoading] = useState(true);
+  const [selectedPoint, setSelectedPoint] = useState<{weight: number, date: Date, notes?: string} | null>(null);
 
   // Expose methods to parent component via ref
   useImperativeHandle(ref, () => ({
@@ -84,19 +85,19 @@ const WeightTrackingCard = forwardRef<WeightTrackingCardRef, WeightTrackingCardP
         } as WeightGoal);
       }
 
-      // Calculate date range
+      // Calculate date range for rolling windows
       const now = new Date();
       let startDate = new Date();
 
       switch (timeRange) {
-        case 'week':
+        case '7days':
           startDate.setDate(now.getDate() - 7);
           break;
-        case 'month':
-          startDate.setMonth(now.getMonth() - 1);
+        case '30days':
+          startDate.setDate(now.getDate() - 30);
           break;
-        case 'year':
-          startDate.setFullYear(now.getFullYear() - 1);
+        case '60days':
+          startDate.setDate(now.getDate() - 60);
           break;
       }
 
@@ -267,39 +268,121 @@ const WeightTrackingCard = forwardRef<WeightTrackingCardRef, WeightTrackingCardP
       return {
         labels: ['No Data'],
         datasets: [{ data: [0] }],
+        processedEntries: [],
       };
     }
 
-    // Sample data points based on time range
-    let sampleSize = 7;
-    if (timeRange === 'month') {
-      sampleSize = 30;
-    }
-    if (timeRange === 'year') {
-      sampleSize = 52;
+    let processedEntries: WeightEntry[] = [];
+    let labels: string[] = [];
+
+    if (timeRange === '7days') {
+      // Last 7 days: One entry per day (most recent if multiple)
+      const now = new Date();
+
+      for (let i = 6; i >= 0; i--) {
+        const dayDate = new Date(now);
+        dayDate.setDate(now.getDate() - i);
+        dayDate.setHours(0, 0, 0, 0);
+
+        const nextDay = new Date(dayDate);
+        nextDay.setDate(dayDate.getDate() + 1);
+
+        // Find the most recent entry for this day
+        const dayEntries = weightEntries.filter(entry => {
+          const entryDate = new Date(entry.date);
+          return entryDate >= dayDate && entryDate < nextDay;
+        });
+
+        if (dayEntries.length > 0) {
+          // Get the most recent entry of the day
+          const latestEntry = dayEntries.sort((a, b) => b.date.getTime() - a.date.getTime())[0];
+          processedEntries.push(latestEntry);
+
+          // Label format: Mon, Tue, Wed, etc.
+          labels.push(dayDate.toLocaleDateString('en-US', { weekday: 'short' }));
+        }
+      }
+    } else if (timeRange === '30days') {
+      // Last 30 days: Show every 2-3 days to avoid clutter, or weekly averages
+      const now = new Date();
+      const daysToShow = [];
+
+      // Show every 3rd day for last 30 days (about 10 points)
+      for (let i = 30; i >= 0; i -= 3) {
+        const dayDate = new Date(now);
+        dayDate.setDate(now.getDate() - i);
+        daysToShow.push(dayDate);
+      }
+
+      daysToShow.forEach(dayDate => {
+        const nextDay = new Date(dayDate);
+        nextDay.setDate(dayDate.getDate() + 3); // 3-day window
+
+        const windowEntries = weightEntries.filter(entry => {
+          const entryDate = new Date(entry.date);
+          return entryDate >= dayDate && entryDate < nextDay;
+        });
+
+        if (windowEntries.length > 0) {
+          // Use the most recent entry in the 3-day window
+          const latestEntry = windowEntries.sort((a, b) => b.date.getTime() - a.date.getTime())[0];
+          processedEntries.push(latestEntry);
+
+          // Label format: 8/15, 8/18, etc.
+          labels.push(dayDate.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' }));
+        }
+      });
+    } else { // 60days
+      // Last 60 days: Weekly averages (about 8-9 points)
+      const now = new Date();
+
+      for (let week = 8; week >= 0; week--) {
+        const weekStart = new Date(now);
+        weekStart.setDate(now.getDate() - (week * 7) - 6);
+        weekStart.setHours(0, 0, 0, 0);
+
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekStart.getDate() + 6);
+        weekEnd.setHours(23, 59, 59, 999);
+
+        const weekEntries = weightEntries.filter(entry => {
+          const entryDate = new Date(entry.date);
+          return entryDate >= weekStart && entryDate <= weekEnd;
+        });
+
+        if (weekEntries.length > 0) {
+          const avgWeight = weekEntries.reduce((sum, entry) => sum + entry.weight, 0) / weekEntries.length;
+          const mostRecentEntry = weekEntries.sort((a, b) => b.date.getTime() - a.date.getTime())[0];
+
+          processedEntries.push({
+            ...mostRecentEntry,
+            weight: avgWeight,
+          });
+
+          // Label format: Week of 8/1, 8/8, etc.
+          labels.push(weekStart.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' }));
+        }
+      }
     }
 
-    const step = Math.max(1, Math.floor(weightEntries.length / sampleSize));
-    const sampledEntries = weightEntries.filter((_, index) => index % step === 0);
+    // If no processed entries, show message
+    if (processedEntries.length === 0) {
+      return {
+        labels: ['No recent data'],
+        datasets: [{ data: [0] }],
+        processedEntries: [],
+      };
+    }
 
     return {
-      labels: sampledEntries.map(entry => {
-        if (timeRange === 'week') {
-          return entry.date.toLocaleDateString('en-US', { weekday: 'short' });
-        } else if (timeRange === 'month') {
-          return entry.date.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' });
-        } else {
-          return entry.date.toLocaleDateString('en-US', { month: 'short' });
-        }
-      }),
+      labels,
       datasets: [{
-        data: sampledEntries.map(entry => entry.weight),
+        data: processedEntries.map(entry => entry.weight),
         strokeWidth: 2,
       }],
+      processedEntries,
     };
   };
-
-
   const currentWeight = weightEntries.length > 0 ? weightEntries[weightEntries.length - 1].weight : weightGoal?.currentWeight;
   const weightChange = weightEntries.length >= 2 ?
     weightEntries[weightEntries.length - 1].weight - weightEntries[weightEntries.length - 2].weight : 0;
@@ -360,7 +443,7 @@ const WeightTrackingCard = forwardRef<WeightTrackingCardRef, WeightTrackingCardP
 
         {/* Time Range Selector */}
         <View style={styles.timeRangeSelector}>
-          {(['week', 'month', 'year'] as TimeRange[]).map((range) => (
+          {(['7days', '30days', '60days'] as TimeRange[]).map((range) => (
             <Pressable
               key={range}
               style={[
@@ -375,7 +458,7 @@ const WeightTrackingCard = forwardRef<WeightTrackingCardRef, WeightTrackingCardP
                   timeRange === range && styles.timeRangeTextActive,
                 ]}
               >
-                {range === 'week' ? '1W' : range === 'month' ? '1M' : '1Y'}
+                {range === '7days' ? '7D' : range === '30days' ? '30D' : '60D'}
               </Text>
             </Pressable>
           ))}
@@ -386,25 +469,25 @@ const WeightTrackingCard = forwardRef<WeightTrackingCardRef, WeightTrackingCardP
           <View style={styles.chartContainer}>
             <LineChart
               data={getChartData()}
-              width={260} // Reduced width to fit better in horizontal card with labels
-              height={180} // Slightly reduced height for better proportions
+              width={260}
+              height={180}
               chartConfig={{
                 backgroundColor: '#1f1f1f',
                 backgroundGradientFrom: '#1f1f1f',
                 backgroundGradientTo: '#1f1f1f',
-                decimalPlaces: 0, // Remove decimals for cleaner integer display
-                color: (opacity = 1) => `rgba(79, 195, 247, ${opacity})`, // #4FC3F7 blue
-                labelColor: (opacity = 1) => `rgba(170, 170, 170, ${opacity})`, // #aaa
+                decimalPlaces: 1, // Show one decimal for precise weights
+                color: (opacity = 1) => `rgba(79, 195, 247, ${opacity})`,
+                labelColor: (opacity = 1) => `rgba(170, 170, 170, ${opacity})`,
                 style: { borderRadius: 16 },
                 propsForDots: {
-                  r: '3',
+                  r: '4',
                   strokeWidth: '2',
                   stroke: '#4FC3F7',
+                  fill: '#4FC3F7',
                 },
                 formatYLabel: (value) => {
-                  // Ensure full numbers are displayed (e.g., 195 not 95)
-                  const num = Math.round(parseFloat(value));
-                  return num.toString();
+                  const num = parseFloat(value);
+                  return num.toFixed(1);
                 },
                 propsForVerticalLabels: {
                   fontSize: 10,
@@ -423,11 +506,42 @@ const WeightTrackingCard = forwardRef<WeightTrackingCardRef, WeightTrackingCardP
               withOuterLines={false}
               yAxisLabel=""
               yAxisSuffix=""
-              segments={3} // Fewer segments for cleaner look in smaller space
-              fromZero={false} // Don't start from zero to better show weight range
-              yLabelsOffset={8} // Reduced offset for tighter fit
-              xLabelsOffset={5} // Reduced offset for tighter fit
+              segments={3}
+              fromZero={false}
+              yLabelsOffset={8}
+              xLabelsOffset={5}
+              onDataPointClick={(data) => {
+                const chartData = getChartData();
+                if (chartData.processedEntries && chartData.processedEntries[data.index]) {
+                  setSelectedPoint(chartData.processedEntries[data.index]);
+                }
+              }}
             />
+
+            {/* Point Tooltip */}
+            {selectedPoint && (
+              <View style={styles.tooltip}>
+                <View style={styles.tooltipContent}>
+                  <Text style={styles.tooltipWeight}>{selectedPoint.weight.toFixed(1)} lbs</Text>
+                  <Text style={styles.tooltipDate}>
+                    {selectedPoint.date.toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: timeRange === '60days' ? 'numeric' : undefined,
+                    })}
+                  </Text>
+                  {selectedPoint.notes && (
+                    <Text style={styles.tooltipNotes}>"{selectedPoint.notes}"</Text>
+                  )}
+                  <Pressable
+                    style={styles.tooltipClose}
+                    onPress={() => setSelectedPoint(null)}
+                  >
+                    <Text style={styles.tooltipCloseText}>×</Text>
+                  </Pressable>
+                </View>
+              </View>
+            )}
           </View>
         ) : (
           <View style={styles.noDataContainer}>
@@ -688,6 +802,63 @@ const styles = StyleSheet.create({
   weightUp: { color: '#ff6b47' },      // gained
   weightDown: { color: '#4FC3F7' },    // lost (matching our blue theme)
   weightNeutral: { color: '#aaa' }, // no change (optional)
+
+  // Tooltip styles
+  tooltip: {
+    position: 'absolute',
+    top: 20,
+    right: 20,
+    zIndex: 1000,
+  },
+  tooltipContent: {
+    backgroundColor: '#2a2a2a',
+    borderRadius: 8,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#4FC3F7',
+    minWidth: 120,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  tooltipWeight: {
+    color: '#4FC3F7',
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  tooltipDate: {
+    color: '#fff',
+    fontSize: 12,
+    textAlign: 'center',
+    marginBottom: 2,
+  },
+  tooltipNotes: {
+    color: '#aaa',
+    fontSize: 11,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  tooltipClose: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    backgroundColor: '#4FC3F7',
+    borderRadius: 12,
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tooltipCloseText: {
+    color: '#000',
+    fontSize: 16,
+    fontWeight: '700',
+  },
 });
 
 export default WeightTrackingCard;

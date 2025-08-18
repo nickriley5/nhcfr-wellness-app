@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import { dashboardStyles } from '../../styles/DashboardScreen.styles';
 import MacroCard from '../mealplan/MacroCard';
 
@@ -94,7 +95,10 @@ export const TodaysNutritionCard: React.FC<TodaysNutritionCardProps> = ({
       {/* Hydration Tracker */}
       <View style={[dashboardStyles.hydrationSection, styles.hydrationSpacing]}>
         <View style={dashboardStyles.hydrationHeader}>
-          <Text style={dashboardStyles.hydrationTitle}>💧 Hydration</Text>
+          <View style={dashboardStyles.headerWithIcon}>
+            <Ionicons name="water-outline" size={18} color="#4fc3f7" />
+            <Text style={dashboardStyles.hydrationTitle}>Hydration</Text>
+          </View>
           <Pressable
             style={dashboardStyles.changeGoalButton}
             onPress={() => setShowHydrationGoalModal(true)}
@@ -117,7 +121,15 @@ export const TodaysNutritionCard: React.FC<TodaysNutritionCardProps> = ({
               return (
                 <Pressable
                   key={i}
-                  onPress={() => addHydration(ozPerDroplet)}
+                  onPress={() => {
+                    if (filled) {
+                      // If this droplet is filled, subtract hydration to "unfill" it
+                      addHydration(-ozPerDroplet);
+                    } else {
+                      // If this droplet is empty, add hydration to fill it
+                      addHydration(ozPerDroplet);
+                    }
+                  }}
                   style={dashboardStyles.waterDroplet}
                 >
                   <Text style={[dashboardStyles.dropletIcon, filled && dashboardStyles.dropletFilled]}>💧</Text>
