@@ -15,7 +15,7 @@ import { getFirestore, doc, getDoc } from 'firebase/firestore';
 import { useSafeAreaInsets} from 'react-native-safe-area-context';
 
 // Screens
-import DashboardScreen from '../screens/DashboardScreen_NEW';
+import DashboardScreen from '../screens/DashboardScreen';
 import WorkoutScreen from '../screens/WorkoutScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import SettingsScreen from '../screens/SettingsScreen';
