@@ -7,7 +7,7 @@ import {
   DrawerContentComponentProps,
 } from '@react-navigation/drawer';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { NavigatorScreenParams } from '@react-navigation/native';
+import { NavigatorScreenParams, useFocusEffect } from '@react-navigation/native';
 import Feather from 'react-native-vector-icons/Feather';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { getAuth, signOut } from 'firebase/auth';
@@ -108,23 +108,37 @@ export function CustomDrawerContent(props: DrawerContentComponentProps) {
   const { navigation } = props;
   const [userName, setUserName] = useState('Firefighter');
   const [profilePicture, setProfilePicture] = useState<string | null>(null);
+  const insets = useSafeAreaInsets();
+
+  const loadUserData = async () => {
+    const auth = getAuth();
+    const firestore = getFirestore();
+    const uid = auth.currentUser?.uid;
+    if (!uid) {return;}
+    try {
+      const snap = await getDoc(doc(firestore, 'users', uid));
+      const data = snap.data();
+      console.log('Drawer - Loading user data:', data); // Debug log
+      if (data?.fullName) {setUserName(data.fullName.split(' ')[0]);}
+      if (data?.profilePicture) {
+        console.log('Drawer - Setting profile picture:', data.profilePicture); // Debug log
+        setProfilePicture(data.profilePicture);
+      }
+    } catch (err) {
+      console.error('Drawer - Error loading user data:', err);
+    }
+  };
 
   useEffect(() => {
-    (async () => {
-      const auth = getAuth();
-      const firestore = getFirestore();
-      const uid = auth.currentUser?.uid;
-      if (!uid) {return;}
-      try {
-        const snap = await getDoc(doc(firestore, 'users', uid));
-        const data = snap.data();
-        if (data?.fullName) {setUserName(data.fullName.split(' ')[0]);}
-        if (data?.profilePicture) {setProfilePicture(data.profilePicture);}
-      } catch (err) {
-        console.error(err);
-      }
-    })();
+    loadUserData();
   }, []);
+
+  // Listen for navigation focus to refresh profile data
+  useFocusEffect(
+    React.useCallback(() => {
+      loadUserData();
+    }, [])
+  );
 
   const getGreeting = () => {
     const hr = new Date().getHours();
@@ -165,7 +179,7 @@ export function CustomDrawerContent(props: DrawerContentComponentProps) {
           onPress={() => navigation.navigate('Settings')}
         />
       </DrawerContentScrollView>
-      <View style={styles.logoutSection}>
+      <View style={[styles.logoutSection, { paddingBottom: Math.max(insets.bottom, 20) }]}>
         <DrawerItem
           label="Logout"
           labelStyle={styles.drawerLabel}
@@ -217,6 +231,12 @@ const styles = StyleSheet.create({
   profileSection: { alignItems: 'center', marginBottom: 24, paddingTop: 48 },
   profileImage: { width: 80, height: 80, borderRadius: 40, marginBottom: 12, borderWidth: 1.5, borderColor: '#444' },
   profileName: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  logoutSection: { borderTopWidth: 1, borderTopColor: '#333', paddingVertical: 10, backgroundColor: '#1c1c1c' },
+  logoutSection: {
+    borderTopWidth: 1,
+    borderTopColor: '#333',
+    paddingVertical: 10,
+    backgroundColor: '#1c1c1c',
+    marginBottom: 10, // Add margin to keep it away from bottom
+  },
   drawerLabel: { color: '#fff' },
 });

@@ -76,6 +76,32 @@ export default function DashboardScreen() {
     macrosToday,
   } = useDashboardData(view, bump);
 
+  // Start pulsing animation for incomplete profile
+  useEffect(() => {
+    if (completionPercent < 80) {
+      const startPulse = () => {
+        Animated.loop(
+          Animated.sequence([
+            Animated.timing(pulseAnim, {
+              toValue: 1.1,
+              duration: 1000,
+              useNativeDriver: true,
+            }),
+            Animated.timing(pulseAnim, {
+              toValue: 1,
+              duration: 1000,
+              useNativeDriver: true,
+            }),
+          ])
+        ).start();
+      };
+      startPulse();
+    } else {
+      // Stop animation when profile is complete
+      pulseAnim.setValue(1);
+    }
+  }, [completionPercent, pulseAnim]);
+
   const {
     hydrationToday,
     programInfo,
