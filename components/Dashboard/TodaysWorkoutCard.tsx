@@ -27,7 +27,7 @@ interface TodaysWorkoutCardProps {
   todayInfo: any;
   navigation: NavigationProp<any>;
   setShowEnvironmentCalendar: (show: boolean) => void;
-  getEnvironmentIcon: (environment: string) => string;
+  getEnvironmentIcon: (environment: string) => React.JSX.Element;
   getEnvironmentLabel: (environment: string) => string;
   summarizeMains: (day: any) => string;
   countSets: (day: any) => number;
@@ -68,7 +68,9 @@ export default function TodaysWorkoutCard({
             </>
           ) : programInfo.isRestDay ? (
             <>
-              <Text style={dashboardStyles.workoutTitle}>🛌 Rest Day</Text>
+              <Text style={dashboardStyles.workoutTitle}>
+                <Ionicons name="bed-outline" size={20} color="#d32f2f" /> Rest Day
+              </Text>
               <Text style={dashboardStyles.workoutMeta}>Recovery and restoration day</Text>
               <Text style={dashboardStyles.helperText}>
                 Take time to rest, stretch, or do light activities. Your next workout is coming up!
@@ -210,7 +212,7 @@ export default function TodaysWorkoutCard({
         </>
       ) : (
         <View style={dashboardStyles.noProgramState}>
-          <Text style={dashboardStyles.noProgramIcon}>🏋️‍♂️</Text>
+          <Ionicons name="fitness-outline" size={48} color="#666" style={dashboardStyles.noProgramIcon} />
           <Text style={dashboardStyles.mutedText}>No Program Active</Text>
           <Text style={dashboardStyles.helperText}>
             Select a workout program to get started with structured training.

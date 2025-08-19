@@ -14,7 +14,7 @@ import Toast from 'react-native-toast-message';
 import LoginScreen from './screens/LoginScreen';
 import RegisterScreen from './screens/RegisterScreen';
 import MealPlanScreen from './screens/MealPlanScreen';
-import CheckInScreen from './screens/CheckInScreen';
+// import CheckInScreen from './screens/CheckInScreen'; // COMMENTED OUT FOR PHASE 2
 import DrawerNavigation from './navigation/DrawerNavigation';
 import WorkoutDetailScreen from './screens/WorkoutDetailScreen';
 import WorkoutHistoryScreen from './screens/WorkoutHistoryScreen';
@@ -59,7 +59,7 @@ export type RootStackParamList = {
   Login: undefined;
   Register: undefined;
   AppDrawer: NavigatorScreenParams<RootDrawerParamList>;
-  CheckIn: undefined;
+  // CheckIn: undefined; // COMMENTED OUT FOR PHASE 2
   WeighIn: undefined;
   WorkoutDetail: {
     day: ProgramDay;
@@ -141,7 +141,7 @@ const AppNavigator = () => {
       {user ? (
   <>
     <Stack.Screen name="AppDrawer" component={DrawerNavigation} />
-    <Stack.Screen name="CheckIn" component={CheckInScreen} />
+    {/* <Stack.Screen name="CheckIn" component={CheckInScreen} /> COMMENTED OUT FOR PHASE 2 */}
     <Stack.Screen name="MacroCalculator" component={MacroCalculatorScreen} />
     <Stack.Screen
   name="WorkoutDetail"

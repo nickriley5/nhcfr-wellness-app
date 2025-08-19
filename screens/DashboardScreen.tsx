@@ -11,6 +11,7 @@ import {
   PermissionsAndroid,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import {
   useNavigation,
   CompositeNavigationProp,
@@ -30,7 +31,7 @@ import Toast from 'react-native-toast-message';
 import { TabParamList, RootStackParamList } from '../App';
 import ProfileCompletionBanner from '../components/Profile/ProfileCompletionBanner';
 import { WeightTrackingTile } from '../components/Dashboard/WeightTrackingTile';
-import TodaysReadinessCard from '../components/Dashboard/TodaysReadinessCard';
+// import TodaysReadinessCard from '../components/Dashboard/TodaysReadinessCard'; // COMMENTED OUT FOR PHASE 2
 import TodaysWorkoutCard from '../components/Dashboard/TodaysWorkoutCard';
 import { DedicationCard } from '../components/Dashboard/DedicationCard';
 import { ComingUpCard } from '../components/Dashboard/ComingUpCard';
@@ -55,21 +56,19 @@ export default function DashboardScreen() {
     >
   >();
 
-  const [view, setView] = useState<'week' | 'month' | 'all'>('week');
+  const [view, _setView] = useState<'week' | 'month' | 'all'>('week'); // UNUSED - FOR PHASE 2
   const [pulseAnim] = useState(new Animated.Value(1));
   const [bump, setBump] = useState(0);
 
-  // NEW: Wellness tracking states
-  const [sleepLastNight, _setSleepLastNight] = useState({ hours: 0, quality: 0 });
-  const [readinessScore, setReadinessScore] = useState(0);
+  // NEW: Wellness tracking states - COMMENTED OUT FOR PHASE 2
+  const [_sleepLastNight, _setSleepLastNight] = useState({ hours: 0, quality: 0 }); // UNUSED - FOR PHASE 2
+  const [_readinessScore, _setReadinessScore] = useState(0); // UNUSED - FOR PHASE 2
   const [_nextShift, _setNextShift] = useState<Date | null>(null);
   const [_showGlobalCalendar, _setShowGlobalCalendar] = useState(false);
 
   // Use custom hooks for dashboard data
   const {
-    moodData,
-    energyData,
-    hasCheckedInToday,
+    // moodData, energyData, hasCheckedInToday - COMMENTED OUT FOR PHASE 2
     completionPercent,
     programExists,
     todayInfo,
@@ -136,6 +135,8 @@ export default function DashboardScreen() {
     }, [])
   );
 
+  // COMMENTED OUT FOR PHASE 2 - Readiness calculation will be replaced with wearable integration
+  /*
   // NEW: Calculate readiness score based on available data
   useEffect(() => {
     const calculateReadiness = () => {
@@ -169,7 +170,10 @@ export default function DashboardScreen() {
 
     calculateReadiness();
   }, [moodData, energyData, sleepLastNight, hydrationToday]);
+  */
 
+  // COMMENTED OUT FOR PHASE 2 - Readiness helper functions will be replaced with wearable integration
+  /*
   // NEW: Readiness helper functions
   const getReadinessColor = (score: number) => {
     if (score >= 4) { return '#33d6a6'; }  // High - green
@@ -191,15 +195,24 @@ export default function DashboardScreen() {
     if (score >= 2) { return 'Consider lighter intensity today'; }
     return 'Focus on recovery and rest';
   };
+  */
 
   // Environment helper functions
   const getEnvironmentIcon = (environment: string) => {
+    const iconSize = 20;
+    const iconColor = '#d32f2f';
+
     switch (environment) {
-      case 'gym': return '🏋️';
-      case 'station': return '🚒';
-      case 'home': return '🏠';
-      case 'off': return '🛌';
-      default: return '💪';
+      case 'gym':
+        return <Ionicons name="barbell-outline" size={iconSize} color={iconColor} />;
+      case 'station':
+        return <Ionicons name="business-outline" size={iconSize} color={iconColor} />;
+      case 'home':
+        return <Ionicons name="home-outline" size={iconSize} color={iconColor} />;
+      case 'off':
+        return <Ionicons name="bed-outline" size={iconSize} color={iconColor} />;
+      default:
+        return <Ionicons name="fitness-outline" size={iconSize} color={iconColor} />;
     }
   };
 
@@ -347,14 +360,8 @@ export default function DashboardScreen() {
         <View style={dashboardStyles.headerRow}>
           <View style={dashboardStyles.headerContent}>
             <Text style={dashboardStyles.header}>Your Dashboard</Text>
-            <Text style={dashboardStyles.subheader}>Train for duty. Fuel for life. 🔥</Text>
+            <Text style={dashboardStyles.subheader}>Train for duty. Fuel for life.</Text>
           </View>
-          <Pressable
-            style={dashboardStyles.calendarButton}
-            onPress={() => console.log('Calendar pressed')} // Placeholder for now
-          >
-            <Text style={dashboardStyles.calendarIcon}>📅</Text>
-          </Pressable>
         </View>
 
         <ProfileCompletionBanner
@@ -363,11 +370,11 @@ export default function DashboardScreen() {
           onPress={() => navigation.navigate('Profile')}
         />
 
-        {/* SECTION 1: Wellness & Readiness */}
+        {/* SECTION 1: Wellness & Readiness - COMMENTED OUT FOR PHASE 2 WEARABLE INTEGRATION */}
+        {/*
         <View style={dashboardStyles.sectionContainer}>
           <Text style={dashboardStyles.sectionTitle}>🔥 Wellness & Readiness</Text>
 
-          {/* Unified Readiness + Trends Card */}
           <TodaysReadinessCard
             hasCheckedInToday={hasCheckedInToday}
             readinessScore={readinessScore}
@@ -381,8 +388,9 @@ export default function DashboardScreen() {
             getReadinessMessage={getReadinessMessage}
           />
         </View>
+        */}
 
-        {/* SECTION 2: Today's Training */}
+        {/* SECTION 1: Today's Training */}
         <View style={dashboardStyles.sectionContainer}>
           <Text style={dashboardStyles.sectionTitle}>Training</Text>
           <ScrollView

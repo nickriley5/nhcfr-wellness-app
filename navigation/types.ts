@@ -21,6 +21,6 @@ export type RootStackParamList = {
     screen?: keyof RootDrawerParamList;
     params?: RootDrawerParamList[keyof RootDrawerParamList];
   };
-  CheckIn: undefined;
+  // CheckIn: undefined; // COMMENTED OUT FOR PHASE 2
   WeighIn: undefined;
 };

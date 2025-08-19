@@ -25,7 +25,7 @@ interface TomorrowInfo {
 interface ComingUpCardProps {
   tomorrowInfo: TomorrowInfo | null;
   _navigation: DashboardNavigationProp;
-  getEnvironmentIcon: (environment: string) => string;
+  getEnvironmentIcon: (environment: string) => React.JSX.Element;
   getEnvironmentLabel: (environment: string) => string;
   summarizeMains: (day: any) => string;
   countSets: (day: any) => number;

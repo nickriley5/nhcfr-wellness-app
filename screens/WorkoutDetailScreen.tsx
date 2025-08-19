@@ -37,12 +37,21 @@ import type { ExerciseBlock } from '../utils/types';
 import EnhancedTimerBar from '../components/EnhancedTimerBar';
 import CheckOffBlock from '../components/CheckOffBlock';
 import VideoToggle from '../components/VideoToggle';
+import { resolveExerciseDetails } from '../utils/exerciseUtils';
 
 type WorkoutSet = { reps: string; weight: string };
 
 /* ───────── helpers ───────── */
-const pretty = (id: string) =>
-  id.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+const pretty = (id: string) => {
+  // Try to look up the actual exercise name from the database first
+  const exercise = resolveExerciseDetails(id);
+  if (exercise && exercise.name) {
+    return exercise.name;
+  }
+
+  // Fallback to formatting the ID if not found in database
+  return id.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+};
 
 const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
 const fmtTime = (sec: number) => `${pad(Math.floor(sec / 60))}:${pad(sec % 60)}`;

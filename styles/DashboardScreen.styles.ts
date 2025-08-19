@@ -25,6 +25,7 @@ export const dashboardStyles = StyleSheet.create({
   header: {
     fontSize: 28,
     fontWeight: '800',
+    textAlign: 'center',
     color: '#fff',
     letterSpacing: 0.5,
     marginBottom: 4,
@@ -33,15 +34,7 @@ export const dashboardStyles = StyleSheet.create({
     fontSize: 14,
     color: '#888',
     fontWeight: '500',
-  },
-  calendarButton: {
-    backgroundColor: '#333',
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: 16,
+    textAlign: 'center',
   },
   calendarIcon: {
     fontSize: 20,
@@ -58,6 +51,7 @@ export const dashboardStyles = StyleSheet.create({
     color: '#fff',
     marginBottom: 16,
     letterSpacing: 0.5,
+    textAlign: 'center',
   },
 
   // Card/Tile Styles
@@ -74,6 +68,7 @@ export const dashboardStyles = StyleSheet.create({
     fontWeight: '600',
     color: '#fff',
     marginBottom: 12,
+    textAlign: 'center',
   },
   tileHeaderClean: {
     fontSize: 18,

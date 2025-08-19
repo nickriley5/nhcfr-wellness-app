@@ -34,7 +34,7 @@ interface TomorrowPreviewModalProps {
   visible: boolean;
   onClose: () => void;
   tomorrowInfo: TomorrowInfo | null;
-  getEnvironmentIcon: (environment: string) => string;
+  getEnvironmentIcon: (environment: string) => React.JSX.Element;
   getEnvironmentLabel: (environment: string) => string;
   _summarizeMains: (day: any) => string;
   countSets: (day: any) => number;

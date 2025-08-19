@@ -6,6 +6,7 @@ import { RootStackParamList } from '../App';
 import { PROGRAM_TEMPLATES } from '../utils/ProgramTemplates';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { resolveExerciseDetails } from '../utils/exerciseUtils';
 
 import { auth, db } from '../firebase';
 import { doc, setDoc, Timestamp } from 'firebase/firestore';
@@ -70,7 +71,7 @@ const ProgramPreviewScreen: React.FC = () => {
       <View style={styles.workoutDetails}>
         {workoutSections.map((section, sectionIdx) => {
           if (!section.exercises.length) {return null;}
-          
+
           return (
             <View key={sectionIdx} style={styles.workoutSection}>
               <Text style={styles.workoutSectionTitle}>{section.title}</Text>
@@ -100,9 +101,16 @@ const ProgramPreviewScreen: React.FC = () => {
   };
 
   /* -------------------------------------------------------------------- */
-  /* format exercise ID to readable name                                  */
+  /* format exercise ID to readable name using database lookup            */
   /* -------------------------------------------------------------------- */
   const formatExerciseName = (exerciseId: string): string => {
+    // Try to look up the actual exercise name from the database first
+    const exercise = resolveExerciseDetails(exerciseId);
+    if (exercise && exercise.name) {
+      return exercise.name;
+    }
+
+    // Fallback to formatting the ID if not found in database
     return exerciseId
       .split('_')
       .map(word => word.charAt(0).toUpperCase() + word.slice(1))
@@ -187,7 +195,7 @@ const ProgramPreviewScreen: React.FC = () => {
         </View>
       </View>
 
-      <Text style={styles.section}>First Week Preview</Text>
+      <Text style={styles.section}>Preview</Text>
       {program.days.slice(0, 7).map((day: ProgramDay, idx) => {
         const isExpanded = expandedDays.has(idx);
 

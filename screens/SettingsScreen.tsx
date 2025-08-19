@@ -12,6 +12,8 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
+import { auth, db } from '../firebase';
+import { doc, deleteDoc } from 'firebase/firestore';
 
 const SettingsScreen = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -23,14 +25,62 @@ const SettingsScreen = () => {
   const handleResetWorkoutPlan = () => {
     Alert.alert('Reset Workout Plan', 'This will remove your current workout program. Are you sure?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Yes, Reset', onPress: () => console.log('Reset workout logic here') },
+      {
+        text: 'Yes, Reset',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            const uid = auth.currentUser?.uid;
+            if (!uid) {
+              Alert.alert('Error', 'Please log in again');
+              return;
+            }
+
+            await deleteDoc(doc(db, 'users', uid, 'program', 'active'));
+            Alert.alert('Success', 'Workout program has been reset');
+          } catch (error) {
+            console.error('Error resetting workout plan:', error);
+            Alert.alert('Error', 'Failed to reset workout program. Please try again.');
+          }
+        },
+      },
     ]);
   };
 
   const handleResetMealPlan = () => {
     Alert.alert('Reset Meal Plan', 'This will remove your current meal plan. Are you sure?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Yes, Reset', onPress: () => console.log('Reset meal plan logic here') },
+      {
+        text: 'Yes, Reset',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            const uid = auth.currentUser?.uid;
+            if (!uid) {
+              Alert.alert('Error', 'Please log in again');
+              return;
+            }
+
+            await deleteDoc(doc(db, 'users', uid, 'mealPlan', 'active'));
+            Alert.alert(
+              'Success',
+              'Meal plan has been reset. You can now create a new meal plan from the Goals screen.',
+              [
+                {
+                  text: 'OK',
+                  onPress: () => {
+                    // Navigate back to dashboard to trigger refresh
+                    navigation.goBack();
+                  },
+                },
+              ]
+            );
+          } catch (error) {
+            console.error('Error resetting meal plan:', error);
+            Alert.alert('Error', 'Failed to reset meal plan. Please try again.');
+          }
+        },
+      },
     ]);
   };
 
@@ -46,19 +96,12 @@ const SettingsScreen = () => {
           onPress={() => navigation.navigate('Goals')}
         />
         <SettingsButton icon="refresh" label="Reset Workout Plan" onPress={handleResetWorkoutPlan} />
-        <SettingsButton icon="nutrition" label="Reset Meal Plan" onPress={handleResetMealPlan} />
-      </Section>
-
-      {/* PREFERENCES */}
-      <Section title="Preferences">
-        <SettingsButton icon="moon" label="Dark Mode (Auto)" onPress={() => {}} />
-        <SettingsButton icon="swap-horizontal" label="Units: Imperial" onPress={() => {}} />
+        <SettingsButton icon="refresh" label="Reset Meal Plan" onPress={handleResetMealPlan} />
       </Section>
 
       {/* SUPPORT */}
       <Section title="Support & Feedback">
         <SettingsButton icon="mail" label="Contact Support" onPress={handleContactSupport} />
-        <SettingsButton icon="document-text" label="Privacy Policy" onPress={() => console.log('Open privacy policy')} />
       </Section>
 
       {/* APP INFO */}
@@ -100,7 +143,7 @@ const SettingsButton = ({
 const styles = StyleSheet.create({
   container: {
     padding: 24,
-    paddingBottom: 80,
+    paddingBottom: 200, // Restored proper bottom padding
     backgroundColor: '#121212',
   },
   title: {

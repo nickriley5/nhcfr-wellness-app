@@ -7,7 +7,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Modal,
-  Alert,
+  // Alert,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -17,7 +17,8 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import { auth, db } from '../firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import type { ProgramDay } from '../types/Exercise';
-import { regenerateActiveProgram } from '../utils/programService';
+// import { regenerateActiveProgram } from '../utils/programService';
+import { resolveExerciseDetails } from '../utils/exerciseUtils';
 
 
 interface StoredState {
@@ -25,6 +26,13 @@ interface StoredState {
 }
 
 const formatExerciseName = (id: string): string => {
+  // Try to look up the actual exercise name from the database first
+  const exercise = resolveExerciseDetails(id);
+  if (exercise && exercise.name) {
+    return exercise.name;
+  }
+
+  // Fallback to formatting the ID if not found in database
   return id
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (c) => c.toUpperCase()); // capitalize each word
@@ -175,7 +183,7 @@ useFocusEffect(
           <Pressable onPress={() => navigation.navigate('ExerciseLibrary')} style={styles.iconButton}>
             <Ionicons name="book-outline" size={24} color="#d32f2f" />
           </Pressable>
-          <Pressable
+          {/* <Pressable
   onPress={async () => {
     try {
       // TEMP default goals. swap to your real user goals later.
@@ -197,7 +205,7 @@ useFocusEffect(
   style={styles.regenerateButton}
 >
   <Text style={styles.buttonText}>Regenerate Program</Text>
-</Pressable>
+</Pressable> */}
 
         </View>
       </View>
@@ -405,7 +413,7 @@ dayTabText: {
 
   // CONTENT BELOW PILLS
   content: { padding: 16, paddingBottom: 24 },
-  title: { fontSize: 24, fontWeight: '700', color: '#d32f2f' },
+  title: { fontSize: 24, fontWeight: '700', textAlign: 'center', color: '#fff' },
   subtitle: { fontSize: 16, color: '#ccc', marginVertical: 12 },
   cardTitle: { fontSize: 20, fontWeight: '600', color: '#fff', marginBottom: 12 },
 
