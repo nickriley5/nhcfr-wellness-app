@@ -90,11 +90,6 @@ const SettingsScreen = () => {
 
       {/* GOALS & PLANS */}
       <Section title="Goals & Plans">
-        <SettingsButton
-          icon="trending-up"
-          label="Update Fitness & Diet Goals"
-          onPress={() => navigation.navigate('Goals')}
-        />
         <SettingsButton icon="refresh" label="Reset Workout Plan" onPress={handleResetWorkoutPlan} />
         <SettingsButton icon="refresh" label="Reset Meal Plan" onPress={handleResetMealPlan} />
       </Section>
@@ -143,7 +138,7 @@ const SettingsButton = ({
 const styles = StyleSheet.create({
   container: {
     padding: 24,
-    paddingBottom: 200, // Restored proper bottom padding
+    paddingBottom: 250, // Restored proper bottom padding
     backgroundColor: '#121212',
   },
   title: {

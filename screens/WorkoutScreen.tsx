@@ -38,6 +38,36 @@ const formatExerciseName = (id: string): string => {
     .replace(/\b\w/g, (c) => c.toUpperCase()); // capitalize each word
 };
 
+const formatWorkoutDescription = (repsOrDuration: string): string => {
+  const text = repsOrDuration.toLowerCase();
+
+  // Handle AMRAP formats
+  if (text.includes('amrap')) {
+    const match = text.match(/(\d+)\s*min\s*amrap/);
+    if (match) {
+      return `${match[1]}min AMRAP`;
+    }
+    return 'AMRAP';
+  }
+
+  // Handle max effort formats
+  if (text.includes('max') && (text.includes('distance') || text.includes('reps') || text.includes('flips') || text.includes('flights'))) {
+    return 'Max Effort';
+  }
+
+  // Handle competition formats
+  if (text.includes('competition') || text.includes('test') || text.includes('challenge')) {
+    return 'Challenge';
+  }
+
+  // For very long descriptions, truncate
+  if (repsOrDuration.length > 25) {
+    return repsOrDuration.substring(0, 22) + '...';
+  }
+
+  return repsOrDuration;
+};
+
 
 const WorkoutScreen: React.FC = () => {
   const navigation =
@@ -256,7 +286,7 @@ useFocusEffect(
                 ]}
               >
                 <Text style={styles.exerciseName}>{formatExerciseName(blk.id)}</Text>
-                <Text style={styles.exerciseSets}>{blk.repsOrDuration}</Text>
+                <Text style={styles.exerciseSets}>{formatWorkoutDescription(blk.repsOrDuration)}</Text>
               </View>
             ))}
 
@@ -271,7 +301,7 @@ useFocusEffect(
                 ]}
               >
                 <Text style={styles.exerciseName}>{formatExerciseName(blk.id)}</Text>
-                <Text style={styles.exerciseSets}>{blk.repsOrDuration}</Text>
+                <Text style={styles.exerciseSets}>{formatWorkoutDescription(blk.repsOrDuration)}</Text>
               </View>
             ))}
 
@@ -286,7 +316,7 @@ useFocusEffect(
                 ]}
               >
                 <Text style={styles.exerciseName}>{formatExerciseName(blk.id)}</Text>
-                <Text style={styles.exerciseSets}>{blk.repsOrDuration}</Text>
+                <Text style={styles.exerciseSets}>{formatWorkoutDescription(blk.repsOrDuration)}</Text>
               </View>
             ))}
 
@@ -430,12 +460,25 @@ dayTabText: {
   exerciseRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
     paddingVertical: 8,
     paddingHorizontal: 6,
+    minHeight: 40,
   },
   rowAlt: { backgroundColor: 'rgba(255,255,255,0.05)' },
-  exerciseName: { color: '#fff', fontSize: 16 },
-  exerciseSets: { color: '#ccc', fontSize: 16 },
+  exerciseName: {
+    color: '#fff',
+    fontSize: 16,
+    flex: 1,
+    marginRight: 10,
+  },
+  exerciseSets: {
+    color: '#ccc',
+    fontSize: 16,
+    flexShrink: 1,
+    textAlign: 'right',
+    maxWidth: 150,
+  },
 
   detailButton: {
     marginTop: 24,

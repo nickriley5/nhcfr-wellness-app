@@ -79,7 +79,7 @@ interface EnrichedExercise {
   setsCount: number;
   repsCount: number; // seconds if type === 'time'
   rpe: number;
-  type: 'reps' | 'time';
+  type: 'reps' | 'time' | 'amrap' | 'max_effort' | 'competition' | 'special';
 }
 
 interface TimedStatus {
@@ -199,6 +199,75 @@ const MainExercisesSection: React.FC<MainExercisesSectionProps> = ({
                 );
               }
 
+              if (ex.type === 'amrap') {
+                const t = timedRef.current[ex.id][si];
+                const set = progress[exIdx][si];
+                return (
+                  <View key={si} style={styles.setBlock}>
+                    <View style={styles.setRow}>
+                      <Text style={styles.setLabel}>AMRAP {ex.repsCount / 60} min</Text>
+                      <Text style={styles.timerDigits}>
+                        {fmtTime(t.mode === 'countdown' ? Math.max(0, t.seconds) : t.seconds)}
+                      </Text>
+                      <Pressable onPress={() => startTimedSet(ex.id, si, ex.repsCount)}>
+                        <Ionicons
+                          name={t.running ? 'pause-circle' : 'play-circle'}
+                          size={28}
+                          color="#4caf50"
+                        />
+                      </Pressable>
+                    </View>
+                    <View style={styles.setRow}>
+                      <Text style={styles.setLabel}>Rounds</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="rounds"
+                        placeholderTextColor="#777"
+                        keyboardType="number-pad"
+                        editable={!isComplete}
+                        value={String(set.reps ?? '')}
+                        onChangeText={(text) => updateInput(exIdx, si, 'reps', text)}
+                      />
+                    </View>
+                    {t.done && <Text style={styles.lastTxt}>AMRAP Complete ✔</Text>}
+                  </View>
+                );
+              }
+
+              if (ex.type === 'max_effort' || ex.type === 'competition' || ex.type === 'special') {
+                const set = progress[exIdx][si];
+                return (
+                  <View key={si} style={styles.setBlock}>
+                    <View style={styles.setRow}>
+                      <Text style={styles.setLabel}>Performance</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="result"
+                        placeholderTextColor="#777"
+                        keyboardType="decimal-pad"
+                        editable={!isComplete}
+                        value={String(set.reps ?? '')}
+                        onChangeText={(text) => updateInput(exIdx, si, 'reps', text)}
+                      />
+                      <TextInput
+                        style={styles.input}
+                        placeholder="time/weight"
+                        placeholderTextColor="#777"
+                        keyboardType="decimal-pad"
+                        editable={!isComplete}
+                        value={String(set.weight ?? '')}
+                        onChangeText={(text) => updateInput(exIdx, si, 'weight', text)}
+                      />
+                    </View>
+                    {last[si] && (
+                      <Text style={styles.lastTxt}>
+                        Last: {last[si].reps} @ {last[si].weight}
+                      </Text>
+                    )}
+                  </View>
+                );
+              }
+
               // regular reps / weight
               const set = progress[exIdx][si];
               return (
@@ -212,7 +281,7 @@ const MainExercisesSection: React.FC<MainExercisesSectionProps> = ({
                       keyboardType="number-pad"
                       editable={!isComplete}
                       value={String(set.reps ?? '')}
-                      onChangeText={(t) => updateInput(exIdx, si, 'reps', t)}
+                      onChangeText={(text) => updateInput(exIdx, si, 'reps', text)}
                     />
 
                     <TextInput
@@ -222,7 +291,7 @@ const MainExercisesSection: React.FC<MainExercisesSectionProps> = ({
                       keyboardType="decimal-pad"
                       editable={!isComplete}
                       value={String(set.weight ?? '')}
-                      onChangeText={(t) => updateInput(exIdx, si, 'weight', t)}
+                      onChangeText={(text) => updateInput(exIdx, si, 'weight', text)}
                     />
                   </View>
                   {last[si] && (
@@ -314,6 +383,30 @@ const WorkoutDetailScreen: React.FC = () => {
   const enrich = async (blk: ExerciseBlock): Promise<EnrichedExercise> => {
     const snap = await getDoc(doc(db, 'exercises', blk.id));
     const meta: FirestoreExercise = snap.exists() ? (snap.data() as any) : {};
+
+    // Check for special workout types
+    const repsText = blk.repsOrDuration.toLowerCase();
+    const isAMRAP = repsText.includes('amrap');
+    const isMaxEffort = repsText.includes('max') && (repsText.includes('distance') || repsText.includes('reps') || repsText.includes('flips') || repsText.includes('flights'));
+    const isCompetition = repsText.includes('competition') || repsText.includes('test') || repsText.includes('challenge');
+
+    // For special workouts, use custom logic
+    if (isAMRAP || isMaxEffort || isCompetition) {
+      return {
+        id: blk.id,
+        name: meta.name ?? pretty(blk.id),
+        videoUri:
+          meta.videoUrl && meta.videoUrl.trim()
+            ? meta.videoUrl
+            : 'https://www.w3schools.com/html/mov_bbb.mp4',
+        setsCount: 1, // Special workouts are typically single efforts
+        repsCount: isAMRAP ? (numFromStr(blk.repsOrDuration) ?? 1) * 60 : 1, // AMRAP time in seconds, others just 1
+        rpe: blk.rpe,
+        type: isAMRAP ? 'amrap' : isMaxEffort ? 'max_effort' : isCompetition ? 'competition' : 'special',
+      };
+    }
+
+    // Original logic for normal exercises
     return {
       id: blk.id,
       name: meta.name ?? pretty(blk.id),
@@ -359,12 +452,12 @@ const WorkoutDetailScreen: React.FC = () => {
         /* timer state */
         const timerInit: Record<string, TimedStatus[]> = {};
         [...w, ...m, ...c].forEach((ex) => {
-          if (ex.type === 'time') {
+          if (ex.type === 'time' || ex.type === 'amrap') {
             timerInit[ex.id] = Array.from({ length: ex.setsCount }).map(() => ({
               running: false,
               seconds: 0,
               done: false,
-              mode: 'stopwatch',
+              mode: ex.type === 'amrap' ? 'countdown' : 'stopwatch',
             }));
           }
         });
@@ -423,12 +516,23 @@ const WorkoutDetailScreen: React.FC = () => {
   }, [workState]);
 
   /* ── helpers ── */
-  const formatDesc = (ex: EnrichedExercise) =>
-    ex.type === 'time'
-      ? `${ex.setsCount}×${
-          ex.repsCount % 60 === 0 ? `${ex.repsCount / 60} min` : `${ex.repsCount} sec`
-        }`
-      : `${ex.setsCount}×${ex.repsCount} reps`;
+  const formatDesc = (ex: EnrichedExercise) => {
+    if (ex.type === 'amrap') {
+      return `${ex.repsCount / 60} min AMRAP`;
+    } else if (ex.type === 'max_effort') {
+      return 'Max Effort Challenge';
+    } else if (ex.type === 'competition') {
+      return 'Competition Test';
+    } else if (ex.type === 'special') {
+      return 'Special Challenge';
+    } else if (ex.type === 'time') {
+      return `${ex.setsCount}×${
+        ex.repsCount % 60 === 0 ? `${ex.repsCount / 60} min` : `${ex.repsCount} sec`
+      }`;
+    } else {
+      return `${ex.setsCount}×${ex.repsCount} reps`;
+    }
+  };
 
   const updateInput = (
     exIdx: number,
