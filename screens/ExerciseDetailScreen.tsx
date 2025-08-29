@@ -6,6 +6,8 @@ import {
   ScrollView,
   Pressable,
   ActivityIndicator,
+  StatusBar,
+  Platform,
 } from 'react-native';
 import {
   useRoute,
@@ -15,10 +17,12 @@ import {
 import LinearGradient from 'react-native-linear-gradient';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import Video from 'react-native-video';
+import { WebView } from 'react-native-webview';
 import { doc, getDoc, getFirestore, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { firebaseApp, auth } from '../firebase';
 import { RootStackParamList } from '../App';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { exercises } from '../data/exercises';
 
 
 type ExerciseDetailRouteProp = RouteProp<RootStackParamList, 'ExerciseDetail'>;
@@ -32,7 +36,6 @@ const ExerciseDetailScreen: React.FC = () => {
   const [exercise, setExercise] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [favorited, setFavorited] = useState(false);
-  const [playing, setPlaying] = useState(false);
 
   const db = getFirestore(firebaseApp);
 
@@ -41,10 +44,32 @@ const ExerciseDetailScreen: React.FC = () => {
       try {
         const docRef = doc(db, 'exercises', exerciseId);
         const docSnap = await getDoc(docRef);
+
         if (docSnap.exists()) {
-          setExercise(docSnap.data());
+          const exerciseData = docSnap.data();
+
+          // If videoUrl is empty or undefined, try to find from local data
+          if (!exerciseData.videoUrl) {
+            const localExercise = exercises.find(ex => ex.id === exerciseId);
+            if (localExercise && localExercise.videoUrl) {
+              setExercise({
+                ...exerciseData,
+                videoUrl: localExercise.videoUrl,
+              });
+            } else {
+              setExercise(exerciseData);
+            }
+          } else {
+            setExercise(exerciseData);
+          }
         } else {
-          console.warn('Exercise not found.');
+          // If not found in Firebase, try local data
+          const localExercise = exercises.find(ex => ex.id === exerciseId);
+          if (localExercise) {
+            setExercise(localExercise);
+          } else {
+            console.warn('Exercise not found.');
+          }
         }
 
         const uid = auth.currentUser?.uid;
@@ -55,6 +80,11 @@ const ExerciseDetailScreen: React.FC = () => {
         }
       } catch (error) {
         console.error('Error fetching exercise:', error);
+        // Fallback to local data on error
+        const localExercise = exercises.find(ex => ex.id === exerciseId);
+        if (localExercise) {
+          setExercise(localExercise);
+        }
       } finally {
         setLoading(false);
       }
@@ -79,23 +109,31 @@ const ExerciseDetailScreen: React.FC = () => {
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#d32f2f" />
+      <View style={styles.safeArea}>
+        <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#d32f2f" />
+        </View>
       </View>
     );
   }
 
   if (!exercise) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.error}>Exercise not found.</Text>
+      <View style={styles.safeArea}>
+        <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+        <View style={styles.container}>
+          <Text style={styles.error}>Exercise not found.</Text>
+        </View>
       </View>
     );
   }
 
   return (
-    <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.gradient}>
-      <ScrollView contentContainerStyle={styles.container}>
+    <View style={styles.safeArea}>
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+      <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.gradient}>
+        <ScrollView contentContainerStyle={styles.container}>
         <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={24} color="#fff" />
           <Text style={styles.backText}>Back</Text>
@@ -112,19 +150,44 @@ const ExerciseDetailScreen: React.FC = () => {
         <Text style={styles.equipment}>Equipment: {exercise.equipment || 'Bodyweight'}</Text>
         <Text style={styles.level}>Level: {exercise.level || 'All Levels'}</Text>
 
-        <Video
-          source={{ uri: exercise.videoUrl || exercise.videoUri }}
-          style={styles.video}
-          resizeMode="cover"
-          paused={!playing}
-          controls
-          onEnd={() => setPlaying(false)}
-        />
+        {(exercise.videoUrl || exercise.videoUri) && (
+          <View style={styles.videoContainer}>
+            {(() => {
+              const videoUri = exercise.videoUrl || exercise.videoUri;
+              const isYouTubeUrl = videoUri.includes('youtube.com') || videoUri.includes('youtu.be');
 
-        <Pressable onPress={() => setPlaying(p => !p)} style={styles.playButton}>
-          <Ionicons name={playing ? 'pause' : 'play'} size={18} color="#fff" />
-          <Text style={styles.playText}>{playing ? 'Pause Video' : 'Play Video'}</Text>
-        </Pressable>
+              if (isYouTubeUrl) {
+                // Convert YouTube URL to embed format
+                let videoId = '';
+                if (videoUri.includes('youtube.com/watch?v=')) {
+                  videoId = videoUri.split('v=')[1].split('&')[0];
+                } else if (videoUri.includes('youtu.be/')) {
+                  videoId = videoUri.split('youtu.be/')[1].split('?')[0];
+                }
+                const embedUrl = `https://www.youtube.com/embed/${videoId}?playsinline=1&controls=1`;
+
+                return (
+                  <WebView
+                    style={styles.video}
+                    source={{ uri: embedUrl }}
+                    allowsInlineMediaPlayback
+                    mediaPlaybackRequiresUserAction={false}
+                  />
+                );
+              } else {
+                return (
+                  <Video
+                    source={{ uri: videoUri }}
+                    style={styles.video}
+                    controls
+                    resizeMode="contain"
+                    paused={false}
+                  />
+                );
+              }
+            })()}
+          </View>
+        )}
 
         <Text style={styles.desc}>{exercise.description}</Text>
 
@@ -161,15 +224,21 @@ const ExerciseDetailScreen: React.FC = () => {
         </Pressable>
       </ScrollView>
     </LinearGradient>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+  },
   gradient: {
     flex: 1,
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 10 : 50,
   },
   container: {
     padding: 24,
+    paddingTop: 0,
     alignItems: 'center',
     paddingBottom: 60,
   },
@@ -224,21 +293,17 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 16,
   },
+  videoContainer: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: 16,
+    backgroundColor: '#000',
+  },
   video: {
     width: '100%',
-    height: 220,
-    borderRadius: 12,
-    marginBottom: 8,
-  },
-  playButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  playText: {
-    color: '#fff',
-    fontSize: 14,
-    marginLeft: 6,
+    height: '100%',
   },
   coachingNotes: {
     fontSize: 14,

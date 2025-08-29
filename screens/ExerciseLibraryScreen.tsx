@@ -7,6 +7,8 @@ import {
   Image,
   Pressable,
   ActivityIndicator,
+  StatusBar,
+  Platform,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -22,6 +24,7 @@ import {
   getDoc,
 } from 'firebase/firestore';
 import { firebaseApp, auth } from '../firebase';
+import { exercises as localExercises } from '../data/exercises';
 
 const db = getFirestore(firebaseApp);
 
@@ -42,30 +45,37 @@ const ExerciseLibraryScreen: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchData = async () => {
+    const loadData = async () => {
       try {
         const uid = auth.currentUser?.uid;
-        const snapshot = await getDocs(collection(db, 'exercises'));
-        const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-        setExercises(list);
 
+        // Load exercises from Firebase every time
+        const snapshot = await getDocs(collection(db, 'exercises'));
+        const exercisesList = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        // If Firebase has data, use it; otherwise fall back to local data
+        const finalExercises = exercisesList.length > 0 ? exercisesList : localExercises;
+        setExercises(finalExercises);
+
+        // Load favorites
         if (uid) {
           const favSnapshot = await getDoc(doc(db, 'users', uid, 'favorites', 'list'));
           if (favSnapshot.exists()) {
-            setFavorites(new Set(favSnapshot.data().ids || []));
+            const favs = new Set<string>(favSnapshot.data().ids || []);
+            setFavorites(favs);
           }
         }
       } catch (error) {
         console.error('Failed to load exercise library:', error);
+        // Fallback to local data on error
+        setExercises(localExercises);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchData();
-  }, []);
-
-  const toggleFavorite = async (exerciseId: string) => {
+    loadData();
+  }, []);  const toggleFavorite = async (exerciseId: string) => {
     const uid = auth.currentUser?.uid;
     if (!uid) {return;}
 
@@ -84,15 +94,20 @@ const ExerciseLibraryScreen: React.FC = () => {
 
   if (loading) {
     return (
-      <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
-        <ActivityIndicator size="large" color="#d32f2f" />
-      </LinearGradient>
+      <View style={styles.safeArea}>
+        <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+        <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
+          <ActivityIndicator size="large" color="#d32f2f" />
+        </LinearGradient>
+      </View>
     );
   }
 
   return (
-    <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <View style={styles.safeArea}>
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+      <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
+        <ScrollView contentContainerStyle={styles.content}>
         <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={22} color="#fff" />
           <Text style={styles.backText}>Back</Text>
@@ -130,11 +145,18 @@ const ExerciseLibraryScreen: React.FC = () => {
         ))}
       </ScrollView>
     </LinearGradient>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  safeArea: {
+    flex: 1,
+  },
+  container: {
+    flex: 1,
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 10 : 50,
+  },
   content: { padding: 24 },
   backButton: {
     flexDirection: 'row',
