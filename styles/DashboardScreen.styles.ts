@@ -22,6 +22,24 @@ export const dashboardStyles = StyleSheet.create({
   headerContent: {
     flex: 1,
   },
+  headerScheduleButton: {
+    backgroundColor: 'rgba(211, 47, 47, 0.1)',
+    borderWidth: 1,
+    borderColor: '#d32f2f',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minWidth: 100,
+    justifyContent: 'center',
+  },
+  headerScheduleText: {
+    color: '#d32f2f',
+    fontSize: 14,
+    fontWeight: '600',
+  },
   header: {
     fontSize: 28,
     fontWeight: '800',

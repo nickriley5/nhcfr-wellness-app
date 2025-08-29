@@ -362,6 +362,13 @@ export default function DashboardScreen() {
             <Text style={dashboardStyles.header}>Your Dashboard</Text>
             <Text style={dashboardStyles.subheader}>Train for duty. Fuel for life.</Text>
           </View>
+          <Pressable
+            style={dashboardStyles.headerScheduleButton}
+            onPress={() => setShowEnvironmentCalendar(true)}
+          >
+            <Ionicons name="calendar-outline" size={24} color="#d32f2f" />
+            <Text style={dashboardStyles.headerScheduleText}>Schedule</Text>
+          </Pressable>
         </View>
 
         <ProfileCompletionBanner
