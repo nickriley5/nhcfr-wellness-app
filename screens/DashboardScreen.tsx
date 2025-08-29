@@ -354,18 +354,16 @@ export default function DashboardScreen() {
   return (
     <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={dashboardStyles.screen}>
       <ScrollView contentContainerStyle={dashboardStyles.content}>
-        {/* Header with Calendar Button */}
-        <View style={dashboardStyles.headerRow}>
-          <View style={dashboardStyles.headerContent}>
-            <Text style={dashboardStyles.header}>Your Dashboard</Text>
-            <Text style={dashboardStyles.subheader}>Train for duty. Fuel for life.</Text>
-          </View>
+        {/* Header */}
+        <View style={dashboardStyles.headerContainer}>
+          <Text style={dashboardStyles.header}>Your Dashboard</Text>
+          <Text style={dashboardStyles.subheader}>Train for duty. Fuel for life.</Text>
           <Pressable
-            style={dashboardStyles.headerScheduleButton}
+            style={dashboardStyles.centeredScheduleButton}
             onPress={() => setShowEnvironmentCalendar(true)}
           >
             <Ionicons name="calendar-outline" size={24} color="#d32f2f" />
-            <Text style={dashboardStyles.headerScheduleText}>Schedule</Text>
+            <Text style={dashboardStyles.centeredScheduleText}>Schedule</Text>
           </Pressable>
         </View>
 

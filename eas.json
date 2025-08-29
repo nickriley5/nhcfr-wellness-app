@@ -1,0 +1,70 @@
+{
+  "build": {
+    "internal": {
+      "ios": { 
+        "distribution": "internal",
+        "cache": {
+          "disabled": true
+        }
+      },
+      "android": {
+        "distribution": "internal",
+        "buildType": "apk"
+      }
+    },
+    "beta": {
+      "ios": {
+        "distribution": "internal",
+        "cache": {
+          "disabled": true
+        },
+        "env": {
+          "EXPO_USE_LEGACY_IMPORTS": "1"
+        },
+        "prebuildCommand": "npx pod-install --quiet",
+        "autoSubmit": true
+      },
+      "android": {
+        "distribution": "internal",
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleRelease"
+      }
+    },
+    "production": {
+      "ios": { 
+        "distribution": "store",
+        "cache": {
+          "disabled": true
+        },
+        "env": {
+          "EXPO_USE_LEGACY_IMPORTS": "1"
+        },
+        "prebuildCommand": "npx pod-install --quiet"
+      },
+      "android": {
+        "distribution": "store",
+        "buildType": "app-bundle"
+      }
+    }
+  },
+  "submit": {
+    "beta": {
+      "ios": {
+        "appleId": "nickriley5@gmail.com",
+        "ascAppId": "PLACEHOLDER_APP_ID",
+        "appleTeamId": "6FPH5PYT75"
+      }
+    },
+    "production": {
+      "ios": {
+        "appleId": "nickriley5@gmail.com",
+        "ascAppId": "PLACEHOLDER_APP_ID",
+        "appleTeamId": "6FPH5PYT75"
+      }
+    }
+  },
+  "cli": { 
+    "version": ">= 3.0.0",
+    "appVersionSource": "local"
+  }
+}

@@ -19,6 +19,11 @@ export const dashboardStyles = StyleSheet.create({
     marginBottom: 24,
     paddingHorizontal: 16,
   },
+  headerContainer: {
+    alignItems: 'center',
+    marginBottom: 24,
+    paddingHorizontal: 16,
+  },
   headerContent: {
     flex: 1,
   },
@@ -35,7 +40,25 @@ export const dashboardStyles = StyleSheet.create({
     minWidth: 100,
     justifyContent: 'center',
   },
+  centeredScheduleButton: {
+    backgroundColor: 'rgba(211, 47, 47, 0.1)',
+    borderWidth: 1,
+    borderColor: '#d32f2f',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 16,
+    justifyContent: 'center',
+  },
   headerScheduleText: {
+    color: '#d32f2f',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  centeredScheduleText: {
     color: '#d32f2f',
     fontSize: 14,
     fontWeight: '600',
