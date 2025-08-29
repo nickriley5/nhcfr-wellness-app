@@ -14,6 +14,7 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import Toast from 'react-native-toast-message';
 import { auth, db } from '../../firebase';
 import { doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { calculateItemMacros, sumMacros, validateMealAccuracy, preciseRound, safeNumber } from '../../utils/precisionMath';
 
 interface EditableFoodItem {
   id: string;
@@ -52,20 +53,20 @@ interface Props {
 }
 
 /* ---------- helpers ---------- */
-const clamp = (n: number) => Math.max(0, Math.round(n));
+const clamp = (n: number) => Math.max(0, preciseRound(n));
 
 const recalcTotalsFromItems = (items: EditableFoodItem[]) => {
-  return items.reduce(
-    (acc, item) => {
-      const mult = (item.currentQuantity || 0) / (item.baseQuantity || 1);
-      acc.calories += Math.round(item.baseCalories * mult);
-      acc.protein += Math.round(item.baseProtein * mult);
-      acc.carbs += Math.round(item.baseCarbs * mult);
-      acc.fat += Math.round(item.baseFat * mult);
-      return acc;
-    },
-    { calories: 0, protein: 0, carbs: 0, fat: 0 }
+  const itemMacros = items.map(item =>
+    calculateItemMacros({
+      baseCalories: item.baseCalories,
+      baseProtein: item.baseProtein,
+      baseCarbs: item.baseCarbs,
+      baseFat: item.baseFat,
+      baseQuantity: item.baseQuantity,
+      currentQuantity: item.currentQuantity,
+    })
   );
+  return sumMacros(itemMacros);
 };
 
 const safeInt = (t: string) => {
@@ -73,7 +74,7 @@ const safeInt = (t: string) => {
   return Number.isFinite(v) ? v : 0;
 };
 
-const kcalFromMacros = (p: number, c: number, f: number) => clamp(4 * p + 4 * c + 9 * f);
+const kcalFromMacros = (p: number, c: number, f: number) => clamp(4 * safeNumber(p) + 4 * safeNumber(c) + 9 * safeNumber(f));
 
 
 /* ---------- component ---------- */
@@ -136,6 +137,22 @@ const MealEditModal: React.FC<Props> = ({
         fat: editedMeal.fat,
       }
     : itemTotals;
+
+  // ✅ Enhanced accuracy validation
+  const accuracyStatus = useMemo(() => {
+    if (!editedMeal.foodItems?.length || manualTotals) {
+      return null;
+    }
+
+    const mealLevelTotals = {
+      calories: editedMeal.calories,
+      protein: editedMeal.protein,
+      carbs: editedMeal.carbs,
+      fat: editedMeal.fat,
+    };
+
+    return validateMealAccuracy(mealLevelTotals, itemTotals);
+  }, [editedMeal, itemTotals, manualTotals]);
 
   // Update items; if derived-mode, also refresh meal totals to match
   const updateItems = (updater: (prev: EditableFoodItem[]) => EditableFoodItem[]) => {
@@ -402,6 +419,16 @@ const MealEditModal: React.FC<Props> = ({
                 <Text style={styles.totalsText}>
                   Totals from items: {itemTotals.calories} kcal • P {itemTotals.protein}g • C {itemTotals.carbs}g • F {itemTotals.fat}g
                 </Text>
+
+                {/* ✅ Enhanced accuracy indicator */}
+                {accuracyStatus && accuracyStatus.shouldFlag && (
+                  <View style={styles.accuracyWarning}>
+                    <Ionicons name="warning" size={16} color="#F06292" />
+                    <Text style={styles.accuracyWarningText}>
+                      Macro discrepancy detected ({Math.round(accuracyStatus.variance * 100)}% variance)
+                    </Text>
+                  </View>
+                )}
               </>
             )}
 
@@ -422,6 +449,23 @@ const MealEditModal: React.FC<Props> = ({
       thumbColor="#000"
     />
   </View>
+
+  {/* ✅ Accuracy status indicator */}
+  {!manualTotals && accuracyStatus && (
+    <View style={styles.accuracyIndicator}>
+      <Ionicons
+        name={accuracyStatus.isAccurate ? 'checkmark-circle' : 'warning'}
+        size={14}
+        color={accuracyStatus.isAccurate ? '#4CAF50' : '#F06292'}
+      />
+      <Text style={[
+        styles.accuracyText,
+        accuracyStatus.isAccurate ? styles.accuracySuccess : styles.accuracyError,
+      ]}>
+        {accuracyStatus.isAccurate ? 'Calculations verified' : `${Math.round(accuracyStatus.variance * 100)}% variance detected`}
+      </Text>
+    </View>
+  )}
 </View>
 
 
@@ -618,4 +662,38 @@ const styles = StyleSheet.create({
   marginTop: 8,
   marginBottom: 8,
 },
+
+  // ✅ NEW: Accuracy indicator styles
+  accuracyWarning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#2a1f1f',
+    borderRadius: 8,
+    padding: 8,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#5d2d2d',
+  },
+  accuracyWarningText: {
+    color: '#F06292',
+    fontSize: 12,
+    marginLeft: 6,
+    flex: 1,
+  },
+  accuracyIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  accuracyText: {
+    fontSize: 12,
+    marginLeft: 4,
+    fontWeight: '500',
+  },
+  accuracySuccess: {
+    color: '#4CAF50',
+  },
+  accuracyError: {
+    color: '#F06292',
+  },
 });

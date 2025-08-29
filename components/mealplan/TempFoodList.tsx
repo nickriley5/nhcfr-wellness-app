@@ -7,6 +7,7 @@ import {
   ScrollView,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import { calculateItemMacros, sumMacros } from '../../utils/precisionMath';
 
 export interface ParsedFoodItem {
   id: string;
@@ -48,25 +49,19 @@ const FoodAdjustmentList: React.FC<Props> = ({ foods, onFoodsChange, photoUri })
   };
 
   const calculateCurrentMacros = (food: ParsedFoodItem) => {
-    const multiplier = food.currentQuantity / food.baseQuantity;
-    return {
-      calories: Math.round(food.baseCalories * multiplier),
-      protein: Math.round(food.baseProtein * multiplier),
-      carbs: Math.round(food.baseCarbs * multiplier),
-      fat: Math.round(food.baseFat * multiplier),
-    };
+    return calculateItemMacros({
+      baseCalories: food.baseCalories,
+      baseProtein: food.baseProtein,
+      baseCarbs: food.baseCarbs,
+      baseFat: food.baseFat,
+      baseQuantity: food.baseQuantity,
+      currentQuantity: food.currentQuantity,
+    });
   };
 
   const getTotalMacros = () => {
-    return foods.reduce((total, food) => {
-      const macros = calculateCurrentMacros(food);
-      return {
-        calories: total.calories + macros.calories,
-        protein: total.protein + macros.protein,
-        carbs: total.carbs + macros.carbs,
-        fat: total.fat + macros.fat,
-      };
-    }, { calories: 0, protein: 0, carbs: 0, fat: 0 });
+    const allMacros = foods.map(calculateCurrentMacros);
+    return sumMacros(allMacros);
   };
 
   const getConfidenceColor = (confidence: string) => {

@@ -35,6 +35,7 @@ import DescribeMealModal from '../components/mealplan/DescribeMealModal';
 import CameraModal from '../components/mealplan/CameraModal';
 import QuickFavoritesModal from '../components/mealplan/QuickFavorites';
 import MealEditModal from '../components/mealplan/MealEditModal';
+import { calculateItemMacros, sumMacros, validateMealAccuracy } from '../utils/precisionMath';
 
 /* -------------------------- TYPES -------------------------- */
 interface MealPlanData {
@@ -534,32 +535,50 @@ const prettyTime = (time?: string | null) => {
 
   /* -------------------------- TOTALS -------------------------- */
 
-  const totals = { calories: 0, protein: 0, carbs: 0, fat: 0 };
+  // ✅ Enhanced totals calculation with accuracy validation
+  const calculateMealTotals = () => {
+    const allMealMacros = loggedMeals.map((meal: any) => {
+      if (meal.foodItems?.length) {
+        // Calculate from food items using precise math
+        const itemMacros = meal.foodItems.map((item: any) => calculateItemMacros(item));
+        const calculatedTotals = sumMacros(itemMacros);
 
-  loggedMeals.forEach((meal: any) => {
-    if (meal.foodItems?.length) {
-      meal.foodItems.forEach((item: any) => {
-        const multiplier = item.currentQuantity / item.baseQuantity;
-        totals.calories += Math.round(item.baseCalories * multiplier);
-        totals.protein += Math.round(item.baseProtein * multiplier);
-        totals.carbs += Math.round(item.baseCarbs * multiplier);
-        totals.fat += Math.round(item.baseFat * multiplier);
-      });
-    } else {
-      totals.calories += meal.calories || 0;
-      totals.protein += meal.protein || 0;
-      totals.carbs += meal.carbs || 0;
-      totals.fat += meal.fat || 0;
-    }
-  });
+        // Validate against meal-level macros if they exist
+        if (meal.calories || meal.protein || meal.carbs || meal.fat) {
+          const mealLevelTotals = {
+            calories: meal.calories || 0,
+            protein: meal.protein || 0,
+            carbs: meal.carbs || 0,
+            fat: meal.fat || 0,
+          };
 
-  const expectedTotal = loggedMeals.reduce((sum, meal) => sum + (meal.calories || 0), 0);
-  if (Math.abs(totals.calories - expectedTotal) > 50) {
-    console.warn('⚠️ CALCULATION MISMATCH:');
-    console.warn(`   Calculated: ${totals.calories} calories`);
-    console.warn(`   Expected: ${expectedTotal} calories`);
-    console.warn(`   Difference: ${Math.abs(totals.calories - expectedTotal)} calories`);
-  }
+          const validation = validateMealAccuracy(mealLevelTotals, calculatedTotals);
+
+          if (!validation.isAccurate && validation.shouldFlag) {
+            console.warn(`⚠️ Meal "${meal.name}" has macro discrepancy:`, {
+              variance: validation.variance,
+              mealLevel: mealLevelTotals,
+              calculated: calculatedTotals,
+            });
+          }
+        }
+
+        return calculatedTotals;
+      } else {
+        // Use meal-level macros as fallback
+        return {
+          calories: meal.calories || 0,
+          protein: meal.protein || 0,
+          carbs: meal.carbs || 0,
+          fat: meal.fat || 0,
+        };
+      }
+    });
+
+    return sumMacros(allMealMacros);
+  };
+
+  const totals = calculateMealTotals();
 
   const goToMacroOverview = () => {
     if (!mealPlan) {return;}

@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, Pressable, Image } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import { calculateItemMacros, sumMacros } from '../../utils/precisionMath';
 
 // ✅ Shared meal interface - matches MealPlanScreen
 export interface MealCardProps {
@@ -41,17 +42,17 @@ const MealCard: React.FC<MealCardProps> = ({
   };
 
   const totals = foodItems?.length
-    ? foodItems.reduce(
-        (acc, item) => {
-          const multiplier = item.currentQuantity / item.baseQuantity;
-          return {
-            calories: acc.calories + Math.round(item.baseCalories * multiplier),
-            protein: acc.protein + Math.round(item.baseProtein * multiplier),
-            carbs: acc.carbs + Math.round(item.baseCarbs * multiplier),
-            fat: acc.fat + Math.round(item.baseFat * multiplier),
-          };
-        },
-        { calories: 0, protein: 0, carbs: 0, fat: 0 }
+    ? sumMacros(
+        foodItems.map(item =>
+          calculateItemMacros({
+            baseCalories: item.baseCalories,
+            baseProtein: item.baseProtein,
+            baseCarbs: item.baseCarbs,
+            baseFat: item.baseFat,
+            baseQuantity: item.baseQuantity,
+            currentQuantity: item.currentQuantity,
+          })
+        )
       )
     : { calories, protein, carbs, fat };
 

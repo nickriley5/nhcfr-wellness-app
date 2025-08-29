@@ -1,5 +1,6 @@
 import axios from 'axios';
 import crypto from 'crypto-js';
+import { validateNutritionResult as enhancedValidation } from './precisionMath';
 
 // --- Safe console helpers to avoid Hermes "Error.stack invalid receiver" ---
 const safeLog = (label: string, value: unknown) => {
@@ -214,52 +215,6 @@ const preprocessQuery = (query: string): ProcessedQuery => {
   };
 };
 
-/* ✅ RESULT VALIDATION - Catch unrealistic results */
-const validateNutritionResult = (result: any, query: string): { isValid: boolean; flags: string[] } => {
-  const flags: string[] = [];
-  let isValid = true;
-
-  // Check for impossible values
-  if (result.calories < 0 || result.calories > 10000) {
-    flags.push('Unrealistic calorie count');
-    isValid = false;
-  }
-
-  if (result.protein < 0 || result.protein > 500) {
-    flags.push('Unrealistic protein amount');
-    isValid = false;
-  }
-
-  if (result.carbs < 0 || result.carbs > 1000) {
-    flags.push('Unrealistic carb amount');
-    isValid = false;
-  }
-
-  if (result.fat < 0 || result.fat > 500) {
-    flags.push('Unrealistic fat amount');
-    isValid = false;
-  }
-
-  // Calorie consistency check (4 cal/g protein, 4 cal/g carbs, 9 cal/g fat)
-  const calculatedCals = (result.protein * 4) + (result.carbs * 4) + (result.fat * 9);
-  const calorieVariance = Math.abs(result.calories - calculatedCals) / result.calories;
-
-  if (calorieVariance > 0.3) { // More than 30% variance is suspicious
-    flags.push('Calorie-macro mismatch detected');
-  }
-
-  // Check for zero-macro foods that should have macros
-  const shouldHaveMacros = ['pizza', 'burger', 'sandwich', 'pasta', 'rice', 'bread'];
-  if (shouldHaveMacros.some(food => query.toLowerCase().includes(food))) {
-    if (result.calories === 0 || (result.protein === 0 && result.carbs === 0 && result.fat === 0)) {
-      flags.push('Missing expected macros for complex food');
-      isValid = false;
-    }
-  }
-
-  return { isValid, flags };
-};
-
 /* ✅ Helper function to check if error is AxiosError */
 const isAxiosError = (error: unknown): error is any => {
   return (
@@ -357,10 +312,16 @@ export const fetchFromNutritionix = async (query: string): Promise<MealMacroResu
   })),
 };
 
-    const validation = validateNutritionResult(result, query);
+    const validation = enhancedValidation(result, query);
     if (!validation.isValid) {
       console.log('❌ Nutritionix result failed validation:', validation.flags);
       return null;
+    }
+
+    // ✅ Enhanced confidence adjustment based on validation
+    result.confidence = Math.min(result.confidence, validation.confidence);
+    if (validation.flags.length > 0) {
+      result.confidence = Math.max(result.confidence - (validation.flags.length * 5), 20);
     }
 
     result.validationFlags = validation.flags;
@@ -479,12 +440,13 @@ export const fetchFromUSDA = async (query: string): Promise<MealMacroResult | nu
       },
     };
 
-    const validation = validateNutritionResult(result, query);
+    const validation = enhancedValidation(result, query);
     if (!validation.isValid) {
       console.log('❌ USDA result failed validation:', validation.flags);
       return null;
     }
 
+    result.confidence = Math.min(result.confidence, validation.confidence);
     result.validationFlags = validation.flags;
     safeLog('✅ USDA result:', result);
     return result;
@@ -595,12 +557,13 @@ export const fetchFromFatSecret = async (query: string): Promise<MealMacroResult
       },
     };
 
-    const validation = validateNutritionResult(result, query);
+    const validation = enhancedValidation(result, query);
     if (!validation.isValid) {
       console.log('❌ FatSecret result failed validation:', validation.flags);
       return null;
     }
 
+    result.confidence = Math.min(result.confidence, validation.confidence);
     result.validationFlags = validation.flags;
     safeLog('✅ FatSecret result:', result);
     return result;

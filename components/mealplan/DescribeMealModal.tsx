@@ -283,27 +283,40 @@ const DescribeMealModal: React.FC<Props> = ({
       setParsedFoods(foodItems);
       setShowResults(true);
 
-      // Confidence feedback
-      if (result.confidence >= 90) {
+      // Enhanced confidence feedback with validation alerts
+      if (result.confidence >= 85) {
         Toast.show({
           type: 'success',
           text1: '🎯 High Accuracy',
           text2: `${result.confidence}% confidence - excellent match!`,
           position: 'bottom',
         });
-      } else if (result.confidence >= 70) {
+      } else if (result.confidence >= 75) {
         Toast.show({
           type: 'info',
           text1: '👍 Good Match',
           text2: `${result.confidence}% confidence - please review portions`,
           position: 'bottom',
         });
-      } else {
+      } else if (result.confidence >= 50) {
         Toast.show({
           type: 'warning',
           text1: '⚠️ Please Review',
           text2: `${result.confidence}% confidence - double-check the details`,
           position: 'bottom',
+        });
+      } else {
+        // Very low confidence - show validation issues if any
+        const validationMessage = result.validationFlags?.length
+          ? `Issues detected: ${result.validationFlags[0]}`
+          : 'Very low confidence result';
+
+        Toast.show({
+          type: 'error',
+          text1: '🚨 Accuracy Warning',
+          text2: validationMessage,
+          position: 'bottom',
+          visibilityTime: 6000,
         });
       }
     } catch (err) {
@@ -548,18 +561,18 @@ const DescribeMealModal: React.FC<Props> = ({
                   <View
                     style={[
                       styles.confidenceCard,
-                      lastResult.confidence >= 80
+                      lastResult.confidence >= 85  // Raised from 80
                         ? styles.highConfidence
-                        : lastResult.confidence >= 60
+                        : lastResult.confidence >= 75  // Raised from 60
                         ? styles.mediumConfidence
                         : styles.lowConfidence,
                     ]}
                   >
                     <View style={styles.confidenceHeader}>
                       <Text style={styles.confidenceTitle}>
-                        {lastResult.confidence >= 80
+                        {lastResult.confidence >= 85  // Raised from 80
                           ? '🎯 High Accuracy'
-                          : lastResult.confidence >= 60
+                          : lastResult.confidence >= 75  // Raised from 60
                           ? '👍 Good Match'
                           : '⚠️ Please Review'}
                       </Text>
