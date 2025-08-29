@@ -381,7 +381,18 @@ const WorkoutDetailScreen: React.FC = () => {
 
   /* ── enrichment ── */
   const enrich = async (blk: ExerciseBlock): Promise<EnrichedExercise> => {
-    const snap = await getDoc(doc(db, 'exercises', blk.id));
+    // Map human-readable IDs to actual hexadecimal IDs in database
+    const exerciseIdMap: Record<string, string> = {
+      'banded_face_pull': '609e6c422c9349a885fa69c2dd2141f7', // Banded Face Pulls
+      'glute_bridge': 'd68572790c034f40afbd39433926bc96', // Glute Bridge
+      'worlds_greatest_stretch': '39292bf9cd8d403e9279d4c9bb8497c9', // World's Greatest Stretch
+      // Add more mappings as needed - we'll get the video URLs from Firebase now!
+    };
+
+    // Use mapped ID if available, otherwise use the original ID
+    const actualId = exerciseIdMap[blk.id] || blk.id;
+
+    const snap = await getDoc(doc(db, 'exercises', actualId));
     const meta: FirestoreExercise = snap.exists() ? (snap.data() as any) : {};
 
     // Check for special workout types
@@ -389,6 +400,29 @@ const WorkoutDetailScreen: React.FC = () => {
     const isAMRAP = repsText.includes('amrap');
     const isMaxEffort = repsText.includes('max') && (repsText.includes('distance') || repsText.includes('reps') || repsText.includes('flips') || repsText.includes('flights'));
     const isCompetition = repsText.includes('competition') || repsText.includes('test') || repsText.includes('challenge');
+
+    // Fallback video URL - try to provide exercise-specific videos
+    let fallbackVideoUrl = 'https://www.w3schools.com/html/mov_bbb.mp4'; // default fallback
+
+    // Map common warm-up/cool-down exercises to appropriate videos
+    const exerciseVideoMap: Record<string, string> = {
+      'banded_face_pull': 'https://www.youtube.com/watch?v=HSoHeSjvIdY', // Face Pull demonstration
+      'wall_slide': 'https://www.youtube.com/watch?v=d6V2Exzb324', // Wall Slide mobility
+      'arm_circle_pvc_pass': 'https://www.youtube.com/watch?v=qvqLMgOhFFE', // Arm circles
+      'glute_bridge': 'https://firebasestorage.googleapis.com/v0/b/firefighter-wellness-app.firebasestorage.app/o/glute-bridge.mp4?alt=media', // Use existing if available
+      'scap_pushup': 'https://www.youtube.com/watch?v=akgQbxhrhOc', // Scapular push-ups
+      'worlds_greatest_stretch': 'https://www.youtube.com/watch?v=EKckKcZEK1E', // World's greatest stretch
+      'hip_flexor_stretch': 'https://www.youtube.com/watch?v=UGEpQ1BRx-4', // Hip flexor stretch
+      'hamstring_stretch_floor': 'https://www.youtube.com/watch?v=5f7bJg98TgI', // Hamstring stretch
+      'box_breathing': 'https://www.youtube.com/watch?v=tEmt1Znux58', // Box breathing
+      'band_shoulder_stretch': 'https://www.youtube.com/watch?v=HSoHeSjvIdY', // Band shoulder stretch
+      'wall_pec_stretch': 'https://www.youtube.com/watch?v=dOJy_qGNqWg', // Wall pec stretch
+      'incline_walk': 'https://www.youtube.com/watch?v=mrpzaCJGMQs', // Incline walking
+    };
+
+    if (exerciseVideoMap[blk.id]) {
+      fallbackVideoUrl = exerciseVideoMap[blk.id];
+    }
 
     // For special workouts, use custom logic
     if (isAMRAP || isMaxEffort || isCompetition) {
@@ -398,7 +432,7 @@ const WorkoutDetailScreen: React.FC = () => {
         videoUri:
           meta.videoUrl && meta.videoUrl.trim()
             ? meta.videoUrl
-            : 'https://www.w3schools.com/html/mov_bbb.mp4',
+            : fallbackVideoUrl,
         setsCount: 1, // Special workouts are typically single efforts
         repsCount: isAMRAP ? (numFromStr(blk.repsOrDuration) ?? 1) * 60 : 1, // AMRAP time in seconds, others just 1
         rpe: blk.rpe,
@@ -413,7 +447,7 @@ const WorkoutDetailScreen: React.FC = () => {
       videoUri:
         meta.videoUrl && meta.videoUrl.trim()
           ? meta.videoUrl
-          : 'https://www.w3schools.com/html/mov_bbb.mp4',
+          : fallbackVideoUrl,
       setsCount: meta.sets ?? blk.sets ?? 3,
       repsCount:
         meta.reps ??

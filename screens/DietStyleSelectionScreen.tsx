@@ -1,11 +1,11 @@
 import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { MealPlanStackParamList } from '../navigation/DrawerNavigation';
+import { RootTabParamList } from '../navigation/types';
 
 type DietStyleSelectionNavigationProp = NativeStackNavigationProp<
-  MealPlanStackParamList,
-  'DietStyleSelection'
+  RootTabParamList,
+  'MealPlan'
 >;
 
 interface Props {

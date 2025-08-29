@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import Video from 'react-native-video';
+import { WebView } from 'react-native-webview';
 
 interface VideoToggleProps {
   uri: string;
@@ -13,6 +14,46 @@ const VideoToggle: React.FC<VideoToggleProps> = ({ uri }) => {
 
   if (!uri) {return null;}
 
+  // Check if it's a YouTube URL
+  const isYouTubeUrl = uri.includes('youtube.com') || uri.includes('youtu.be');
+
+  // Convert YouTube URL to embed format
+  const getYouTubeEmbedUrl = (url: string) => {
+    let videoId = '';
+
+    if (url.includes('youtube.com/watch?v=')) {
+      videoId = url.split('v=')[1].split('&')[0];
+    } else if (url.includes('youtu.be/')) {
+      videoId = url.split('youtu.be/')[1].split('?')[0];
+    }
+
+    return `https://www.youtube.com/embed/${videoId}?playsinline=1&controls=1`;
+  };
+
+  const renderVideo = () => {
+    if (isYouTubeUrl) {
+      return (
+        <WebView
+          style={styles.video}
+          source={{ uri: getYouTubeEmbedUrl(uri) }}
+          allowsInlineMediaPlayback
+          mediaPlaybackRequiresUserAction={false}
+        />
+      );
+    } else {
+      return (
+        <Video
+          source={{ uri }}
+          style={styles.video}
+          controls
+          resizeMode="contain"
+          paused={false}
+          onEnd={() => setExpanded(false)}
+        />
+      );
+    }
+  };
+
   return (
     <View style={styles.container}>
       {!expanded ? (
@@ -20,18 +61,13 @@ const VideoToggle: React.FC<VideoToggleProps> = ({ uri }) => {
           onPress={() => setExpanded(true)}
           style={styles.toggleBtn}>
           <Ionicons name="play-circle-outline" size={28} color="#fff" />
-          <Text style={styles.toggleText}>View Exercise</Text>
+          <Text style={styles.toggleText}>
+            {isYouTubeUrl ? 'View Exercise (YouTube)' : 'View Exercise'}
+          </Text>
         </Pressable>
       ) : (
         <View style={styles.videoBox}>
-          <Video
-            source={{ uri }}
-            style={styles.video}
-            controls
-            resizeMode="contain"
-            paused={false}
-            onEnd={() => setExpanded(false)}
-          />
+          {renderVideo()}
           <Pressable style={styles.closeBtn} onPress={() => setExpanded(false)}>
             <Ionicons name="close-circle" size={26} color="#fff" />
             <Text style={styles.toggleText}>Hide Video</Text>

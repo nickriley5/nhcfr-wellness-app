@@ -77,101 +77,162 @@ export function useDashboardData(view: 'week' | 'month' | 'all', bump: number = 
   useEffect(() => {
     const fetchAll = async () => {
       const user = auth.currentUser;
-      if (!user) {return;}
+      if (!user) {
+        // Reset all state when user is not authenticated
+        setProgramExists(false);
+        setTodayInfo(null);
+        setMealPlanExists(false);
+        setHasCheckedInToday(true);
+        setMoodData([]);
+        setEnergyData([]);
+        setCompletionPercent(0);
+        setCurrentWeight(180);
+        setExerciseLibrary([]);
+        return;
+      }
 
-      // Program existence + today's day info
-      const progSnap = await getDoc(doc(db, 'users', user.uid, 'program', 'active'));
-      setProgramExists(progSnap.exists());
+      try {
+        // Double-check authentication before making Firestore calls
+        if (!auth.currentUser) {
+          return;
+        }
 
-      if (progSnap.exists()) {
-        const prog: any = progSnap.data();
-        const days: ProgramDay[] = prog.days || [];
-        const curDay = prog.metadata?.currentDay ?? 1;
-        const idx = Math.max(0, curDay - 1);
+        // Program existence + today's day info
+        const progSnap = await getDoc(doc(db, 'users', user.uid, 'program', 'active'));
 
-        if (days[idx]) {
-          setTodayInfo({
-            day: days[idx],
-            weekIdx: (days[idx] as any).week - 1,
-            dayIdx: (days[idx] as any).day - 1,
-          });
+        // Check again after async operation
+        if (!auth.currentUser) {
+          return;
+        }
+
+        setProgramExists(progSnap.exists());
+
+        if (progSnap.exists()) {
+          const prog: any = progSnap.data();
+          const days: ProgramDay[] = prog.days || [];
+          const curDay = prog.metadata?.currentDay ?? 1;
+          const idx = Math.max(0, curDay - 1);
+
+          if (days[idx]) {
+            setTodayInfo({
+              day: days[idx],
+              weekIdx: (days[idx] as any).week - 1,
+              dayIdx: (days[idx] as any).day - 1,
+            });
+          } else {
+            setTodayInfo(null);
+          }
         } else {
           setTodayInfo(null);
         }
-      } else {
-        setTodayInfo(null);
-      }
 
-      // Meal plan existence
-      const mealSnap = await getDoc(doc(db, 'users', user.uid, 'mealPlan', 'active'));
-      setMealPlanExists(mealSnap.exists());
+        // Meal plan existence
+        const mealSnap = await getDoc(doc(db, 'users', user.uid, 'mealPlan', 'active'));
 
-      // Check-ins (mood/energy series + today check)
-      // Calculate date range based on view parameter
-      const now = new Date();
-      let startDate = new Date();
-      switch (view) {
-        case 'week':
-          startDate.setDate(now.getDate() - 7);
-          break;
-        case 'month':
-          startDate.setMonth(now.getMonth() - 1);
-          break;
-        case 'all':
-          startDate = new Date(0); // Beginning of time
-          break;
-      }
+        // Check again after async operation
+        if (!auth.currentUser) {
+          return;
+        }
 
-      // Query with date range filter for efficient loading
-      console.log(`🔍 Loading check-ins for view: ${view}, startDate: ${startDate.toISOString()}`);
-      const checkSnap = await getDocs(
-        query(
-          collection(db, 'users', user.uid, 'checkIns'),
-          where('timestamp', '>=', Timestamp.fromDate(startDate)),
-          orderBy('timestamp', 'asc')
-        )
-      );
-      const entries = checkSnap.docs.map((d) => d.data());
-      console.log(`📊 Found ${entries.length} check-in entries:`, entries.map(e => ({
-        mood: e.mood,
-        energy: e.energy,
-        timestamp: e.timestamp?.toDate?.()?.toISOString?.() || 'No timestamp',
-      })));
+        setMealPlanExists(mealSnap.exists());
 
-      // Check if user has checked in today
-      const todayStr = new Date().toDateString();
-      const hasToday = entries.some((entry: any) =>
-        entry.timestamp?.toDate().toDateString() === todayStr
-      );
-      setHasCheckedInToday(hasToday);
+        // Check-ins (mood/energy series + today check)
+        // Calculate date range based on view parameter
+        const now = new Date();
+        let startDate = new Date();
+        switch (view) {
+          case 'week':
+            startDate.setDate(now.getDate() - 7);
+            break;
+          case 'month':
+            startDate.setMonth(now.getMonth() - 1);
+            break;
+          case 'all':
+            startDate = new Date(0); // Beginning of time
+            break;
+        }
 
-      // Use all entries (they're already filtered by date range)
-      setMoodData(entries.map((e: any) => Number(e.mood ?? 0)));
-      setEnergyData(entries.map((e: any) => Number(e.energy ?? 0)));
-      console.log(`📈 Set mood data: [${entries.map((e: any) => Number(e.mood ?? 0)).join(', ')}]`);
-      console.log(`⚡ Set energy data: [${entries.map((e: any) => Number(e.energy ?? 0)).join(', ')}]`);
-
-      // Profile completion + current weight
-      const profileSnap = await getDoc(doc(db, 'users', user.uid));
-      const profile = profileSnap.data();
-      if (profile) {
-        const fields = [
-          profile.fullName,
-          profile.dob,
-          profile.height,
-          profile.weight,
-          profile.profilePicture,
-          profile.bodyFatPct,
-        ];
-        setCompletionPercent(
-          Math.round((fields.filter(Boolean).length / fields.length) * 100)
+        // Query with date range filter for efficient loading
+        console.log(`🔍 Loading check-ins for view: ${view}, startDate: ${startDate.toISOString()}`);
+        const checkSnap = await getDocs(
+          query(
+            collection(db, 'users', user.uid, 'checkIns'),
+            where('timestamp', '>=', Timestamp.fromDate(startDate)),
+            orderBy('timestamp', 'asc')
+          )
         );
-        setCurrentWeight(Number(profile.currentWeight || profile.weight) || 180);
-      }
 
-      // Exercise library (used by generator)
-      const libSnap = await getDocs(collection(db, 'exercises'));
-      setExerciseLibrary(libSnap.docs.map((d) => d.data() as Exercise));
+        // Check again after async operation
+        if (!auth.currentUser) {
+          return;
+        }
+
+        const entries = checkSnap.docs.map((d) => d.data());
+        console.log(`📊 Found ${entries.length} check-in entries:`, entries.map(e => ({
+          mood: e.mood,
+          energy: e.energy,
+          timestamp: e.timestamp?.toDate?.()?.toISOString?.() || 'No timestamp',
+        })));
+
+        // Check if user has checked in today
+        const todayStr = new Date().toDateString();
+        const hasToday = entries.some((entry: any) =>
+          entry.timestamp?.toDate().toDateString() === todayStr
+        );
+        setHasCheckedInToday(hasToday);
+
+        // Use all entries (they're already filtered by date range)
+        setMoodData(entries.map((e: any) => Number(e.mood ?? 0)));
+        setEnergyData(entries.map((e: any) => Number(e.energy ?? 0)));
+        console.log(`📈 Set mood data: [${entries.map((e: any) => Number(e.mood ?? 0)).join(', ')}]`);
+        console.log(`⚡ Set energy data: [${entries.map((e: any) => Number(e.energy ?? 0)).join(', ')}]`);
+
+        // Profile completion + current weight
+        const profileSnap = await getDoc(doc(db, 'users', user.uid));
+
+        // Check again after async operation
+        if (!auth.currentUser) {
+          return;
+        }
+
+        const profile = profileSnap.data();
+        if (profile) {
+          const fields = [
+            profile.fullName,
+            profile.dob,
+            profile.height,
+            profile.weight,
+            profile.profilePicture,
+            profile.bodyFatPct,
+          ];
+          setCompletionPercent(
+            Math.round((fields.filter(Boolean).length / fields.length) * 100)
+          );
+          setCurrentWeight(Number(profile.currentWeight || profile.weight) || 180);
+        }
+
+        // Exercise library (used by generator)
+        const libSnap = await getDocs(collection(db, 'exercises'));
+
+        // Check again after async operation
+        if (!auth.currentUser) {
+          return;
+        }
+
+        setExerciseLibrary(libSnap.docs.map((d) => d.data() as Exercise));
+      } catch (error) {
+        console.error('Error in fetchAll:', error);
+        // Reset state on error
+        setProgramExists(false);
+        setTodayInfo(null);
+        setMealPlanExists(false);
+        setHasCheckedInToday(true);
+        setMoodData([]);
+        setEnergyData([]);
+        setCompletionPercent(0);
+        setCurrentWeight(180);
+        setExerciseLibrary([]);
+      }
     };
 
     fetchAll();
@@ -180,12 +241,27 @@ export function useDashboardData(view: 'week' | 'month' | 'all', bump: number = 
   // ----------------- MACROS: goals + live meals for today (top-level hook) -----------------
   useEffect(() => {
     const uid = auth.currentUser?.uid;
-    if (!uid) {return;}
+    if (!uid) {
+      // Reset macros when not authenticated
+      setMacrosToday({
+        calories: { eaten: 0 },
+        protein: { eaten: 0 },
+        carbs: { eaten: 0 },
+        fat: { eaten: 0 },
+        hasMeals: false,
+      });
+      return;
+    }
 
     let unsub: undefined | (() => void);
     let canceled = false;
 
     (async () => {
+      // Check authentication before starting
+      if (!auth.currentUser) {
+        return;
+      }
+
       // 1) Read goals from mealPlan/active
       let goals: {
         calorieTarget?: number;
@@ -196,6 +272,12 @@ export function useDashboardData(view: 'week' | 'month' | 'all', bump: number = 
       try {
         const goalRef = doc(db, `users/${uid}/mealPlan/active`);
         const goalSnap = await getDoc(goalRef);
+
+        // Check again after async operation
+        if (!auth.currentUser) {
+          return;
+        }
+
         if (!canceled && goalSnap.exists()) {
           goals = goalSnap.data() as any; // calorieTarget, proteinGrams, carbGrams, fatGrams
         }
@@ -207,6 +289,11 @@ export function useDashboardData(view: 'week' | 'month' | 'all', bump: number = 
       const dateKey = format(new Date(), 'yyyy-MM-dd'); // local day key
       const mealsRef = collection(db, `users/${uid}/mealLogs/${dateKey}/meals`);
       unsub = onSnapshot(mealsRef, (snap) => {
+        // Check if still authenticated and not canceled
+        if (!auth.currentUser || canceled) {
+          return;
+        }
+
         const meals = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
         const totals = sumMealsForToday(meals);
 

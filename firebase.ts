@@ -3,9 +3,6 @@ import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore, setLogLevel } from 'firebase/firestore';
 
-// ✅ Suppress Firestore debug/info/warning logs globally
-setLogLevel('error');
-
 const firebaseConfig = {
   apiKey: 'AIzaSyDXUvgMMJp7drZFcNQIYpro7oJh3AC24N0',
   authDomain: 'firefighter-wellness-app.firebaseapp.com',
@@ -19,5 +16,8 @@ const app = initializeApp(firebaseConfig);
 
 const auth = getAuth(app);
 const db = getFirestore(app);
+
+// ✅ Suppress Firestore debug/info/warning logs globally (after initialization)
+setLogLevel('error');
 
 export { app as firebaseApp, auth, db };

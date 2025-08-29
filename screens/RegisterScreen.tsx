@@ -18,6 +18,7 @@ import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
 import { getApp } from 'firebase/app';
 import { getFirestore, doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import Toast from 'react-native-toast-message';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 
 export default function RegisterScreen({ navigation }: any) {
   const auth = getAuth(getApp());
@@ -26,6 +27,7 @@ export default function RegisterScreen({ navigation }: any) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleRegister = async () => {
     if (!email || !password) {
@@ -92,17 +94,32 @@ export default function RegisterScreen({ navigation }: any) {
                 autoCapitalize="none"
                 keyboardType="email-address"
                 textContentType="emailAddress"
+                autoComplete="email"
               />
 
-              <TextInput
-                style={styles.input}
-                placeholder="Password"
-                placeholderTextColor="#aaa"
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry
-                textContentType="password"
-              />
+              <View style={styles.passwordContainer}>
+                <TextInput
+                  style={styles.passwordInput}
+                  placeholder="Password"
+                  placeholderTextColor="#aaa"
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry={!showPassword}
+                  textContentType="newPassword"
+                  autoComplete="password-new"
+                  passwordRules="required: lower; required: upper; required: digit; max-consecutive: 2; minlength: 6;"
+                />
+                <Pressable
+                  style={styles.eyeButton}
+                  onPress={() => setShowPassword(!showPassword)}
+                >
+                  <Ionicons
+                    name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                    size={20}
+                    color="#aaa"
+                  />
+                </Pressable>
+              </View>
 
               <Pressable
                 style={({ pressed }) => [
@@ -172,6 +189,25 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#333',
     fontFamily: 'Inter-Regular',
+  },
+  passwordContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#2a2a2a',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#333',
+    marginBottom: 16,
+  },
+  passwordInput: {
+    flex: 1,
+    color: '#fff',
+    padding: 14,
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
+  },
+  eyeButton: {
+    padding: 14,
   },
   button: {
     backgroundColor: '#d32f2f',

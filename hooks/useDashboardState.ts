@@ -68,12 +68,26 @@ export function useDashboardState(bump: number, programExists: boolean) {
     const loadProgramInfo = async () => {
       const uid = auth.currentUser?.uid;
       if (!uid) {
+        setProgramInfo(null);
         return;
       }
 
       try {
+        // Double-check user is still authenticated before making Firestore calls
+        if (!auth.currentUser) {
+          setProgramInfo(null);
+          return;
+        }
+
         // Get active program
         const programDoc = await getDoc(doc(db, 'users', uid, 'program', 'active'));
+
+        // Check again after async operation
+        if (!auth.currentUser) {
+          setProgramInfo(null);
+          return;
+        }
+
         if (!programDoc.exists()) {
           setProgramInfo(null);
           return;
@@ -84,6 +98,13 @@ export function useDashboardState(bump: number, programExists: boolean) {
 
         // Get user profile to check schedule
         const profileDoc = await getDoc(doc(db, 'users', uid));
+
+        // Check again after async operation
+        if (!auth.currentUser) {
+          setProgramInfo(null);
+          return;
+        }
+
         const profile = profileDoc.data();
         const hasSchedule = !!profile?.schedule?.environmentMap;
 
@@ -156,8 +177,21 @@ export function useDashboardState(bump: number, programExists: boolean) {
       }
 
       try {
+        // Double-check user is still authenticated
+        if (!auth.currentUser) {
+          setTomorrowInfo(null);
+          return;
+        }
+
         // Get the active program
         const progSnap = await getDoc(doc(db, 'users', uid, 'program', 'active'));
+
+        // Check again after async operation
+        if (!auth.currentUser) {
+          setTomorrowInfo(null);
+          return;
+        }
+
         if (!progSnap.exists()) {
           setTomorrowInfo(null);
           return;
@@ -192,6 +226,13 @@ export function useDashboardState(bump: number, programExists: boolean) {
 
         // Get user schedule to check if tomorrow is a rest day
         const profileDoc = await getDoc(doc(db, 'users', uid));
+
+        // Check again after async operation
+        if (!auth.currentUser) {
+          setTomorrowInfo(null);
+          return;
+        }
+
         const profile = profileDoc.data();
         const environmentMap = profile?.schedule?.environmentMap;
 
@@ -224,10 +265,17 @@ export function useDashboardState(bump: number, programExists: boolean) {
     const loadWorkoutSummary = async () => {
       const uid = auth.currentUser?.uid;
       if (!uid) {
+        setTodayWorkoutSummary(null);
         return;
       }
 
       try {
+        // Double-check user is still authenticated
+        if (!auth.currentUser) {
+          setTodayWorkoutSummary(null);
+          return;
+        }
+
         const today = new Date();
         const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
         const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
@@ -242,6 +290,12 @@ export function useDashboardState(bump: number, programExists: boolean) {
         );
 
         const snapshot = await getDocs(workoutLogsQuery);
+
+        // Check again after async operation
+        if (!auth.currentUser) {
+          setTodayWorkoutSummary(null);
+          return;
+        }
         if (!snapshot.empty) {
           const workoutData = snapshot.docs[0].data();
           const prMessages: string[] = [];
@@ -299,16 +353,43 @@ export function useDashboardState(bump: number, programExists: boolean) {
     const calculateConsistency = async () => {
       const uid = auth.currentUser?.uid;
       if (!uid || !programExists) {
+        setConsistencyData({
+          workoutStreak: 0,
+          workoutsCompleted: 0,
+          workoutsPlanned: 0,
+          mealsLogged: 0,
+          hydrationDays: 0,
+          recentPRs: [],
+        });
         return;
       }
 
       try {
+        // Double-check user is still authenticated
+        if (!auth.currentUser) {
+          setConsistencyData({
+            workoutStreak: 0,
+            workoutsCompleted: 0,
+            workoutsPlanned: 0,
+            mealsLogged: 0,
+            hydrationDays: 0,
+            recentPRs: [],
+          });
+          return;
+        }
+
         // Calculate last 7 days
         const sevenDaysAgo = new Date();
         sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
         // 1. WORKOUT CONSISTENCY - Based on program schedule
         const programDoc = await getDoc(doc(db, 'users', uid, 'program', 'active'));
+
+        // Check again after async operation
+        if (!auth.currentUser) {
+          return;
+        }
+
         let workoutsCompleted = 0;
         let workoutsPlanned = 0;
 
@@ -324,6 +405,12 @@ export function useDashboardState(bump: number, programExists: boolean) {
           );
 
           const workoutSnapshot = await getDocs(workoutLogsQuery);
+
+          // Check again after async operation
+          if (!auth.currentUser) {
+            return;
+          }
+
           workoutsCompleted = workoutSnapshot.size;
           workoutsPlanned = daysPerWeek; // Per week
         }
@@ -340,12 +427,23 @@ export function useDashboardState(bump: number, programExists: boolean) {
           collection(db, 'users', uid, 'mealLogs', todayStr, 'meals')
         );
         const todayMealsSnapshot = await getDocs(todayMealsQuery);
+
+        // Check again after async operation
+        if (!auth.currentUser) {
+          return;
+        }
+
         if (todayMealsSnapshot.size >= 3) {
           mealsLogged++; // Today counts if 3+ meals
         }
 
         // Then check the past 6 days
         for (let i = 1; i < 7; i++) {
+          // Check if user is still authenticated
+          if (!auth.currentUser) {
+            return;
+          }
+
           const checkDate = new Date();
           checkDate.setDate(checkDate.getDate() - i);
           const dateStr = checkDate.toISOString().split('T')[0];
@@ -355,6 +453,12 @@ export function useDashboardState(bump: number, programExists: boolean) {
           );
 
           const mealSnapshot = await getDocs(mealsQuery);
+
+          // Check again after async operation
+          if (!auth.currentUser) {
+            return;
+          }
+
           if (mealSnapshot.size >= 3) { // At least 3 meals logged
             mealsLogged++;
           }
@@ -362,6 +466,11 @@ export function useDashboardState(bump: number, programExists: boolean) {
         // 3. HYDRATION CONSISTENCY - Days hitting 80% of goal
         let hydrationDays = 0;
         for (let i = 0; i < 7; i++) {
+          // Check if user is still authenticated
+          if (!auth.currentUser) {
+            return;
+          }
+
           const checkDate = new Date();
           checkDate.setDate(checkDate.getDate() - i);
           const dateStr = checkDate.toISOString().split('T')[0];
@@ -372,6 +481,12 @@ export function useDashboardState(bump: number, programExists: boolean) {
           );
 
           const hydrationSnapshot = await getDocs(hydrationQuery);
+
+          // Check again after async operation
+          if (!auth.currentUser) {
+            return;
+          }
+
           if (!hydrationSnapshot.empty) {
             const hydrationData = hydrationSnapshot.docs[0].data();
             const percentage = (hydrationData.currentOz || 0) / (hydrationData.goalOz || 64);
@@ -390,6 +505,12 @@ export function useDashboardState(bump: number, programExists: boolean) {
         );
 
         const prSnapshot = await getDocs(prQuery);
+
+        // Check again after async operation
+        if (!auth.currentUser) {
+          return;
+        }
+
         prSnapshot.docs.forEach(logDoc => {
           const logData = logDoc.data();
           if (logData.exercises) {
@@ -428,19 +549,55 @@ export function useDashboardState(bump: number, programExists: boolean) {
     const loadHydrationData = async () => {
       const uid = auth.currentUser?.uid;
       if (!uid) {
+        setHydrationToday({
+          currentOz: 0,
+          goalOz: 64,
+          containerOz: 16,
+        });
         return;
       }
 
       try {
+        // Double-check user is still authenticated
+        if (!auth.currentUser) {
+          setHydrationToday({
+            currentOz: 0,
+            goalOz: 64,
+            containerOz: 16,
+          });
+          return;
+        }
+
         const today = new Date().toISOString().split('T')[0];
 
         // Always load user's current preferences from profile first
         const profileDoc = await getDoc(doc(db, 'users', uid));
+
+        // Check again after async operation
+        if (!auth.currentUser) {
+          setHydrationToday({
+            currentOz: 0,
+            goalOz: 64,
+            containerOz: 16,
+          });
+          return;
+        }
+
         const defaultGoal = profileDoc.exists() ? profileDoc.data().hydrationGoalOz || 64 : 64;
         const defaultContainer = profileDoc.exists() ? profileDoc.data().hydrationContainerOz || 16 : 16;
 
         // Then check if there's a daily log with current progress
         const hydrationDoc = await getDoc(doc(db, 'users', uid, 'hydrationLogs', today));
+
+        // Check again after async operation
+        if (!auth.currentUser) {
+          setHydrationToday({
+            currentOz: 0,
+            goalOz: 64,
+            containerOz: 16,
+          });
+          return;
+        }
 
         if (hydrationDoc.exists()) {
           const data = hydrationDoc.data();
@@ -468,7 +625,7 @@ export function useDashboardState(bump: number, programExists: boolean) {
   // Hydration utility functions
   const updateHydrationGoal = async (newGoal: number) => {
     const uid = auth.currentUser?.uid;
-    if (!uid) {
+    if (!uid || !auth.currentUser) {
       return;
     }
 
@@ -479,6 +636,11 @@ export function useDashboardState(bump: number, programExists: boolean) {
         goalOz: newGoal,
         date: today,
       });
+
+      // Check if user is still authenticated after first operation
+      if (!auth.currentUser) {
+        return;
+      }
 
       // Also save as default in profile
       await updateDoc(doc(db, 'users', uid), {
@@ -493,7 +655,7 @@ export function useDashboardState(bump: number, programExists: boolean) {
 
   const updateContainerSize = async (newContainerOz: number) => {
     const uid = auth.currentUser?.uid;
-    if (!uid) {
+    if (!uid || !auth.currentUser) {
       return;
     }
 
@@ -511,7 +673,7 @@ export function useDashboardState(bump: number, programExists: boolean) {
 
   const addHydration = async (ozToAdd: number) => {
     const uid = auth.currentUser?.uid;
-    if (!uid) {
+    if (!uid || !auth.currentUser) {
       return;
     }
 

@@ -16,6 +16,8 @@ export interface Exercise {
   reps?: number;
   isTimed?: boolean;
   timePerSet?: number;
+  createdBy?: string;
+  lastUpdated?: string;
 }
 
 export interface ExerciseBlock {
