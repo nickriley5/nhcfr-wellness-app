@@ -44,8 +44,6 @@ import EnvironmentCalendarModal from '../components/EnvironmentCalendarModal';
 import HydrationSettingsModal from '../components/Modals/HydrationSettingsModal';
 import { useDashboardData } from '../hooks/useDashboardData';
 import { useDashboardState } from '../hooks/useDashboardState';
-import { auth, db } from '../firebase';
-import { doc, deleteDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { dashboardStyles } from '../styles/DashboardScreen.styles';
 
 export default function DashboardScreen() {
@@ -461,49 +459,6 @@ export default function DashboardScreen() {
             />
           </ScrollView>
         </View>
-
-        {/* DEV: Reset completed workout */}
-        {__DEV__ && todayWorkoutSummary?.isCompleted && (
-          <View style={dashboardStyles.devSection}>
-            <Text style={dashboardStyles.devLabel}>DEV: Reset today's workout</Text>
-            <Pressable
-              onPress={async () => {
-                const uid = auth.currentUser?.uid;
-                if (!uid) {return;}
-                const today = new Date().toISOString().split('T')[0];
-                const completedWorkoutsQuery = query(
-                  collection(db, 'users', uid, 'completedWorkouts'),
-                  where('date', '==', today)
-                );
-                const snapshot = await getDocs(completedWorkoutsQuery);
-                for (const docSnap of snapshot.docs) {
-                  await deleteDoc(docSnap.ref);
-                }
-                setBump((b) => b + 1);
-              }}
-            >
-              <Text style={dashboardStyles.resetProgramText}>Reset Today's Workout</Text>
-            </Pressable>
-          </View>
-        )}
-
-        {/* DEV: Reset program */}
-        {__DEV__ && (
-          <View style={dashboardStyles.devSection}>
-            <Text style={dashboardStyles.devLabel}>Dev</Text>
-            <Pressable
-              onPress={async () => {
-                const uid = auth.currentUser?.uid;
-                if (!uid) {return;}
-                await deleteDoc(doc(db, 'users', uid, 'program', 'active'));
-                Alert.alert('Program', 'Active program reset.');
-                setBump((b) => b + 1);
-              }}
-            >
-              <Text style={dashboardStyles.resetProgramText}>Reset Active Program</Text>
-            </Pressable>
-          </View>
-        )}
       </ScrollView>
 
       {/* ✅ ALL MODALS - exactly as in original */}
