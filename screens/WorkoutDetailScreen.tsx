@@ -798,7 +798,7 @@ const WorkoutDetailScreen: React.FC = () => {
     if (!uid) {return;}
 
     const logId = Date.now().toString();
-    
+
     // Pre-calculate PR information for each exercise
     const exercisePRInfo: Record<string, { currentMax: number; previousMax: number; isPR: boolean }> = {};
     main.forEach((ex, i) => {
@@ -833,7 +833,7 @@ const WorkoutDetailScreen: React.FC = () => {
         const weight = parseFloat(s.weight === '✓' ? '0' : s.weight);
         const prInfo = exercisePRInfo[ex.id];
         const isPR = prInfo.isPR && weight === prInfo.currentMax;
-        
+
         return {
           reps: s.reps === '✓' ? ex.repsCount.toString() : s.reps,
           weight: s.weight === '✓' ? '0' : s.weight,
