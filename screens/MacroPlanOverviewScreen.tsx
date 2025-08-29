@@ -3,6 +3,7 @@ import {
   View,
   Text,
   ScrollView,
+  Pressable,
   LayoutAnimation,
   UIManager,
   Platform,
@@ -87,15 +88,47 @@ const MacroPlanOverviewScreen = () => {
         </View>
 
         <ScrollView contentContainerStyle={styles.scroll}>
-          {/* Recap card */}
-          <View style={styles.recapCard}>
-            <Text style={styles.recapText}>
-              Plan: {calculateCalories(proteinGrams, carbGrams, fatGrams)} kcal · P {proteinGrams}g · C {carbGrams}g · F {fatGrams}g
-            </Text>
+          {/* Enhanced Summary Card */}
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryTitle}>Your Nutrition Plan</Text>
+            <View style={styles.summaryStats}>
+              <View style={styles.summaryStatBlock}>
+                <Text style={styles.summaryStatNumber}>{calculateCalories(proteinGrams, carbGrams, fatGrams)}</Text>
+                <Text style={styles.summaryStatLabel}>Calories</Text>
+              </View>
+              <View style={styles.summaryStatBlock}>
+                <Text style={[styles.summaryStatNumber, styles.proteinColor]}>{proteinGrams}g</Text>
+                <Text style={styles.summaryStatLabel}>Protein</Text>
+              </View>
+              <View style={styles.summaryStatBlock}>
+                <Text style={[styles.summaryStatNumber, styles.carbColor]}>{carbGrams}g</Text>
+                <Text style={styles.summaryStatLabel}>Carbs</Text>
+              </View>
+              <View style={styles.summaryStatBlock}>
+                <Text style={[styles.summaryStatNumber, styles.fatColor]}>{fatGrams}g</Text>
+                <Text style={styles.summaryStatLabel}>Fat</Text>
+              </View>
+            </View>
           </View>
 
-          {/* Weekly Macro Overview */}
+          {/* Weekly Macro Overview with Legend */}
           <Text style={styles.chartLabel}>Weekly Macro Overview</Text>
+
+          {/* Macro Legend */}
+          <View style={styles.macroLegend}>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendColor, styles.proteinLegendColor]} />
+              <Text style={styles.legendText}>Protein</Text>
+            </View>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendColor, styles.carbLegendColor]} />
+              <Text style={styles.legendText}>Carbs</Text>
+            </View>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendColor, styles.fatLegendColor]} />
+              <Text style={styles.legendText}>Fat</Text>
+            </View>
+          </View>
 
           <MacroBarChart
             weeklyData={weeklyData}
@@ -103,9 +136,23 @@ const MacroPlanOverviewScreen = () => {
             onSelectDay={(index) => setSelectedDayIndex(index)}
           />
 
-          <Text style={styles.chartLabel}>
-            Editing {weeklyData[selectedDayIndex].day} · {currentDayCalories} kcal
-          </Text>
+          {/* Selected Day Details */}
+          <View style={styles.selectedDayCard}>
+            <Text style={styles.selectedDayTitle}>
+              {weeklyData[selectedDayIndex].day} · {currentDayCalories} kcal
+            </Text>
+            <View style={styles.selectedDayMacros}>
+              <Text style={[styles.selectedDayMacro, styles.proteinColor]}>
+                P: {currentDay.protein}g
+              </Text>
+              <Text style={[styles.selectedDayMacro, styles.carbColor]}>
+                C: {currentDay.carbs}g
+              </Text>
+              <Text style={[styles.selectedDayMacro, styles.fatColor]}>
+                F: {currentDay.fat}g
+              </Text>
+            </View>
+          </View>
 
           <MacroDayEditor
             selectedDay={weeklyData[selectedDayIndex].day}
@@ -125,8 +172,58 @@ const MacroPlanOverviewScreen = () => {
             }}
           />
 
+          {/* Quick Actions */}
+          <View style={styles.quickActions}>
+            <Pressable
+              style={[styles.btn, styles.btnSecondary]}
+              onPress={() => {
+                // Reset to original recommended values
+                const resetWeekly = dayLabels.map((day) => ({
+                  day,
+                  protein: proteinGrams,
+                  carbs: carbGrams,
+                  fat: fatGrams,
+                }));
+                setWeeklyData(resetWeekly);
+              }}
+            >
+              <Text style={styles.btnSecondaryText}>↻ Reset to Recommended</Text>
+            </Pressable>
+          </View>
+
+          {/* Weekly Averages */}
+          <View style={styles.weeklyAverages}>
+            <Text style={styles.weeklyAveragesTitle}>Weekly Averages</Text>
+            <View style={styles.weeklyStats}>
+              <View style={styles.weeklyStatBlock}>
+                <Text style={styles.weeklyStatNumber}>
+                  {Math.round(weeklyData.reduce((sum, day) => sum + calculateCalories(day.protein, day.carbs, day.fat), 0) / 7)}
+                </Text>
+                <Text style={styles.weeklyStatLabel}>Avg Calories</Text>
+              </View>
+              <View style={styles.weeklyStatBlock}>
+                <Text style={[styles.weeklyStatNumber, styles.proteinColor]}>
+                  {Math.round(weeklyData.reduce((sum, day) => sum + day.protein, 0) / 7)}g
+                </Text>
+                <Text style={styles.weeklyStatLabel}>Avg Protein</Text>
+              </View>
+              <View style={styles.weeklyStatBlock}>
+                <Text style={[styles.weeklyStatNumber, styles.carbColor]}>
+                  {Math.round(weeklyData.reduce((sum, day) => sum + day.carbs, 0) / 7)}g
+                </Text>
+                <Text style={styles.weeklyStatLabel}>Avg Carbs</Text>
+              </View>
+              <View style={styles.weeklyStatBlock}>
+                <Text style={[styles.weeklyStatNumber, styles.fatColor]}>
+                  {Math.round(weeklyData.reduce((sum, day) => sum + day.fat, 0) / 7)}g
+                </Text>
+                <Text style={styles.weeklyStatLabel}>Avg Fat</Text>
+              </View>
+            </View>
+          </View>
+
           <Text style={styles.infoText}>
-            You can now view your macro plan and begin logging meal activity from the Meal Plan tab.
+            Your personalized nutrition plan is ready! You can now log meals and track your progress from the Meal Plan tab.
           </Text>
 
           <DashboardButton

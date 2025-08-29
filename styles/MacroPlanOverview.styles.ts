@@ -41,6 +41,155 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign: 'center',
   },
+  // Enhanced summary card styles
+  summaryCard: {
+    backgroundColor: '#1f1f1f',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  summaryTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  summaryStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  summaryStatBlock: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  summaryStatNumber: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#fff',
+    marginBottom: 4,
+  },
+  summaryStatLabel: {
+    fontSize: 12,
+    color: '#999',
+    textTransform: 'uppercase',
+    fontWeight: '500',
+  },
+  // Macro legend styles
+  macroLegend: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 24,
+    marginBottom: 16,
+    paddingHorizontal: 16,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  legendColor: {
+    width: 14,
+    height: 14,
+    borderRadius: 3,
+  },
+  proteinLegendColor: {
+    backgroundColor: '#4FC3F7',
+  },
+  carbLegendColor: {
+    backgroundColor: '#81C784',
+  },
+  fatLegendColor: {
+    backgroundColor: '#F06292',
+  },
+  // Selected day card styles
+  selectedDayCard: {
+    backgroundColor: '#252525',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#444',
+  },
+  selectedDayTitle: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  selectedDayMacros: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+  },
+  selectedDayMacro: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  // Quick actions and button styles
+  quickActions: {
+    marginBottom: 20,
+    alignItems: 'center',
+  },
+  btn: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    alignItems: 'center',
+    minHeight: 44,
+  },
+  btnSecondary: {
+    backgroundColor: '#333',
+    borderWidth: 1,
+    borderColor: '#555',
+  },
+  btnSecondaryText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  // Weekly averages styles
+  weeklyAverages: {
+    backgroundColor: '#1f1f1f',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  weeklyAveragesTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  weeklyStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  weeklyStatBlock: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  weeklyStatNumber: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#fff',
+    marginBottom: 4,
+  },
+  weeklyStatLabel: {
+    fontSize: 11,
+    color: '#999',
+    textTransform: 'uppercase',
+    fontWeight: '500',
+    textAlign: 'center',
+  },
   chartLabel: {
     color: '#ccc',
     fontSize: 16,

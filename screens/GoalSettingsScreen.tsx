@@ -109,7 +109,47 @@ const GoalSettingsScreen: React.FC<GoalSettingsProps> = ({
       (goalType === 'fat_loss' ? -1 : goalType === 'muscle_gain' ? 1 : 0);
 
     const cals = Math.round(baseCalories + adjustment);
-    const protein = Math.round(weight * 1);
+
+    // 🏋️ IMPROVED PROTEIN CALCULATION
+    // More intelligent protein recommendations based on activity level, weight, and goals
+    const calculateProteinTarget = (bodyWeight: number, activity: string, goal: string) => {
+      // Base protein multipliers per activity level
+      const proteinMultipliers = {
+        sedentary: 0.7,    // 0.7g per lb for inactive individuals
+        light: 0.8,        // 0.8g per lb for lightly active
+        moderate: 0.9,     // 0.9g per lb for moderately active
+        very_active: 1.0,  // 1.0g per lb for very active
+      };
+
+      // Goal adjustments
+      const goalAdjustments = {
+        fat_loss: 0.1,     // Slightly higher protein during fat loss to preserve muscle
+        maintain: 0,       // No adjustment for maintenance
+        muscle_gain: 0.1,  // Slightly higher protein for muscle building
+      };
+
+      const baseMultiplier = proteinMultipliers[activity as keyof typeof proteinMultipliers] || 0.8;
+      const goalAdjustment = goalAdjustments[goal as keyof typeof goalAdjustments] || 0;
+      const finalMultiplier = baseMultiplier + goalAdjustment;
+
+      let protein = bodyWeight * finalMultiplier;
+
+      // Safety caps to prevent excessive protein intake
+      if (bodyWeight > 250) {
+        // For heavier individuals, cap at reasonable maximum
+        protein = Math.min(protein, 220); // Max 220g protein regardless of weight
+      } else if (bodyWeight > 200) {
+        // For moderately heavy individuals, cap at 200g
+        protein = Math.min(protein, 200);
+      }
+
+      // Minimum protein floor for very light individuals
+      protein = Math.max(protein, 80); // Minimum 80g protein
+
+      return Math.round(protein);
+    };
+
+    const protein = calculateProteinTarget(weight, activityLevel, goalType);
     const fat = Math.round((cals * 0.25) / 9);
     const carbs = Math.round((cals - (protein * 4 + fat * 9)) / 4);
 
