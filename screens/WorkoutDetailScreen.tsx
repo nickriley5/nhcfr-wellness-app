@@ -35,9 +35,9 @@ import {
 import { checkAndAdjustRestDays } from '../utils/performanceMonitor';
 import type { ExerciseBlock } from '../utils/types';
 import EnhancedTimerBar from '../components/EnhancedTimerBar';
-import CheckOffBlock from '../components/CheckOffBlock';
 import VideoToggle from '../components/VideoToggle';
 import { resolveExerciseDetails } from '../utils/exerciseUtils';
+import { exercises } from '../data/exercises';
 
 type WorkoutSet = { reps: string; weight: string };
 
@@ -99,7 +99,7 @@ interface MainExercisesSectionProps {
   timedRef: React.MutableRefObject<Record<string, TimedStatus[]>>;
   formatDesc: (ex: EnrichedExercise) => string;
   startTimedSet: (exId: string, setIdx: number, targetSec: number) => void;
-  toggleMode: (exId: string, setIdx: number) => void;
+  resetTimedSet: (exId: string, setIdx: number, targetSec: number) => void;
   updateInput: (
     exIdx: number,
     setIdx: number,
@@ -117,7 +117,7 @@ const MainExercisesSection: React.FC<MainExercisesSectionProps> = ({
   timedRef,
   formatDesc,
   startTimedSet,
-  toggleMode,
+  resetTimedSet,
   updateInput,
   onPressChart,
 }) => {
@@ -190,8 +190,8 @@ const MainExercisesSection: React.FC<MainExercisesSectionProps> = ({
                           color="#4caf50"
                         />
                       </Pressable>
-                      <Pressable onPress={() => toggleMode(ex.id, si)} style={styles.ml6}>
-                        <Ionicons name="swap-horizontal" size={22} color="#fff" />
+                      <Pressable onPress={() => resetTimedSet(ex.id, si, ex.repsCount)} style={styles.ml6}>
+                        <Ionicons name="refresh" size={20} color="#ff9800" />
                       </Pressable>
                     </View>
                     {t.done && <Text style={styles.lastTxt}>Done ✔</Text>}
@@ -215,6 +215,9 @@ const MainExercisesSection: React.FC<MainExercisesSectionProps> = ({
                           size={28}
                           color="#4caf50"
                         />
+                      </Pressable>
+                      <Pressable onPress={() => resetTimedSet(ex.id, si, ex.repsCount)} style={styles.ml6}>
+                        <Ionicons name="refresh" size={20} color="#ff9800" />
                       </Pressable>
                     </View>
                     <View style={styles.setRow}>
@@ -356,6 +359,14 @@ const WorkoutDetailScreen: React.FC = () => {
   const [prMsgs, setPrMsgs] = useState<string[]>([]);
   const [showPR, setShowPR] = useState(false);
 
+  /* -------- large countdown display -------- */
+  const [activeTimer, setActiveTimer] = useState<{
+    exerciseId: string;
+    setIndex: number;
+    exerciseName: string;
+    totalTime: number;
+  } | null>(null);
+
   /* ---- header: Adapt button ---- */
   // Move headerRight button out of render to avoid inline component definition
   const HeaderRightButton = React.useCallback(() => (
@@ -394,6 +405,81 @@ const WorkoutDetailScreen: React.FC = () => {
 
     const snap = await getDoc(doc(db, 'exercises', actualId));
     const meta: FirestoreExercise = snap.exists() ? (snap.data() as any) : {};
+
+    // If Firebase doesn't have the exercise, try to find it in local exercises.ts by name
+    if (!snap.exists() || !meta.videoUrl) {
+      // First try direct ID lookup in local exercises
+      const localExercise = resolveExerciseDetails(actualId);
+
+      if (localExercise && localExercise.videoUrl) {
+        Object.assign(meta, {
+          name: localExercise.name,
+          videoUrl: localExercise.videoUrl,
+          sets: localExercise.sets || 1,
+          reps: localExercise.reps || 8,
+        });
+      } else {
+        // If direct ID lookup fails, try name-based lookup with fuzzy matching
+        // Convert the human-readable ID to a display name for searching
+        const searchName = pretty(blk.id);
+
+        // Helper function to normalize names for better matching
+        const normalizeForSearch = (name: string) => {
+          return name.toLowerCase()
+            .replace(/[^a-z0-9\s]/g, '') // Remove special characters
+            .replace(/\s+/g, ' ') // Normalize spaces
+            .trim();
+        };
+
+        // Helper function to create search variations
+        const createSearchVariations = (name: string) => {
+          const normalized = normalizeForSearch(name);
+          const variations = [
+            normalized,
+            normalized.replace(/s$/, ''), // Remove trailing 's' (singular/plural)
+            normalized + 's', // Add trailing 's'
+            normalized.replace(/\b(\w+)\b/g, '$1s'), // Make all words plural
+            normalized.replace(/\bs\b/g, ''), // Remove standalone 's'
+          ];
+          return [...new Set(variations)]; // Remove duplicates
+        };
+
+        const searchVariations = createSearchVariations(searchName);
+        const normalizedSearchName = normalizeForSearch(searchName);
+
+        // Search exercises array with multiple strategies
+        let foundByName = exercises.find((ex: any) => {
+          const normalizedExName = normalizeForSearch(ex.name);
+
+          // Strategy 1: Exact normalized match
+          if (normalizedExName === normalizedSearchName) {
+            return true;
+          }
+
+          // Strategy 2: Check if search variations match exercise name
+          if (searchVariations.some(variation => normalizedExName.includes(variation))) {
+            return true;
+          }
+
+          // Strategy 3: Check if exercise name variations match search name
+          const exVariations = createSearchVariations(ex.name);
+          if (exVariations.some(variation => normalizedSearchName.includes(normalizeForSearch(variation)))) {
+            return true;
+          }
+
+          // Strategy 4: Original bidirectional partial matching (fallback)
+          return ex.name.toLowerCase().includes(searchName.toLowerCase()) ||
+                 searchName.toLowerCase().includes(ex.name.toLowerCase());
+        });        if (foundByName && foundByName.videoUrl) {
+          Object.assign(meta, {
+            name: foundByName.name,
+            videoUrl: foundByName.videoUrl,
+            sets: foundByName.sets || 1,
+            reps: foundByName.reps || 8,
+          });
+        }
+      }
+    }
 
     // Check for special workout types
     const repsText = blk.repsOrDuration.toLowerCase();
@@ -491,7 +577,7 @@ const WorkoutDetailScreen: React.FC = () => {
               running: false,
               seconds: 0,
               done: false,
-              mode: ex.type === 'amrap' ? 'countdown' : 'stopwatch',
+              mode: ex.type === 'amrap' ? 'countdown' : 'countdown', // Default to countdown for both
             }));
           }
         });
@@ -535,7 +621,20 @@ const WorkoutDetailScreen: React.FC = () => {
     })();
     return () => {
       alive = false;
-      if (globalTimer.current) {clearInterval(globalTimer.current);}
+
+      // Clear global timer
+      if (globalTimer.current) {
+        clearInterval(globalTimer.current);
+      }
+
+      // Clear all individual exercise timers
+      Object.values(timedRef.current).forEach(exerciseTimers => {
+        exerciseTimers.forEach(timer => {
+          if (timer.intervalId) {
+            clearInterval(timer.intervalId);
+          }
+        });
+      });
     };
   }, [day]);
 
@@ -586,13 +685,55 @@ const WorkoutDetailScreen: React.FC = () => {
   /* ── PER-SET TIMER HANDLERS ── */
   const startTimedSet = (exId: string, setIdx: number, targetSec: number) => {
     const status = timedRef.current[exId]?.[setIdx];
-    if (!status || status.running || status.done) {return;}
+    if (!status) {return;}
 
+    // Find the exercise name
+    const exercise = [...warmup, ...main, ...cooldown].find(ex => ex.id === exId);
+    const exerciseName = exercise?.name || pretty(exId);
+
+    // If already done, reset the timer
+    if (status.done) {
+      status.done = false;
+      status.seconds = status.mode === 'countdown' ? targetSec : 0;
+    }
+
+    // Toggle running state (play/pause functionality)
+    if (status.running) {
+      // Pause the timer
+      status.running = false;
+      if (status.intervalId) {
+        clearInterval(status.intervalId);
+        status.intervalId = undefined;
+      }
+      // Clear the active timer display when pausing
+      setActiveTimer(null);
+      setElapsedSec((_prev) => _prev); // force re-render
+      return;
+    }
+
+    // Start the timer
     status.running = true;
-    status.seconds = status.mode === 'countdown' ? targetSec : 0;
+
+    // Initialize seconds if not set or if starting fresh
+    if (status.seconds === 0 && status.mode === 'countdown') {
+      status.seconds = targetSec;
+    } else if (status.seconds === 0 && status.mode === 'stopwatch') {
+      status.seconds = 0;
+    }
+
+    // Set the active timer for large countdown display
+    setActiveTimer({
+      exerciseId: exId,
+      setIndex: setIdx,
+      exerciseName,
+      totalTime: targetSec,
+    });
 
     const id = setInterval(() => {
-      if (!status.running) {return;} // safety
+      if (!status.running) {
+        clearInterval(id);
+        return;
+      }
 
       status.seconds = status.mode === 'countdown' ? status.seconds - 1 : status.seconds + 1;
 
@@ -600,9 +741,12 @@ const WorkoutDetailScreen: React.FC = () => {
       setElapsedSec((_prev) => _prev);
 
       if (status.mode === 'countdown' && status.seconds <= 0) {
-        clearInterval(status.intervalId as IntervalId);
+        clearInterval(id);
         status.running = false;
         status.done = true;
+        status.intervalId = undefined;
+        // Clear the active timer display when completed
+        setActiveTimer(null);
         markTimedSetComplete(exId, setIdx);
       }
     }, 1000) as IntervalId;
@@ -610,11 +754,24 @@ const WorkoutDetailScreen: React.FC = () => {
     status.intervalId = id;
   };
 
-  const toggleMode = (exId: string, setIdx: number) => {
+  const resetTimedSet = (exId: string, setIdx: number, targetSec: number) => {
     const status = timedRef.current[exId]?.[setIdx];
-    if (!status || status.running) {return;}
-    status.mode = status.mode === 'stopwatch' ? 'countdown' : 'stopwatch';
-    setElapsedSec((_prev) => _prev); // force paint
+    if (!status) {return;}
+
+    // Stop the timer if running
+    if (status.running && status.intervalId) {
+      clearInterval(status.intervalId);
+      status.intervalId = undefined;
+    }
+
+    // Clear the active timer display
+    setActiveTimer(null);
+
+    // Reset all values
+    status.running = false;
+    status.done = false;
+    status.seconds = status.mode === 'countdown' ? targetSec : 0;
+    setElapsedSec((_prev) => _prev); // force re-render
   };
 
   const markTimedSetComplete = (exId: string, setIdx: number) => {
@@ -665,19 +822,38 @@ const WorkoutDetailScreen: React.FC = () => {
       await batch.commit();
       await checkAndAdjustRestDays(uid);
 
-      // PR detection (simple)
-      const prs: Record<string, number> = {};
-      main.forEach((ex, i) =>
-        progress[i].forEach((s) => {
-          const w = Number(s.weight);
-          if (!isNaN(w)) {prs[ex.id] = Math.max(prs[ex.id] || 0, w);}
-        })
-      );
-      const newPRs = Object.entries(prs).map(([k, v]) => `${pretty(k)}: ${v} lbs`);
+      // PR detection - compare against previous session data
+      const truePRs: string[] = [];
+      main.forEach((ex, i) => {
+        const currentMaxWeight = Math.max(
+          ...progress[i]
+            .map(s => Number(s.weight))
+            .filter(w => !isNaN(w) && w > 0)
+        );
+
+        // Only process if we have a valid weight for this exercise
+        if (currentMaxWeight > 0) {
+          const lastSessionData = lastSession[ex.id];
+          let previousMaxWeight = 0;
+
+          if (lastSessionData && lastSessionData.length > 0) {
+            previousMaxWeight = Math.max(
+              ...lastSessionData
+                .map(s => Number(s.weight))
+                .filter(w => !isNaN(w) && w > 0)
+            );
+          }
+
+          // It's a PR if current weight is higher than previous max
+          if (currentMaxWeight > previousMaxWeight) {
+            truePRs.push(`${pretty(ex.id)}: ${currentMaxWeight} lbs`);
+          }
+        }
+      });
 
       setToastMessage('Workout saved!');
-      if (newPRs.length) {
-        setPrMsgs(newPRs);
+      if (truePRs.length > 0) {
+        setPrMsgs(truePRs);
         setShowPR(true);
       }
       setSummaryVisible(true);
@@ -725,21 +901,32 @@ const WorkoutDetailScreen: React.FC = () => {
           <Text style={styles.btnTxt}>Adapt Today’s Workout</Text>
         </Pressable>
 
-        {/* WARM-UP – check-off style */}
+        {/* WARM-UP – motivational message */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Warm-up</Text>
-          {warmup.map((ex) => (
-            <CheckOffBlock
-              key={ex.id}
-              id={ex.id}
-              name={ex.name}
-              sets={ex.setsCount}
-              repsOrDuration={formatDesc(ex).split('×')[1]}
-              videoUri={ex.videoUri}
-              isTimed={ex.type === 'time'}
-              seconds={ex.repsCount}
-            />
-          ))}
+          <View style={styles.motivationalCard}>
+            <View style={styles.motivationalHeader}>
+              <Ionicons name="flame" size={24} color="#ff6b35" />
+              <Text style={styles.motivationalTitle}>Prepare Your Body</Text>
+            </View>
+            <Text style={styles.motivationalText}>
+              Take 5-10 minutes to properly warm up your body. Focus on dynamic movements that increase your heart rate, mobilize your joints, and activate the muscle groups you'll be training today.
+            </Text>
+            <View style={styles.motivationalPoints}>
+              <View style={styles.motivationalPoint}>
+                <Ionicons name="heart" size={16} color="#ff6b35" />
+                <Text style={styles.motivationalPointText}>Get your blood flowing</Text>
+              </View>
+              <View style={styles.motivationalPoint}>
+                <Ionicons name="refresh" size={16} color="#ff6b35" />
+                <Text style={styles.motivationalPointText}>Mobilize your joints</Text>
+              </View>
+              <View style={styles.motivationalPoint}>
+                <Ionicons name="fitness" size={16} color="#ff6b35" />
+                <Text style={styles.motivationalPointText}>Prime your muscles</Text>
+              </View>
+            </View>
+          </View>
         </View>
 
         {/* MAIN WORK */}
@@ -751,28 +938,39 @@ const WorkoutDetailScreen: React.FC = () => {
           timedRef={timedRef}
           formatDesc={formatDesc}
           startTimedSet={startTimedSet}
-          toggleMode={toggleMode}
+          resetTimedSet={resetTimedSet}
           updateInput={updateInput}
           onPressChart={(exerciseId) =>
             navigation.navigate('ProgressChart', { exerciseName: exerciseId })
           }
         />
 
-        {/* COOL-DOWN – check-off style */}
+        {/* COOL-DOWN – motivational message */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Cool-down</Text>
-          {cooldown.map((ex) => (
-            <CheckOffBlock
-              key={ex.id}
-              id={ex.id}
-              name={ex.name}
-              sets={ex.setsCount}
-              repsOrDuration={formatDesc(ex).split('×')[1]}
-              videoUri={ex.videoUri}
-              isTimed={ex.type === 'time'}
-              seconds={ex.repsCount}
-            />
-          ))}
+          <View style={styles.motivationalCard}>
+            <View style={styles.motivationalHeader}>
+              <Ionicons name="leaf" size={24} color="#4caf50" />
+              <Text style={styles.motivationalTitle}>Recovery & Restoration</Text>
+            </View>
+            <Text style={styles.motivationalText}>
+              Excellent work! Now take 5-10 minutes to properly cool down. Focus on gentle stretching, deep breathing, and allowing your heart rate to gradually return to normal.
+            </Text>
+            <View style={styles.motivationalPoints}>
+              <View style={styles.motivationalPoint}>
+                <Ionicons name="heart-outline" size={16} color="#4caf50" />
+                <Text style={styles.motivationalPointText}>Lower your heart rate</Text>
+              </View>
+              <View style={styles.motivationalPoint}>
+                <Ionicons name="body" size={16} color="#4caf50" />
+                <Text style={styles.motivationalPointText}>Stretch your muscles</Text>
+              </View>
+              <View style={styles.motivationalPoint}>
+                <Ionicons name="medical" size={16} color="#4caf50" />
+                <Text style={styles.motivationalPointText}>Promote recovery</Text>
+              </View>
+            </View>
+          </View>
         </View>
 
         <Pressable
@@ -827,6 +1025,126 @@ const WorkoutDetailScreen: React.FC = () => {
 >
               <Text style={styles.btnTxt}>Close</Text>
             </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      {/* LARGE COUNTDOWN TIMER MODAL */}
+      <Modal
+        visible={activeTimer !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setActiveTimer(null)}
+      >
+        <View style={styles.countdownModalBackdrop}>
+          <View style={styles.countdownModalContainer}>
+            {activeTimer && (
+              <>
+                <Text style={styles.countdownExerciseName}>
+                  {activeTimer.exerciseName}
+                </Text>
+                <Text style={styles.countdownSetLabel}>
+                  Set {activeTimer.setIndex + 1}
+                </Text>
+
+                {(() => {
+                  const status = timedRef.current[activeTimer.exerciseId]?.[activeTimer.setIndex];
+                  const currentTime = status ? status.seconds : 0;
+                  const timeToDisplay = status?.mode === 'countdown' ? Math.max(0, currentTime) : currentTime;
+                  const timerProgress = status?.mode === 'countdown'
+                    ? (activeTimer.totalTime > 0 ? (activeTimer.totalTime - timeToDisplay) / activeTimer.totalTime : 0)
+                    : (activeTimer.totalTime > 0 ? Math.min(1, timeToDisplay / activeTimer.totalTime) : 0);
+
+                  // Color based on time remaining (for countdown) or progress (for stopwatch)
+                  const getTimerColor = () => {
+                    if (status?.mode === 'countdown') {
+                      if (timeToDisplay <= 10) {
+                        return '#f44336'; // Red for last 10 seconds
+                      }
+                      if (timeToDisplay <= 30) {
+                        return '#ff9800'; // Orange for last 30 seconds
+                      }
+                      return '#4caf50'; // Green for normal time
+                    } else {
+                      // Stopwatch mode - green throughout
+                      return '#4caf50';
+                    }
+                  };
+
+                  return (
+                    <>
+                      <View style={styles.countdownTimerContainer}>
+                        <Text style={[styles.countdownTimer, { color: getTimerColor() }]}>
+                          {fmtTime(timeToDisplay)}
+                        </Text>
+                      </View>
+
+                      {/* Progress ring/circle */}
+                      <View style={styles.progressContainer}>
+                        <View style={styles.progressBackground}>
+                          <View
+                            style={[
+                              styles.progressFill,
+                              {
+                                transform: [{ rotate: `${timerProgress * 360}deg` }],
+                                borderColor: getTimerColor(),
+                              },
+                            ]}
+                          />
+                        </View>
+                      </View>
+
+                      <Text style={styles.countdownSubtext}>
+                        {status?.mode === 'countdown' ? (
+                          timeToDisplay <= 10 ? '🔥 PUSH THROUGH!' :
+                          timeToDisplay <= 30 ? '💪 ALMOST THERE!' :
+                          '⏱️ STAY FOCUSED'
+                        ) : (
+                          '⏱️ KEEP GOING!'
+                        )}
+                      </Text>
+                    </>
+                  );
+                })()}
+
+                <View style={styles.countdownControls}>
+                  <Pressable
+                    style={styles.countdownButton}
+                    onPress={() => {
+                      const status = timedRef.current[activeTimer.exerciseId]?.[activeTimer.setIndex];
+                      if (status?.running) {
+                        startTimedSet(activeTimer.exerciseId, activeTimer.setIndex, activeTimer.totalTime);
+                      }
+                    }}
+                  >
+                    <Ionicons
+                      name={
+                        (() => {
+                          const status = timedRef.current[activeTimer.exerciseId]?.[activeTimer.setIndex];
+                          return status?.running ? 'pause-circle' : 'play-circle';
+                        })()
+                      }
+                      size={40}
+                      color="#fff"
+                    />
+                  </Pressable>
+
+                  <Pressable
+                    style={styles.countdownButton}
+                    onPress={() => resetTimedSet(activeTimer.exerciseId, activeTimer.setIndex, activeTimer.totalTime)}
+                  >
+                    <Ionicons name="refresh-circle" size={40} color="#ff9800" />
+                  </Pressable>
+
+                  <Pressable
+                    style={styles.countdownButton}
+                    onPress={() => setActiveTimer(null)}
+                  >
+                    <Ionicons name="close-circle" size={40} color="#f44336" />
+                  </Pressable>
+                </View>
+              </>
+            )}
           </View>
         </View>
       </Modal>
@@ -978,6 +1296,145 @@ const styles = StyleSheet.create({
   iconRight: { marginRight: 8 },
   summarySubheading: { marginTop: 8, fontWeight: '700' },
   mt16: { marginTop: 16 },
+
+  /* countdown modal styles */
+  countdownModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  countdownModalContainer: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 20,
+    padding: 40,
+    alignItems: 'center',
+    width: '90%',
+    maxWidth: 400,
+    borderWidth: 2,
+    borderColor: '#333',
+  },
+  countdownExerciseName: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#fff',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  countdownSetLabel: {
+    fontSize: 18,
+    color: '#aaa',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  countdownTimerContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    minHeight: 100,
+  },
+  countdownTimer: {
+    fontSize: 72,
+    fontWeight: '900',
+    textAlign: 'center',
+    marginVertical: 20,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    fontVariant: ['tabular-nums'],
+    letterSpacing: 0,
+    width: 240,
+    alignSelf: 'center',
+  },
+  countdownSubtext: {
+    fontSize: 18,
+    color: '#fff',
+    textAlign: 'center',
+    marginTop: 20,
+    marginBottom: 30,
+    fontWeight: '600',
+  },
+  countdownControls: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    width: '100%',
+    marginTop: 20,
+  },
+  countdownButton: {
+    padding: 10,
+    borderRadius: 50,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    marginHorizontal: 10,
+  },
+  progressContainer: {
+    width: 200,
+    height: 200,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginVertical: 20,
+  },
+  progressBackground: {
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    borderWidth: 8,
+    borderColor: '#333',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  progressFill: {
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    borderWidth: 6,
+    borderColor: '#4caf50',
+    position: 'absolute',
+  },
+
+  /* motivational card styles */
+  motivationalCard: {
+    backgroundColor: '#2a2a2a',
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: '#d32f2f',
+  },
+  motivationalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  motivationalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#fff',
+    marginLeft: 10,
+  },
+  motivationalText: {
+    fontSize: 15,
+    color: '#e0e0e0',
+    lineHeight: 22,
+    marginBottom: 12,
+  },
+  motivationalSubtext: {
+    fontSize: 13,
+    color: '#bbb',
+    fontStyle: 'italic',
+    textAlign: 'center',
+  },
+  motivationalPoints: {
+    marginTop: 8,
+  },
+  motivationalPoint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 4,
+    paddingLeft: 8,
+  },
+  motivationalPointText: {
+    fontSize: 14,
+    color: '#bbb',
+    marginLeft: 10,
+  },
 });
 
 export default WorkoutDetailScreen;

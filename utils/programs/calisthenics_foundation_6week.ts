@@ -16,8 +16,8 @@ export const calisthenics_foundation_6week: ProgramTemplate = {
       type: 'training',
       phase: 'Volume',
       warmup: [
-        { id: 'arm_circles', sets: 2, repsOrDuration: '10 each direction', rpe: 3 },
-        { id: 'shoulder_rolls', sets: 2, repsOrDuration: '10 forward, 10 back', rpe: 3 },
+        { id: 'c928f09a55f943578dde958c6459dab3', sets: 2, repsOrDuration: '10 each direction', rpe: 3 }, // Arm Circles / Swings
+        { id: '6a17372890d54d949fe5779a88bb328a', sets: 2, repsOrDuration: '10 forward, 10 back', rpe: 3 }, // World's Greatest Stretch
       ],
       exercises: [
         {
@@ -54,8 +54,8 @@ export const calisthenics_foundation_6week: ProgramTemplate = {
         },
       ],
       cooldown: [
-        { id: 'child_pose', sets: 1, repsOrDuration: '1 min', rpe: 2 },
-        { id: 'chest_doorway_stretch', sets: 1, repsOrDuration: '30 sec each arm', rpe: 2 },
+        { id: '60f85b87a8ce43328a56ebb797a8bf41', sets: 1, repsOrDuration: '1 min', rpe: 2 }, // Child Pose
+        { id: '3f319177c32e43b4a92da36676167f84', sets: 1, repsOrDuration: '30 sec each arm', rpe: 2 }, // Chest Doorway Stretch
       ],
     },
     {
@@ -66,8 +66,8 @@ export const calisthenics_foundation_6week: ProgramTemplate = {
       type: 'training',
       phase: 'Volume',
       warmup: [
-        { id: 'leg_swings_front_back', sets: 2, repsOrDuration: '10 each leg', rpe: 3 },
-        { id: 'hip_circles', sets: 2, repsOrDuration: '8 each direction', rpe: 3 },
+        { id: 'c928f09a55f943578dde958c6459dab3', sets: 2, repsOrDuration: '10 each leg', rpe: 3 }, // Arm Circles / Swings
+        { id: '6a17372890d54d949fe5779a88bb328a', sets: 2, repsOrDuration: '8 each direction', rpe: 3 }, // World's Greatest Stretch
       ],
       exercises: [
         {
@@ -112,8 +112,8 @@ export const calisthenics_foundation_6week: ProgramTemplate = {
         },
       ],
       cooldown: [
-        { id: 'seated_forward_fold', sets: 1, repsOrDuration: '1 min', rpe: 2 },
-        { id: 'figure_four_stretch', sets: 1, repsOrDuration: '45 sec each leg', rpe: 2 },
+        { id: 'ae0e9a5388f64ad6918e6903a535a1dc', sets: 1, repsOrDuration: '1 min', rpe: 2 }, // Seated Forward Fold
+        { id: '6a17372890d54d949fe5779a88bb328a', sets: 1, repsOrDuration: '45 sec each leg', rpe: 2 }, // World's Greatest Stretch
       ],
     },
     {
@@ -124,8 +124,8 @@ export const calisthenics_foundation_6week: ProgramTemplate = {
       type: 'training',
       phase: 'Volume',
       warmup: [
-        { id: 'arm_circles', sets: 2, repsOrDuration: '8 each direction', rpe: 3 },
-        { id: 'leg_swings_side', sets: 2, repsOrDuration: '8 each leg', rpe: 3 },
+        { id: 'c928f09a55f943578dde958c6459dab3', sets: 2, repsOrDuration: '8 each direction', rpe: 3 }, // Arm Circles / Swings
+        { id: '6a17372890d54d949fe5779a88bb328a', sets: 2, repsOrDuration: '8 each leg', rpe: 3 }, // World's Greatest Stretch
       ],
       exercises: [
         {
@@ -162,8 +162,8 @@ export const calisthenics_foundation_6week: ProgramTemplate = {
         },
       ],
       cooldown: [
-        { id: 'cat_cow_stretch', sets: 1, repsOrDuration: '1 min', rpe: 2 },
-        { id: 'spinal_twist', sets: 1, repsOrDuration: '30 sec each side', rpe: 2 },
+        { id: '14831f115d0c4ca3ba83610639fc53a2', sets: 1, repsOrDuration: '1 min', rpe: 2 }, // Cat Cow
+        { id: '6a17372890d54d949fe5779a88bb328a', sets: 1, repsOrDuration: '30 sec each side', rpe: 2 }, // World's Greatest Stretch
       ],
     },
 
@@ -176,8 +176,8 @@ export const calisthenics_foundation_6week: ProgramTemplate = {
       type: 'training',
       phase: 'Volume',
       warmup: [
-        { id: 'arm_circles', sets: 2, repsOrDuration: '10 each direction', rpe: 3 },
-        { id: 'shoulder_pass_through', sets: 2, repsOrDuration: '10 reps', rpe: 3 },
+        { id: 'c928f09a55f943578dde958c6459dab3', sets: 2, repsOrDuration: '10 each direction', rpe: 3 }, // Arm Circles / Swings
+        { id: '382b4950ecbd4550b99d676935199743', sets: 2, repsOrDuration: '10 reps', rpe: 3 }, // Sun Salutation A
       ],
       exercises: [
         {
@@ -222,8 +222,8 @@ export const calisthenics_foundation_6week: ProgramTemplate = {
         },
       ],
       cooldown: [
-        { id: 'chest_doorway_stretch', sets: 1, repsOrDuration: '45 sec each arm', rpe: 2 },
-        { id: 'child_pose', sets: 1, repsOrDuration: '1 min', rpe: 2 },
+        { id: '3f319177c32e43b4a92da36676167f84', sets: 1, repsOrDuration: '45 sec each arm', rpe: 2 }, // Chest Doorway Stretch
+        { id: '60f85b87a8ce43328a56ebb797a8bf41', sets: 1, repsOrDuration: '1 min', rpe: 2 }, // Child Pose
       ],
     },
     {
@@ -234,8 +234,8 @@ export const calisthenics_foundation_6week: ProgramTemplate = {
       type: 'training',
       phase: 'Volume',
       warmup: [
-        { id: 'leg_swings_front_back', sets: 2, repsOrDuration: '12 each leg', rpe: 3 },
-        { id: 'walking_high_knees', sets: 2, repsOrDuration: '20 steps', rpe: 4 },
+        { id: 'c928f09a55f943578dde958c6459dab3', sets: 2, repsOrDuration: '12 each leg', rpe: 3 }, // Arm Circles / Swings
+        { id: '6a17372890d54d949fe5779a88bb328a', sets: 2, repsOrDuration: '20 steps', rpe: 4 }, // World's Greatest Stretch
       ],
       exercises: [
         {
@@ -280,8 +280,8 @@ export const calisthenics_foundation_6week: ProgramTemplate = {
         },
       ],
       cooldown: [
-        { id: 'standing_quad_stretch', sets: 1, repsOrDuration: '45 sec each leg', rpe: 2 },
-        { id: 'calf_stretch_wall', sets: 1, repsOrDuration: '45 sec each leg', rpe: 2 },
+        { id: 'ae0e9a5388f64ad6918e6903a535a1dc', sets: 1, repsOrDuration: '45 sec each leg', rpe: 2 }, // Seated Forward Fold
+        { id: '3f319177c32e43b4a92da36676167f84', sets: 1, repsOrDuration: '45 sec each leg', rpe: 2 }, // Chest Doorway Stretch
       ],
     },
     {
@@ -292,8 +292,8 @@ export const calisthenics_foundation_6week: ProgramTemplate = {
       type: 'training',
       phase: 'Volume',
       warmup: [
-        { id: 'full_body_circles', sets: 2, repsOrDuration: '8 each direction', rpe: 3 },
-        { id: 'dynamic_warm_up', sets: 1, repsOrDuration: '5 min', rpe: 4 },
+        { id: 'c928f09a55f943578dde958c6459dab3', sets: 2, repsOrDuration: '8 each direction', rpe: 3 }, // Arm Circles / Swings
+        { id: '382b4950ecbd4550b99d676935199743', sets: 1, repsOrDuration: '5 min', rpe: 4 }, // Sun Salutation A
       ],
       exercises: [
         {
@@ -330,7 +330,7 @@ export const calisthenics_foundation_6week: ProgramTemplate = {
         },
       ],
       cooldown: [
-        { id: 'full_body_stretch_flow', sets: 1, repsOrDuration: '8 min', rpe: 2 },
+        { id: '382b4950ecbd4550b99d676935199743', sets: 1, repsOrDuration: '8 min', rpe: 2 }, // Sun Salutation A
       ],
     },
 
@@ -343,7 +343,7 @@ export const calisthenics_foundation_6week: ProgramTemplate = {
       type: 'training',
       phase: 'Strength',
       warmup: [
-        { id: 'dynamic_warm_up', sets: 1, repsOrDuration: '6 min', rpe: 4 },
+        { id: '382b4950ecbd4550b99d676935199743', sets: 1, repsOrDuration: '6 min', rpe: 4 }, // Sun Salutation A
       ],
       exercises: [
         {
@@ -388,7 +388,7 @@ export const calisthenics_foundation_6week: ProgramTemplate = {
         },
       ],
       cooldown: [
-        { id: 'upper_body_stretch_routine', sets: 1, repsOrDuration: '8 min', rpe: 2 },
+        { id: 'ae0e9a5388f64ad6918e6903a535a1dc', sets: 1, repsOrDuration: '8 min', rpe: 2 }, // Seated Forward Fold
       ],
     },
     {
@@ -399,7 +399,7 @@ export const calisthenics_foundation_6week: ProgramTemplate = {
       type: 'training',
       phase: 'Strength',
       warmup: [
-        { id: 'dynamic_leg_warm_up', sets: 1, repsOrDuration: '6 min', rpe: 4 },
+        { id: '6a17372890d54d949fe5779a88bb328a', sets: 1, repsOrDuration: '6 min', rpe: 4 }, // World's Greatest Stretch
       ],
       exercises: [
         {
@@ -444,7 +444,7 @@ export const calisthenics_foundation_6week: ProgramTemplate = {
         },
       ],
       cooldown: [
-        { id: 'lower_body_stretch_routine', sets: 1, repsOrDuration: '10 min', rpe: 2 },
+        { id: 'ae0e9a5388f64ad6918e6903a535a1dc', sets: 1, repsOrDuration: '10 min', rpe: 2 }, // Seated Forward Fold
       ],
     },
     {
@@ -455,7 +455,7 @@ export const calisthenics_foundation_6week: ProgramTemplate = {
       type: 'training',
       phase: 'Strength',
       warmup: [
-        { id: 'dynamic_full_body_warm_up', sets: 1, repsOrDuration: '8 min', rpe: 4 },
+        { id: '382b4950ecbd4550b99d676935199743', sets: 1, repsOrDuration: '8 min', rpe: 4 }, // Sun Salutation A
       ],
       exercises: [
         {
@@ -492,7 +492,7 @@ export const calisthenics_foundation_6week: ProgramTemplate = {
         },
       ],
       cooldown: [
-        { id: 'active_recovery_stretch', sets: 1, repsOrDuration: '10 min', rpe: 2 },
+        { id: '14831f115d0c4ca3ba83610639fc53a2', sets: 1, repsOrDuration: '10 min', rpe: 2 }, // Cat Cow
       ],
     },
 
@@ -505,7 +505,7 @@ export const calisthenics_foundation_6week: ProgramTemplate = {
       type: 'training',
       phase: 'Strength',
       warmup: [
-        { id: 'comprehensive_warm_up', sets: 1, repsOrDuration: '8 min', rpe: 4 },
+        { id: '382b4950ecbd4550b99d676935199743', sets: 1, repsOrDuration: '8 min', rpe: 4 }, // Sun Salutation A
       ],
       exercises: [
         {
@@ -550,7 +550,7 @@ export const calisthenics_foundation_6week: ProgramTemplate = {
         },
       ],
       cooldown: [
-        { id: 'advanced_upper_stretch', sets: 1, repsOrDuration: '10 min', rpe: 2 },
+        { id: '3f319177c32e43b4a92da36676167f84', sets: 1, repsOrDuration: '10 min', rpe: 2 }, // Chest Doorway Stretch
       ],
     },
     {
@@ -561,7 +561,7 @@ export const calisthenics_foundation_6week: ProgramTemplate = {
       type: 'training',
       phase: 'Strength',
       warmup: [
-        { id: 'dynamic_movement_prep', sets: 1, repsOrDuration: '8 min', rpe: 4 },
+        { id: '6a17372890d54d949fe5779a88bb328a', sets: 1, repsOrDuration: '8 min', rpe: 4 }, // World's Greatest Stretch
       ],
       exercises: [
         {
@@ -606,7 +606,7 @@ export const calisthenics_foundation_6week: ProgramTemplate = {
         },
       ],
       cooldown: [
-        { id: 'unilateral_stretch_routine', sets: 1, repsOrDuration: '12 min', rpe: 2 },
+        { id: 'ae0e9a5388f64ad6918e6903a535a1dc', sets: 1, repsOrDuration: '12 min', rpe: 2 }, // Seated Forward Fold
       ],
     },
     {
@@ -617,7 +617,7 @@ export const calisthenics_foundation_6week: ProgramTemplate = {
       type: 'training',
       phase: 'Strength',
       warmup: [
-        { id: 'movement_flow_prep', sets: 1, repsOrDuration: '10 min', rpe: 4 },
+        { id: '6a17372890d54d949fe5779a88bb328a', sets: 1, repsOrDuration: '10 min', rpe: 4 }, // World's Greatest Stretch
       ],
       exercises: [
         {
@@ -654,7 +654,7 @@ export const calisthenics_foundation_6week: ProgramTemplate = {
         },
       ],
       cooldown: [
-        { id: 'flow_cooldown_stretch', sets: 1, repsOrDuration: '15 min', rpe: 2 },
+        { id: '14831f115d0c4ca3ba83610639fc53a2', sets: 1, repsOrDuration: '15 min', rpe: 2 }, // Cat Cow
       ],
     },
 
@@ -667,7 +667,7 @@ export const calisthenics_foundation_6week: ProgramTemplate = {
       type: 'training',
       phase: 'Peak',
       warmup: [
-        { id: 'peak_warm_up', sets: 1, repsOrDuration: '10 min', rpe: 5 },
+        { id: '382b4950ecbd4550b99d676935199743', sets: 1, repsOrDuration: '10 min', rpe: 5 }, // Sun Salutation A
       ],
       exercises: [
         {
@@ -704,7 +704,7 @@ export const calisthenics_foundation_6week: ProgramTemplate = {
         },
       ],
       cooldown: [
-        { id: 'peak_recovery_routine', sets: 1, repsOrDuration: '15 min', rpe: 2 },
+        { id: '60f85b87a8ce43328a56ebb797a8bf41', sets: 1, repsOrDuration: '15 min', rpe: 2 }, // Child Pose
       ],
     },
     {
@@ -715,7 +715,7 @@ export const calisthenics_foundation_6week: ProgramTemplate = {
       type: 'training',
       phase: 'Peak',
       warmup: [
-        { id: 'dynamic_peak_prep', sets: 1, repsOrDuration: '10 min', rpe: 5 },
+        { id: '6a17372890d54d949fe5779a88bb328a', sets: 1, repsOrDuration: '10 min', rpe: 5 }, // World's Greatest Stretch
       ],
       exercises: [
         {
@@ -752,7 +752,7 @@ export const calisthenics_foundation_6week: ProgramTemplate = {
         },
       ],
       cooldown: [
-        { id: 'peak_lower_recovery', sets: 1, repsOrDuration: '15 min', rpe: 2 },
+        { id: 'ae0e9a5388f64ad6918e6903a535a1dc', sets: 1, repsOrDuration: '15 min', rpe: 2 }, // Seated Forward Fold
       ],
     },
     {
@@ -763,7 +763,7 @@ export const calisthenics_foundation_6week: ProgramTemplate = {
       type: 'training',
       phase: 'Peak',
       warmup: [
-        { id: 'showcase_warm_up', sets: 1, repsOrDuration: '12 min', rpe: 5 },
+        { id: '382b4950ecbd4550b99d676935199743', sets: 1, repsOrDuration: '12 min', rpe: 5 }, // Sun Salutation A
       ],
       exercises: [
         {
@@ -792,7 +792,7 @@ export const calisthenics_foundation_6week: ProgramTemplate = {
         },
       ],
       cooldown: [
-        { id: 'showcase_recovery', sets: 1, repsOrDuration: '20 min', rpe: 2 },
+        { id: '60f85b87a8ce43328a56ebb797a8bf41', sets: 1, repsOrDuration: '20 min', rpe: 2 }, // Child Pose
       ],
     },
 
@@ -805,7 +805,7 @@ export const calisthenics_foundation_6week: ProgramTemplate = {
       type: 'training',
       phase: 'Peak',
       warmup: [
-        { id: 'assessment_warm_up', sets: 1, repsOrDuration: '12 min', rpe: 5 },
+        { id: '382b4950ecbd4550b99d676935199743', sets: 1, repsOrDuration: '12 min', rpe: 5 }, // Sun Salutation A
       ],
       exercises: [
         {
@@ -842,7 +842,7 @@ export const calisthenics_foundation_6week: ProgramTemplate = {
         },
       ],
       cooldown: [
-        { id: 'assessment_recovery', sets: 1, repsOrDuration: '15 min', rpe: 2 },
+        { id: '14831f115d0c4ca3ba83610639fc53a2', sets: 1, repsOrDuration: '15 min', rpe: 2 }, // Cat Cow
       ],
     },
     {
@@ -853,7 +853,7 @@ export const calisthenics_foundation_6week: ProgramTemplate = {
       type: 'training',
       phase: 'Peak',
       warmup: [
-        { id: 'lower_test_warm_up', sets: 1, repsOrDuration: '15 min', rpe: 5 },
+        { id: '6a17372890d54d949fe5779a88bb328a', sets: 1, repsOrDuration: '15 min', rpe: 5 }, // World's Greatest Stretch
       ],
       exercises: [
         {
@@ -890,7 +890,7 @@ export const calisthenics_foundation_6week: ProgramTemplate = {
         },
       ],
       cooldown: [
-        { id: 'power_test_recovery', sets: 1, repsOrDuration: '15 min', rpe: 2 },
+        { id: 'ae0e9a5388f64ad6918e6903a535a1dc', sets: 1, repsOrDuration: '15 min', rpe: 2 }, // Seated Forward Fold
       ],
     },
     {
@@ -901,7 +901,7 @@ export const calisthenics_foundation_6week: ProgramTemplate = {
       type: 'training',
       phase: 'Peak',
       warmup: [
-        { id: 'celebration_warm_up', sets: 1, repsOrDuration: '10 min', rpe: 4 },
+        { id: '382b4950ecbd4550b99d676935199743', sets: 1, repsOrDuration: '10 min', rpe: 4 }, // Sun Salutation A
       ],
       exercises: [
         {
@@ -930,8 +930,8 @@ export const calisthenics_foundation_6week: ProgramTemplate = {
         },
       ],
       cooldown: [
-        { id: 'mastery_celebration_stretch', sets: 1, repsOrDuration: '20 min', rpe: 2 },
-        { id: 'reflection_breathing', sets: 1, repsOrDuration: '10 min', rpe: 1 },
+        { id: '60f85b87a8ce43328a56ebb797a8bf41', sets: 1, repsOrDuration: '20 min', rpe: 2 }, // Child Pose
+        { id: '14831f115d0c4ca3ba83610639fc53a2', sets: 1, repsOrDuration: '10 min', rpe: 1 }, // Cat Cow
       ],
     },
   ],

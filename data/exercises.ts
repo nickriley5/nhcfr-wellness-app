@@ -428,7 +428,7 @@ export const exercises: Exercise[] = [
     'equipment': 'Barbell',
     'coachingNotes': 'Hinge not squat',
     'swapOptions': [
-      'Seated Hamstring Stretch',
+      'Seated Forward Fold',
       'KB Single-Leg Deadlift',
       'DB Swing',
     ],
@@ -1886,7 +1886,7 @@ export const exercises: Exercise[] = [
     'swapOptions': [
       'Burpees',
       'Conventional Deadlift',
-      'Seated Hamstring Stretch',
+      'Seated Forward Fold',
     ],
     'tags': [
       'lower body',
@@ -2162,7 +2162,7 @@ export const exercises: Exercise[] = [
     'equipment': 'Core, Grip',
     'coachingNotes': 'Flow through legs, keep back straight',
     'swapOptions': [
-      'Cat-Cow',
+      'Cat Cow',
       'KB Push Press',
       'World\u2019s Greatest Stretch',
     ],
@@ -3273,7 +3273,7 @@ export const exercises: Exercise[] = [
     'coachingNotes': 'Hold at 90\u00b0',
     'swapOptions': [
       'Hollow Body Hold',
-      'Doorway Chest Stretch',
+      'Chest Doorway Stretch',
       'Plank Variations',
     ],
     'tags': [
@@ -4657,7 +4657,7 @@ export const exercises: Exercise[] = [
     'swapOptions': [
       'DB Step-Up',
       'Kneeling Hip Flexor Stretch',
-      'Doorway Chest Stretch',
+      'Chest Doorway Stretch',
     ],
     'tags': [
       'full body',
@@ -4680,7 +4680,7 @@ export const exercises: Exercise[] = [
     'coachingNotes': 'Rotate forward and back from both hips',
     'swapOptions': [
       'Child Pose',
-      'Seated Hamstring Stretch',
+      'Seated Forward Fold',
       'Puppy Pose',
     ],
     'tags': [
@@ -4719,7 +4719,7 @@ export const exercises: Exercise[] = [
     'id': '63efec73b2fe49c8b9780773695c0726',
   },
   {
-    'name': 'Seated Hamstring Stretch',
+    'name': 'Seated Forward Fold',
     'category': 'Yoga/mobility',
     'focusArea': 'Static Stretch',
     'equipment': 'Hamstrings',
@@ -4795,7 +4795,7 @@ export const exercises: Exercise[] = [
     'coachingNotes': 'Step-lunge + rotation',
     'swapOptions': [
       'DB Reverse Lunge',
-      'Cat-Cow',
+      'Cat Cow',
       'Arm Circles / Swings',
     ],
     'tags': [
@@ -4841,7 +4841,7 @@ export const exercises: Exercise[] = [
     'equipment': 'Adductors',
     'coachingNotes': 'Knees wide, rock forward/back',
     'swapOptions': [
-      'Seated Hamstring Stretch',
+      'Seated Forward Fold',
       'Couch Stretch',
       'Romanian Deadlift',
     ],
@@ -4858,7 +4858,7 @@ export const exercises: Exercise[] = [
     'id': 'de15be379c2648faa860a085999b8545',
   },
   {
-    'name': 'Doorway Chest Stretch',
+    'name': 'Chest Doorway Stretch',
     'category': 'Yoga/mobility',
     'focusArea': 'Static',
     'equipment': 'Chest, Shoulders',
@@ -4950,7 +4950,7 @@ export const exercises: Exercise[] = [
     'id': '94b9a083bb394e53a3f64a54b9c15266',
   },
   {
-    'name': 'Cat-Cow',
+    'name': 'Cat Cow',
     'category': 'Yoga/mobility',
     'focusArea': 'Dynamic Flow',
     'equipment': 'Spine, Core',
@@ -5165,7 +5165,7 @@ export const exercises: Exercise[] = [
     'swapOptions': [
       'World\u2019s Greatest Stretch',
       'KB Figure 8',
-      'Cat-Cow',
+      'Cat Cow',
     ],
     'tags': [
       'full body',
@@ -5278,7 +5278,7 @@ export const exercises: Exercise[] = [
     'equipment': 'Core, Nervous System',
     'coachingNotes': 'Lay down, nasal breath, expand belly',
     'swapOptions': [
-      'Cat-Cow',
+      'Cat Cow',
       'Flutter Kicks',
       'Leg Curls',
     ],
@@ -5622,7 +5622,7 @@ export const exercises: Exercise[] = [
     'category': 'Resilience Work',
     'focusArea': 'Segmented Spinal Circles',
     'equipment': 'Thoracic/Lumbar',
-    'coachingNotes': 'Segmented cat-cow \u2192 circle the torso from all angles',
+    'coachingNotes': 'Segmented cat cow \u2192 circle the torso from all angles',
     'swapOptions': [
       'Bird Dog',
       'Hip CARs',
@@ -5648,7 +5648,7 @@ export const exercises: Exercise[] = [
     'coachingNotes': 'Knee circles out/around from 90\u00b0 lift, without spine movement',
     'swapOptions': [
       'Knee CARs',
-      'Seated Hamstring Stretch',
+      'Seated Forward Fold',
       'Wall Angels',
     ],
     'tags': [
@@ -7473,7 +7473,7 @@ export const exercises: Exercise[] = [
     'equipment': 'Bodyweight / Band',
     'coachingNotes': 'Keep knee slightly bent; hinge from hips; breathe.',
     'swapOptions': [
-      'Seated Hamstring Stretch',
+      'Seated Forward Fold',
       'Standing Toe Touch',
       'Band Hamstring Stretch',
     ],
