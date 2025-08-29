@@ -798,12 +798,48 @@ const WorkoutDetailScreen: React.FC = () => {
     if (!uid) {return;}
 
     const logId = Date.now().toString();
+    
+    // Pre-calculate PR information for each exercise
+    const exercisePRInfo: Record<string, { currentMax: number; previousMax: number; isPR: boolean }> = {};
+    main.forEach((ex, i) => {
+      const currentMaxWeight = Math.max(
+        ...progress[i]
+          .map(s => Number(s.weight))
+          .filter(w => !isNaN(w) && w > 0)
+      );
+
+      let previousMaxWeight = 0;
+      if (currentMaxWeight > 0) {
+        const lastSessionData = lastSession[ex.id];
+        if (lastSessionData && lastSessionData.length > 0) {
+          previousMaxWeight = Math.max(
+            ...lastSessionData
+              .map(s => Number(s.weight))
+              .filter(w => !isNaN(w) && w > 0)
+          );
+        }
+      }
+
+      exercisePRInfo[ex.id] = {
+        currentMax: currentMaxWeight,
+        previousMax: previousMaxWeight,
+        isPR: currentMaxWeight > 0 && currentMaxWeight > previousMaxWeight,
+      };
+    });
+
     const payload = main.map((ex, i) => ({
-      name: ex.id,
-      sets: progress[i].map((s) => ({
-        reps: s.reps === '✓' ? ex.repsCount.toString() : s.reps,
-        weight: s.weight === '✓' ? '0' : s.weight,
-      })),
+      name: pretty(ex.id), // Use pretty name instead of ID
+      sets: progress[i].map((s) => {
+        const weight = parseFloat(s.weight === '✓' ? '0' : s.weight);
+        const prInfo = exercisePRInfo[ex.id];
+        const isPR = prInfo.isPR && weight === prInfo.currentMax;
+        
+        return {
+          reps: s.reps === '✓' ? ex.repsCount.toString() : s.reps,
+          weight: s.weight === '✓' ? '0' : s.weight,
+          isPR: isPR,
+        };
+      }),
     }));
 
     const log = {

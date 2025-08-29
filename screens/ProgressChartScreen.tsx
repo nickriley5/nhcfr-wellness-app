@@ -6,6 +6,8 @@ import {
   ActivityIndicator,
   Pressable,
   ScrollView,
+  StatusBar,
+  Platform,
 } from 'react-native';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { LineChart } from 'react-native-chart-kit';
@@ -107,15 +109,20 @@ const ProgressChartScreen: React.FC = () => {
 
   if (loading) {
     return (
-      <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
-        <ActivityIndicator size="large" color="#d32f2f" />
-      </LinearGradient>
+      <View style={styles.safeArea}>
+        <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+        <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
+          <ActivityIndicator size="large" color="#d32f2f" />
+        </LinearGradient>
+      </View>
     );
   }
 
   return (
-    <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <View style={styles.safeArea}>
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+      <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
+        <ScrollView contentContainerStyle={styles.content}>
         <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={20} color="#fff" />
           <Text style={styles.backText}>Back</Text>
@@ -166,11 +173,18 @@ const ProgressChartScreen: React.FC = () => {
         )}
       </ScrollView>
     </LinearGradient>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  safeArea: {
+    flex: 1,
+  },
+  container: {
+    flex: 1,
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 10 : 50,
+  },
   content: { padding: 20, alignItems: 'center' },
   title: {
     fontSize: 20,

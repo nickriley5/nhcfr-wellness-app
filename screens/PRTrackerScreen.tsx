@@ -7,6 +7,8 @@ import {
   ScrollView,
   ActivityIndicator,
   Pressable,
+  StatusBar,
+  Platform,
 } from 'react-native';
 import { auth, db } from '../firebase';
 import { collection, getDocs } from 'firebase/firestore';
@@ -49,6 +51,27 @@ const PRTrackerScreen: React.FC = () => {
         const exerciseMap: Record<string, { weight: number; reps: number; date: string; workoutTitle: string }> = {};
 
         Object.entries(logs).forEach(([id, log]) => {
+          // Convert document ID to proper date if it looks like a timestamp
+          let logDate = id;
+          try {
+            // Check if id is a timestamp or if log has a completedAt field
+            const logData = log as any;
+            if (logData.completedAt) {
+              // Use completedAt field if available
+              const date = new Date(logData.completedAt);
+              logDate = date.toLocaleDateString();
+            } else if (id.length === 13 && !isNaN(Number(id))) {
+              // If ID looks like a timestamp, convert it
+              const date = new Date(Number(id));
+              logDate = date.toLocaleDateString();
+            } else {
+              // Otherwise just use a generic date format
+              logDate = 'Recent';
+            }
+          } catch (error) {
+            logDate = 'Recent';
+          }
+
           log.exercises.forEach(ex => {
             ex.sets.forEach(set => {
               const weight = parseFloat(set.weight);
@@ -58,7 +81,7 @@ const PRTrackerScreen: React.FC = () => {
                   exerciseMap[ex.name] = {
                     weight,
                     reps,
-                    date: id,
+                    date: logDate,
                     workoutTitle: log.dayTitle || 'Workout',
                   };
                 }
@@ -84,8 +107,10 @@ const PRTrackerScreen: React.FC = () => {
   }, []);
 
   return (
-    <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <View style={styles.safeArea}>
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+      <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
+        <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>All-Time PRs</Text>
 
         <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
@@ -108,11 +133,18 @@ const PRTrackerScreen: React.FC = () => {
         )}
       </ScrollView>
     </LinearGradient>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  safeArea: {
+    flex: 1,
+  },
+  container: {
+    flex: 1,
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 10 : 50,
+  },
   content: { padding: 20 },
   title: {
     fontSize: 22,
