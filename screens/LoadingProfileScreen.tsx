@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Text, TextInput, StyleSheet, ScrollView, Pressable, Alert } from 'react-native';
-import firestore from '@react-native-firebase/firestore';
-import auth from '@react-native-firebase/auth';
+import { db, auth } from '../firebase';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 
 const fitnessLevels = [
   { label: 'Beginner', description: 'New to working out or inconsistent routine' },
@@ -46,11 +46,11 @@ const ProfileSetupScreen = ({ navigation }: any) => {
   };
 
   const handleSubmit = async () => {
-    const uid = auth().currentUser?.uid;
+    const uid = auth.currentUser?.uid;
     if (!uid) {return;}
 
     try {
-      await firestore().collection('users').doc(uid).set({
+      await setDoc(doc(db, 'users', uid), {
         fullName,
         dob,
         height,
@@ -62,7 +62,7 @@ const ProfileSetupScreen = ({ navigation }: any) => {
         goalWeight,
         timeline,
         profileComplete: true,
-        createdAt: firestore.FieldValue.serverTimestamp(),
+        createdAt: serverTimestamp(),
       });
 
       navigation.replace('Main');

@@ -7,7 +7,7 @@ const defaultConfig = getDefaultConfig(__dirname);
 const config = {
   resolver: {
     blockList: exclusionList([
-      /node_modules[\/\\]react-native-reanimated[\/\\]android[\/\\]\.cxx[\/\\].*/,
+      /node_modules[/\\]react-native-reanimated[/\\]android[/\\].cxx[/\\].*/,
     ]),
   },
 };
