@@ -8,6 +8,9 @@ const config = {
   resolver: {
     blockList: exclusionList([
       /node_modules[/\\]react-native-reanimated[/\\]android[/\\].cxx[/\\].*/,
+      // Exclude server-side scripts from React Native bundle
+      /scripts[/\\].*\.ts$/,
+      /scripts[/\\].*\.js$/,
     ]),
   },
 };

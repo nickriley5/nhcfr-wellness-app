@@ -1,4 +1,4 @@
-// firebase.ts
+// firebase.ts - Temporarily using Web Firebase SDK only
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore, setLogLevel } from 'firebase/firestore';
