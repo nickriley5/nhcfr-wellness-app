@@ -19,6 +19,7 @@ interface WeightTrackingTileProps {
 export const WeightTrackingTile: React.FC<WeightTrackingTileProps> = ({ onWeightUpdated }) => {
   const [weeklyAverage, setWeeklyAverage] = useState<number | null>(null);
   const [weeklyChange, setWeeklyChange] = useState<number>(0);
+  const [hasPreviousWeekData, setHasPreviousWeekData] = useState<boolean>(false);
   const [loading, setLoading] = useState(true);
   const weightTrackingRef = useRef<WeightTrackingCardRef>(null);
 
@@ -80,12 +81,15 @@ export const WeightTrackingTile: React.FC<WeightTrackingTileProps> = ({ onWeight
         if (previousWeekEntries.length > 0) {
           const previousAvg = previousWeekEntries.reduce((sum, entry) => sum + entry.weight, 0) / previousWeekEntries.length;
           setWeeklyChange(currentAvg - previousAvg);
+          setHasPreviousWeekData(true);
         } else {
           setWeeklyChange(0);
+          setHasPreviousWeekData(false);
         }
       } else {
         setWeeklyAverage(null);
         setWeeklyChange(0);
+        setHasPreviousWeekData(false);
       }
     } catch (error) {
       console.error('Error loading weight stats:', error);
@@ -103,12 +107,16 @@ export const WeightTrackingTile: React.FC<WeightTrackingTileProps> = ({ onWeight
     onWeightUpdated?.(); // Call parent callback if provided
   };
 
-  const formatWeightChange = (change: number): string => {
+  const formatWeightChange = (change: number, hasPrevious: boolean): string => {
+    if (!hasPrevious) {
+      return '📊 Track for a week to see trends';
+    }
     if (change === 0) {
       return '➡️ No change from last week';
     }
     const direction = change > 0 ? '↗️' : '↘️';
-    return `${direction} ${Math.abs(change).toFixed(1)} from last week`;
+    const changeWord = change > 0 ? 'Up' : 'Down';
+    return `${direction} ${changeWord} ${Math.abs(change).toFixed(1)} lbs from last week`;
   };
 
   return (
@@ -139,7 +147,7 @@ export const WeightTrackingTile: React.FC<WeightTrackingTileProps> = ({ onWeight
                 {weeklyAverage.toFixed(1)} lbs
               </Text>
               <Text style={dashboardStyles.weeklyAverageChange}>
-                {formatWeightChange(weeklyChange)}
+                {formatWeightChange(weeklyChange, hasPreviousWeekData)}
               </Text>
             </>
           ) : (

@@ -114,18 +114,34 @@ export function CustomDrawerContent(props: DrawerContentComponentProps) {
     const auth = getAuth();
     const firestore = getFirestore();
     const uid = auth.currentUser?.uid;
-    if (!uid) {return;}
+    
+    // Early return if no user - clear data and don't fetch
+    if (!uid) {
+      setUserName('Firefighter');
+      setProfilePicture(null);
+      return;
+    }
+    
     try {
       const snap = await getDoc(doc(firestore, 'users', uid));
+      
+      // Double-check auth after async operation
+      if (!auth.currentUser) {
+        return;
+      }
+      
       const data = snap.data();
-      console.log('Drawer - Loading user data:', data); // Debug log
+      console.log('Drawer - Loading user data:', data);
       if (data?.fullName) {setUserName(data.fullName.split(' ')[0]);}
       if (data?.profilePicture) {
-        console.log('Drawer - Setting profile picture:', data.profilePicture); // Debug log
+        console.log('Drawer - Setting profile picture:', data.profilePicture);
         setProfilePicture(data.profilePicture);
       }
     } catch (err) {
-      console.error('Drawer - Error loading user data:', err);
+      // Only log error if user is still authenticated (not a logout race)
+      if (auth.currentUser) {
+        console.error('Drawer - Error loading user data:', err);
+      }
     }
   };
 
@@ -136,9 +152,16 @@ export function CustomDrawerContent(props: DrawerContentComponentProps) {
   // Listen for navigation focus to refresh profile data
   useFocusEffect(
     React.useCallback(() => {
+      console.log('🔄 Drawer focused - reloading user data');
       loadUserData();
     }, [])
   );
+
+  // Listen for drawer state changes using props
+  useEffect(() => {
+    console.log('🔄 Drawer mounted - loading user data');
+    loadUserData();
+  }, [props.state]);
 
   const getGreeting = () => {
     const hr = new Date().getHours();
@@ -149,10 +172,17 @@ export function CustomDrawerContent(props: DrawerContentComponentProps) {
 
   const handleLogout = async () => {
     try {
+      // Clear local state before signing out
+      setUserName('Firefighter');
+      setProfilePicture(null);
+      
+      // Sign out from Firebase
       await signOut(getAuth());
-      navigation.navigate('Profile');
+      
+      // Navigation will automatically redirect to login via AuthProvider
+      console.log('🔒 User signed out successfully');
     } catch (err) {
-      console.error(err);
+      console.error('Logout error:', err);
     }
   };
 
@@ -163,6 +193,7 @@ export function CustomDrawerContent(props: DrawerContentComponentProps) {
           <Image
             source={{ uri: profilePicture || 'https://via.placeholder.com/100' }}
             style={styles.profileImage}
+            key={profilePicture || 'placeholder'} // Force re-render when URL changes
           />
           <Text style={styles.profileName}>{`${getGreeting()}, ${userName}!`}</Text>
         </View>

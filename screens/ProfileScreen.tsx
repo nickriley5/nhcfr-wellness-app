@@ -98,7 +98,7 @@ const ProfileScreen = () => {
     if (result.assets?.length) {
       const photoUri = result.assets[0].uri;
       const uid = auth.currentUser?.uid;
-      if (!uid) {return;}
+      if (!uid || !photoUri) return;
       await updateDoc(doc(db, 'users', uid), { profilePicture: photoUri });
       setProfile((prev) => (prev ? { ...prev, profilePicture: photoUri } : null));
     }

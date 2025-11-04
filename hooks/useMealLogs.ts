@@ -25,19 +25,37 @@ export function useMealLogs(uid: string | undefined, selectedDate: Date): UseMea
 
   // Fetch meals for the selected date
   useEffect(() => {
-    if (!uid) {return;}
+    // Early return if no uid - clear meals and don't set up listener
+    if (!uid) {
+      setLoggedMeals([]);
+      return;
+    }
 
     const dateKey = format(selectedDate, 'yyyy-MM-dd');
     const mealLogRef = collection(db, `users/${uid}/mealLogs/${dateKey}/meals`);
 
-    const unsub = onSnapshot(mealLogRef, (snapshot) => {
-      const meals: LoggedMeal[] = snapshot.docs.map((doc) => ({
-        ...(doc.data() as LoggedMeal),
-      }));
-      setLoggedMeals(meals);
-    });
+    const unsub = onSnapshot(
+      mealLogRef,
+      (snapshot) => {
+        const meals: LoggedMeal[] = snapshot.docs.map((doc) => ({
+          ...(doc.data() as LoggedMeal),
+        }));
+        setLoggedMeals(meals);
+      },
+      (error) => {
+        // Silently handle permission errors (e.g., after logout)
+        if (error.code === 'permission-denied') {
+          console.log('🔒 Meal logs listener: Permission denied (user likely logged out)');
+          setLoggedMeals([]);
+        } else {
+          console.error('Meal logs listener error:', error);
+        }
+      }
+    );
 
-    return () => unsub();
+    return () => {
+      unsub();
+    };
   }, [uid, selectedDate]);
 
   // Calculate totals

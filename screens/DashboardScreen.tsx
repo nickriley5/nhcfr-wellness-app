@@ -420,7 +420,10 @@ export default function DashboardScreen() {
             />
 
             {/* Streak & Achievements Card */}
-            <DedicationCard consistencyData={consistencyData} />
+            <DedicationCard 
+              consistencyData={consistencyData} 
+              onPRPress={() => navigation.navigate('PRTracker')}
+            />
 
             {/* Enhanced Coming Up Preview */}
             <ComingUpCard

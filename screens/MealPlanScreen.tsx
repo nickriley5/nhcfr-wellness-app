@@ -213,30 +213,48 @@ const MealPlanScreen: React.FC = () => {
 
   // ✅ Live meals for selected date
   useEffect(() => {
-    if (!uid) {return;}
+    // Early return if no uid - clear meals and don't set up listener
+    if (!uid) {
+      setLoggedMeals([]);
+      return;
+    }
     const dateKey = format(selectedDate, 'yyyy-MM-dd');
     const mealLogRef = collection(db, `users/${uid}/mealLogs/${dateKey}/meals`);
-    const unsub = onSnapshot(mealLogRef, (snapshot: any) => {
-      const meals: MealCardProps[] = snapshot.docs.map((mealDoc: any) => {
-        const data = mealDoc.data();
-        return {
-          id: mealDoc.id,
-          name: data.name,
-          calories: data.calories,
-          protein: data.protein,
-          carbs: data.carbs,
-          fat: data.fat,
-          photoUri: data.photoUri || null,
-          foodItems: data.foodItems || [],
-          originalDescription: data.originalDescription || '',
-          mealType: data.mealType || 'unknown',
-          mealEmoji: data.mealEmoji || '🍽️',
-          plannedTime: data.plannedTime || null,
-        };
-      });
-      setLoggedMeals(meals);
-    });
-    return () => unsub();
+    const unsub = onSnapshot(
+      mealLogRef,
+      (snapshot: any) => {
+        const meals: MealCardProps[] = snapshot.docs.map((mealDoc: any) => {
+          const data = mealDoc.data();
+          return {
+            id: mealDoc.id,
+            name: data.name,
+            calories: data.calories,
+            protein: data.protein,
+            carbs: data.carbs,
+            fat: data.fat,
+            photoUri: data.photoUri || null,
+            foodItems: data.foodItems || [],
+            originalDescription: data.originalDescription || '',
+            mealType: data.mealType || 'unknown',
+            mealEmoji: data.mealEmoji || '🍽️',
+            plannedTime: data.plannedTime || null,
+          };
+        });
+        setLoggedMeals(meals);
+      },
+      (error) => {
+        // Silently handle permission errors (e.g., after logout)
+        if (error.code === 'permission-denied') {
+          console.log('🔒 Meal plan listener: Permission denied (user likely logged out)');
+          setLoggedMeals([]);
+        } else {
+          console.error('Meal plan listener error:', error);
+        }
+      }
+    );
+    return () => {
+      unsub();
+    };
   }, [uid, selectedDate]);
 
 
@@ -768,18 +786,43 @@ const prettyTime = (time?: string | null) => {
       </ScrollView>
 
       {/* ✅ Log Food Button */}
-      <LogFoodButton onPress={() => setShowMealLoggingModal(true)} />
+      <LogFoodButton onPress={() => {
+        console.log('🍽️ Log Food button pressed');
+        console.log('🍽️ Current modal states:', {
+          showMealLoggingModal,
+          showDescribeModal,
+          showQuickFavoritesModal,
+          showCameraModal,
+          showEditModal
+        });
+        setShowMealLoggingModal(true);
+        console.log('🍽️ Set showMealLoggingModal to true');
+      }} />
 
       {/* ✅ MODALS - Only render one at a time to prevent crashes */}
-      {showMealLoggingModal && !showDescribeModal && !showQuickFavoritesModal && !showCameraModal && !showEditModal && (
-        <MealLoggingModal
-          visible={true}
-          onClose={() => setShowMealLoggingModal(false)}
-          onOpenDescribeModal={handleOpenDescribeModal}
-          onOpenQuickAdd={handleOpenQuickAdd}
-          onOpenCamera={handleOpenCamera}
-        />
-      )}
+      {(() => {
+        const shouldShow = showMealLoggingModal && !showDescribeModal && !showQuickFavoritesModal && !showCameraModal && !showEditModal;
+        console.log('🍽️ MealLoggingModal render check:', {
+          showMealLoggingModal,
+          showDescribeModal,
+          showQuickFavoritesModal,
+          showCameraModal,
+          showEditModal,
+          shouldShow
+        });
+        return shouldShow ? (
+          <MealLoggingModal
+            visible={true}
+            onClose={() => {
+              console.log('🍽️ Closing MealLoggingModal');
+              setShowMealLoggingModal(false);
+            }}
+            onOpenDescribeModal={handleOpenDescribeModal}
+            onOpenQuickAdd={handleOpenQuickAdd}
+            onOpenCamera={handleOpenCamera}
+          />
+        ) : null;
+      })()}
 
       {showDescribeModal && (
       <DescribeMealModal

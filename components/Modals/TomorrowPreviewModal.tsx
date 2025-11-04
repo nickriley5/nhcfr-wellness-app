@@ -10,6 +10,7 @@ import {
 import LinearGradient from 'react-native-linear-gradient';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import Video from 'react-native-video';
+import WebView from 'react-native-webview';
 import { resolveExerciseDetails, getRPEColor, getRPEDescription, getExerciseVideoUrl } from '../../utils/exerciseUtils';
 import type { ExerciseBlock } from '../../types/Exercise';
 
@@ -20,6 +21,28 @@ const formatExerciseName = (id: string): string => {
   return id
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (c) => c.toUpperCase()); // capitalize each word
+};
+
+// Helper to check if URL is YouTube and convert to embed format
+const getVideoConfig = (videoUrl: string) => {
+  console.log('🎥 TomorrowPreview - Processing video URL:', videoUrl);
+  const isYouTube = videoUrl.includes('youtube.com') || videoUrl.includes('youtu.be');
+  console.log('🎥 Is YouTube:', isYouTube);
+  
+  if (isYouTube) {
+    let videoId = '';
+    if (videoUrl.includes('youtube.com/watch?v=')) {
+      videoId = videoUrl.split('v=')[1]?.split('&')[0];
+    } else if (videoUrl.includes('youtu.be/')) {
+      videoId = videoUrl.split('youtu.be/')[1]?.split('?')[0];
+    }
+    const embedUrl = `https://www.youtube.com/embed/${videoId}?playsinline=1&controls=1`;
+    console.log('🎥 YouTube Video ID:', videoId);
+    console.log('🎥 Embed URL:', embedUrl);
+    return { isYouTube: true, url: embedUrl };
+  }
+  
+  return { isYouTube: false, url: videoUrl };
 };
 
 interface TomorrowInfo {
@@ -181,15 +204,27 @@ export const TomorrowPreviewModal: React.FC<TomorrowPreviewModalProps> = ({
                       <View style={styles.exerciseVideoContainer}>
                         {expandedVideos.has(exercise.id) ? (
                           <View style={styles.videoPlayerContainer}>
-                            <Video
-                              source={{ uri: getExerciseVideoUrl(exercise) }}
-                              style={styles.videoPlayer}
-                              resizeMode="contain"
-                              controls={true}
-                              paused={false}
-                              repeat={false}
-                              onEnd={() => toggleVideo(exercise.id)}
-                            />
+                            {(() => {
+                              const videoConfig = getVideoConfig(getExerciseVideoUrl(exercise));
+                              return videoConfig.isYouTube ? (
+                                <WebView
+                                  source={{ uri: videoConfig.url }}
+                                  style={styles.videoPlayer}
+                                  allowsInlineMediaPlayback={true}
+                                  mediaPlaybackRequiresUserAction={false}
+                                />
+                              ) : (
+                                <Video
+                                  source={{ uri: videoConfig.url }}
+                                  style={styles.videoPlayer}
+                                  resizeMode="contain"
+                                  controls={true}
+                                  paused={false}
+                                  repeat={false}
+                                  onEnd={() => toggleVideo(exercise.id)}
+                                />
+                              );
+                            })()}
                             <Pressable
                               style={styles.hideVideoButton}
                               onPress={() => toggleVideo(exercise.id)}
@@ -259,15 +294,27 @@ export const TomorrowPreviewModal: React.FC<TomorrowPreviewModalProps> = ({
                     <View style={styles.exerciseVideoContainer}>
                       {expandedVideos.has(exercise.id) ? (
                         <View style={styles.videoPlayerContainer}>
-                          <Video
-                            source={{ uri: getExerciseVideoUrl(exercise) }}
-                            style={styles.videoPlayer}
-                            resizeMode="contain"
-                            controls={true}
-                            paused={false}
-                            repeat={false}
-                            onEnd={() => toggleVideo(exercise.id)}
-                          />
+                          {(() => {
+                            const videoConfig = getVideoConfig(getExerciseVideoUrl(exercise));
+                            return videoConfig.isYouTube ? (
+                              <WebView
+                                source={{ uri: videoConfig.url }}
+                                style={styles.videoPlayer}
+                                allowsInlineMediaPlayback={true}
+                                mediaPlaybackRequiresUserAction={false}
+                              />
+                            ) : (
+                              <Video
+                                source={{ uri: videoConfig.url }}
+                                style={styles.videoPlayer}
+                                resizeMode="contain"
+                                controls={true}
+                                paused={false}
+                                repeat={false}
+                                onEnd={() => toggleVideo(exercise.id)}
+                              />
+                            );
+                          })()}
                           <Pressable
                             style={styles.hideVideoButton}
                             onPress={() => toggleVideo(exercise.id)}

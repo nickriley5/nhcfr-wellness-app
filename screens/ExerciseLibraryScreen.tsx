@@ -11,9 +11,10 @@ import {
   Platform,
   TextInput,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
 import {
@@ -45,44 +46,74 @@ const ExerciseLibraryScreen: React.FC = () => {
   const [allExercises, setAllExercises] = useState<any[]>([]);
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        const uid = auth.currentUser?.uid;
+  const loadData = async (showLoadingSpinner = false) => {
+    if (showLoadingSpinner) {
+      setLoading(true);
+    } else {
+      setRefreshing(true);
+    }
 
-        // Load exercises from Firebase every time
-        const snapshot = await getDocs(collection(db, 'exercises'));
-        const exercisesList = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    try {
+      console.log('📚 ExerciseLibrary: Starting to load data...');
+      const uid = auth.currentUser?.uid;
+      console.log('📚 User ID:', uid);
 
-        // If Firebase has data, use it; otherwise fall back to local data
-        const finalExercises = exercisesList.length > 0 ? exercisesList : localExercises;
-        console.log('📚 Exercise library loaded:', finalExercises.length, 'exercises');
-        setAllExercises(finalExercises);
-        setExercises(finalExercises);
+      // Load exercises from Firebase every time
+      console.log('📚 Fetching exercises from Firestore...');
+      const snapshot = await getDocs(collection(db, 'exercises'));
+      console.log('📚 Firestore returned', snapshot.docs.length, 'exercises');
+      const exercisesList = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
 
-        // Load favorites
-        if (uid) {
-          const favSnapshot = await getDoc(doc(db, 'users', uid, 'favorites', 'list'));
-          if (favSnapshot.exists()) {
-            const favs = new Set<string>(favSnapshot.data().ids || []);
-            setFavorites(favs);
-          }
+      // If Firebase has data, use it; otherwise fall back to local data
+      const finalExercises = exercisesList.length > 0 ? exercisesList : localExercises;
+      console.log('📚 Exercise library loaded:', finalExercises.length, 'exercises');
+      console.log('📚 Setting exercises state...');
+      setAllExercises(finalExercises);
+      setExercises(finalExercises);
+      console.log('📚 Exercises state set successfully');
+
+      // Load favorites
+      if (uid) {
+        const favSnapshot = await getDoc(doc(db, 'users', uid, 'favorites', 'list'));
+        if (favSnapshot.exists()) {
+          const favs = new Set<string>(favSnapshot.data().ids || []);
+          setFavorites(favs);
         }
-      } catch (error) {
-        console.error('Failed to load exercise library:', error);
-        // Fallback to local data on error
-        setAllExercises(localExercises);
-        setExercises(localExercises);
-      } finally {
-        setLoading(false);
       }
-    };
-
-    loadData();
+    } catch (error) {
+      console.error('❌ Failed to load exercise library:', error);
+      console.error('❌ Error details:', error);
+      // Fallback to local data on error
+      console.log('📚 Falling back to local exercises:', localExercises.length);
+      setAllExercises(localExercises);
+      setExercises(localExercises);
+    } finally {
+      console.log('📚 Setting loading to false');
+      if (showLoadingSpinner) {
+        setLoading(false);
+      } else {
+        setRefreshing(false);
+      }
+    }
+  };
+  
+  // Initial load
+  useEffect(() => {
+    loadData(true);
   }, []);
+
+  // Refocus load
+  useFocusEffect(
+    useCallback(() => {
+      if (!loading) {
+        loadData(false);
+      }
+    }, [loading])
+  );
 
   // Function to categorize exercises based on focusArea
   const categorizeExercise = useCallback((focusArea: string): string => {
@@ -185,17 +216,17 @@ const ExerciseLibraryScreen: React.FC = () => {
 
   if (loading) {
     return (
-      <View style={styles.safeArea}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#0f0f0f' }} edges={['top']}>
         <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
         <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
           <ActivityIndicator size="large" color="#d32f2f" />
         </LinearGradient>
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.safeArea}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#0f0f0f' }} edges={['top']}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
       <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
         <ScrollView contentContainerStyle={styles.content}>
@@ -289,7 +320,7 @@ const ExerciseLibraryScreen: React.FC = () => {
         ))}
       </ScrollView>
     </LinearGradient>
-    </View>
+    </SafeAreaView>
   );
 };
 

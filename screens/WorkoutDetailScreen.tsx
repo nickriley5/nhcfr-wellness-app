@@ -37,6 +37,7 @@ import type { ExerciseBlock } from '../utils/types';
 import EnhancedTimerBar from '../components/EnhancedTimerBar';
 import VideoToggle from '../components/VideoToggle';
 import { resolveExerciseDetails } from '../utils/exerciseUtils';
+import { exercises as exerciseLibrary } from '../data/exercises';
 import { exercises } from '../data/exercises';
 
 type WorkoutSet = { reps: string; weight: string };
@@ -371,7 +372,11 @@ const WorkoutDetailScreen: React.FC = () => {
   // Move headerRight button out of render to avoid inline component definition
   const HeaderRightButton = React.useCallback(() => (
     <Pressable
-      onPress={() => navigation.navigate('AdaptWorkout')}
+      onPress={() => {
+        console.log('🔄 Header Adapt button pressed');
+        console.log('🔄 Workout state:', workState);
+        navigation.navigate('AdaptWorkout');
+      }}
       disabled={workState === 'running'}
       style={({ pressed }) => ({
         opacity: pressed || workState === 'running' ? 0.6 : 1,
@@ -587,7 +592,22 @@ const WorkoutDetailScreen: React.FC = () => {
         const uid = auth.currentUser?.uid;
         const last: Record<string, { reps: string; weight: string }[]> = {};
         if (uid) {
+          console.log('📋 Loading last session data for', m.length, 'exercises');
+          
+          // Create a lookup map: readable name -> exercise ID
+          const nameToIdMap: Record<string, string> = {};
+          exerciseLibrary.forEach((exercise) => {
+            if (exercise.name) {
+              nameToIdMap[exercise.name] = exercise.name; // Will be replaced with actual ID when we find it
+            }
+          });
+          
           for (const ex of m) {
+            console.log('📋 Looking for last session of:', ex.id);
+            const exerciseDetails = resolveExerciseDetails(ex.id);
+            const readableName = exerciseDetails?.name;
+            console.log('📋 Readable name:', readableName);
+            
             const q = await getDocs(
               query(
                 collection(db, 'users', uid, 'workoutLogs'),
@@ -595,15 +615,26 @@ const WorkoutDetailScreen: React.FC = () => {
                 limit(5)
               )
             );
+            console.log('📋 Found', q.docs.length, 'recent workout logs');
             for (const d of q.docs) {
               const data: any = d.data();
-              const hit = data.exercises.find((e: any) => e.name === ex.id);
+              console.log('📋 Checking workout log, exercises:', data.exercises?.map((e: any) => e.name));
+              // Try to match by ID first, then by readable name
+              const hit = data.exercises.find((e: any) => 
+                e.name === ex.id || 
+                (readableName && e.name === readableName)
+              );
               if (hit) {
+                console.log('📋 Found match! Sets:', hit.sets);
                 last[ex.id] = hit.sets;
                 break;
               }
             }
+            if (!last[ex.id]) {
+              console.log('📋 No previous session found for', ex.id, 'or', readableName);
+            }
           }
+          console.log('📋 Final lastSession object:', Object.keys(last));
         }
 
         if (alive) {
@@ -859,6 +890,7 @@ const WorkoutDetailScreen: React.FC = () => {
       await checkAndAdjustRestDays(uid);
 
       // PR detection - compare against previous session data
+      console.log('🏆 PR Detection - Starting...');
       const truePRs: string[] = [];
       main.forEach((ex, i) => {
         const currentMaxWeight = Math.max(
@@ -866,6 +898,8 @@ const WorkoutDetailScreen: React.FC = () => {
             .map(s => Number(s.weight))
             .filter(w => !isNaN(w) && w > 0)
         );
+
+        console.log(`🏆 ${pretty(ex.id)} - Current max: ${currentMaxWeight}`);
 
         // Only process if we have a valid weight for this exercise
         if (currentMaxWeight > 0) {
@@ -880,19 +914,34 @@ const WorkoutDetailScreen: React.FC = () => {
             );
           }
 
+          console.log(`🏆 ${pretty(ex.id)} - Previous max: ${previousMaxWeight}`);
+
           // It's a PR if current weight is higher than previous max
           if (currentMaxWeight > previousMaxWeight) {
-            truePRs.push(`${pretty(ex.id)}: ${currentMaxWeight} lbs`);
+            const prMsg = `${pretty(ex.id)}: ${currentMaxWeight} lbs`;
+            console.log(`🎉 PR DETECTED: ${prMsg}`);
+            truePRs.push(prMsg);
           }
         }
       });
 
+      console.log(`🏆 Total PRs detected: ${truePRs.length}`, truePRs);
       setToastMessage('Workout saved!');
       if (truePRs.length > 0) {
+        console.log('🎉 Showing PR celebration!');
+        console.log('🎉 Setting prMsgs to:', truePRs);
         setPrMsgs(truePRs);
+        console.log('🎉 Setting showPR to true');
         setShowPR(true);
+        console.log('🎉 PR celebration state updated');
+        // Delay summary to let PR celebration show first
+        setTimeout(() => {
+          setSummaryVisible(true);
+        }, 3500);
+      } else {
+        console.log('⚠️ No PRs detected, skipping celebration');
+        setSummaryVisible(true);
       }
-      setSummaryVisible(true);
     } catch (e) {
       console.error(e);
       setToastMessage('Could not save workout.');

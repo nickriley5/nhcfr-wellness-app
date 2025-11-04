@@ -15,9 +15,15 @@ interface PRCelebrationProps {
 }
 
 const PRCelebration: React.FC<PRCelebrationProps> = ({ visible, messages, onClose }) => {
+  console.log('🎊 PRCelebration rendered - visible:', visible, 'messages:', messages);
+  
   useEffect(() => {
     if (visible) {
-      const timer = setTimeout(() => onClose(), 3000);
+      console.log('🎊 PRCelebration showing! Messages:', messages);
+      const timer = setTimeout(() => {
+        console.log('🎊 PRCelebration auto-closing after 3 seconds');
+        onClose();
+      }, 3000);
       return () => clearTimeout(timer);
     }
   }, [visible, onClose]);

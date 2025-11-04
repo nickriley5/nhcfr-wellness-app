@@ -140,13 +140,14 @@ const WorkoutHistoryScreen: React.FC = () => {
       });
     });
 
-    const mostFrequent = Object.entries(freqMap).sort((a, b) => b[1] - a[1])[0][0];
+    const mostFrequentId = Object.entries(freqMap).sort((a, b) => b[1] - a[1])[0][0];
+    const mostFrequentName = getExerciseName(mostFrequentId);
 
     return (
       <View style={styles.summary}>
         <Text style={styles.summaryTitle}>Smart Summary</Text>
         <Text style={styles.summaryItem}>💪 Volume: {totalVolume.toLocaleString()} lbs</Text>
-        <Text style={styles.summaryItem}>🔁 Frequent: {mostFrequent}</Text>
+        <Text style={styles.summaryItem}>🔁 Frequent: {mostFrequentName}</Text>
         <Text style={styles.summaryItem}>🏆 Heaviest: {heaviest} lbs</Text>
       </View>
     );

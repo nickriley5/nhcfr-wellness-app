@@ -2,6 +2,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore, setLogLevel } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 
 const firebaseConfig = {
   apiKey: 'AIzaSyDXUvgMMJp7drZFcNQIYpro7oJh3AC24N0',
@@ -24,7 +25,10 @@ console.log('✅ Firestore initialized');
 console.log('🔥 Firestore instance:', db);
 console.log('🔥 Project ID:', firebaseConfig.projectId);
 
+const storage = getStorage(app);
+console.log('✅ Firebase Storage initialized');
+
 // ✅ Suppress Firestore debug/info/warning logs globally (after initialization)
 setLogLevel('error');
 
-export { app as firebaseApp, auth, db };
+export { app as firebaseApp, auth, db, storage };

@@ -240,9 +240,9 @@ export function useDashboardData(view: 'week' | 'month' | 'all', bump: number = 
 
   // ----------------- MACROS: goals + live meals for today (top-level hook) -----------------
   useEffect(() => {
-    const uid = auth.currentUser?.uid;
-    if (!uid) {
-      // Reset macros when not authenticated
+    // Early return if no user - don't set up any listeners
+    const currentUser = auth.currentUser;
+    if (!currentUser?.uid) {
       setMacrosToday({
         calories: { eaten: 0 },
         protein: { eaten: 0 },
@@ -253,11 +253,12 @@ export function useDashboardData(view: 'week' | 'month' | 'all', bump: number = 
       return;
     }
 
+    const uid = currentUser.uid;
     let unsub: undefined | (() => void);
     let canceled = false;
 
     (async () => {
-      // Check authentication before starting
+      // Double-check authentication before starting async work
       if (!auth.currentUser) {
         return;
       }
@@ -285,36 +286,46 @@ export function useDashboardData(view: 'week' | 'month' | 'all', bump: number = 
         console.warn('macro goals load failed', e);
       }
 
-      // 2) Subscribe to today’s meals
+            // 2) Subscribe to today's meals
       const dateKey = format(new Date(), 'yyyy-MM-dd'); // local day key
       const mealsRef = collection(db, `users/${uid}/mealLogs/${dateKey}/meals`);
-      unsub = onSnapshot(mealsRef, (snap) => {
-        // Check if still authenticated and not canceled
-        if (!auth.currentUser || canceled) {
-          return;
+      unsub = onSnapshot(
+        mealsRef,
+        (snap) => {
+          // Check if still authenticated and not canceled
+          if (!auth.currentUser || canceled) {
+            return;
+          }
+
+          const meals = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+          const totals = sumMealsForToday(meals);
+
+          const cGoal = goals.calorieTarget;
+          const pGoal = goals.proteinGrams;
+          const cbGoal = goals.carbGrams;
+          const fGoal = goals.fatGrams;
+
+          const cRem = cGoal != null ? Math.max(0, cGoal - totals.calories) : undefined;
+          const pRem = pGoal != null ? Math.max(0, pGoal - totals.protein) : undefined;
+          const cbRem = cbGoal != null ? Math.max(0, cbGoal - totals.carbs) : undefined;
+          const fRem = fGoal != null ? Math.max(0, fGoal - totals.fat) : undefined;
+
+          setMacrosToday({
+            calories: { eaten: totals.calories, goal: cGoal, remaining: cRem },
+            protein: { eaten: totals.protein, goal: pGoal, remaining: pRem },
+            carbs: { eaten: totals.carbs, goal: cbGoal, remaining: cbRem },
+            fat: { eaten: totals.fat, goal: fGoal, remaining: fRem },
+            hasMeals: meals.length > 0,
+          });
+        },
+        (error) => {
+          // Silently handle permission errors (e.g., after logout)
+          console.log('🔒 Dashboard meal listener - Error caught:', error.code);
+          if (error.code !== 'permission-denied') {
+            console.error('Dashboard meal listener - Unexpected error:', error);
+          }
         }
-
-        const meals = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        const totals = sumMealsForToday(meals);
-
-        const cGoal = goals.calorieTarget;
-        const pGoal = goals.proteinGrams;
-        const cbGoal = goals.carbGrams;
-        const fGoal = goals.fatGrams;
-
-        const cRem = cGoal != null ? Math.max(0, cGoal - totals.calories) : undefined;
-        const pRem = pGoal != null ? Math.max(0, pGoal - totals.protein) : undefined;
-        const cbRem = cbGoal != null ? Math.max(0, cbGoal - totals.carbs) : undefined;
-        const fRem = fGoal != null ? Math.max(0, fGoal - totals.fat) : undefined;
-
-        setMacrosToday({
-          calories: { eaten: totals.calories, goal: cGoal, remaining: cRem },
-          protein: { eaten: totals.protein, goal: pGoal, remaining: pRem },
-          carbs: { eaten: totals.carbs, goal: cbGoal, remaining: cbRem },
-          fat: { eaten: totals.fat, goal: fGoal, remaining: fRem },
-          hasMeals: meals.length > 0,
-        });
-      });
+      );
     })();
 
     // intentionally depend on bump to refresh subscription on screen focus
@@ -324,10 +335,12 @@ export function useDashboardData(view: 'week' | 'month' | 'all', bump: number = 
     }
 
     return () => {
-      if (unsub) {unsub();}
       canceled = true;
+      if (unsub) {
+        unsub();
+      }
     };
-  }, [bump]);
+  }, [bump, auth.currentUser?.uid]); // Re-run when user changes
 
   return {
     moodData,

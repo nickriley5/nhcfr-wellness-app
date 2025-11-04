@@ -12,9 +12,10 @@ import {
   FlatList,
   Image,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
 import { auth, db } from '../firebase';
@@ -195,6 +196,7 @@ const AdaptWorkoutScreen: React.FC = () => {
   const [adapted, setAdapted] = useState<ExerciseCard[]>([]);
   const [library, setLibrary] = useState<ExerciseCard[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [currentIndex, setCurrentIndex] = useState<number | null>(null);
@@ -202,18 +204,22 @@ const AdaptWorkoutScreen: React.FC = () => {
   const [showToast, setShowToast] = useState(false);
 
   // ---------- load today's plan (enriched) + full library ----------
-  useEffect(() => {
-    let alive = true;
+  const loadData = async (showLoadingSpinner = false) => {
+    if (showLoadingSpinner) {
+      setLoading(true);
+    } else {
+      setRefreshing(true);
+    }
 
-    const load = async () => {
-      try {
-        console.log('AdaptWorkout: Starting load');
-        const uid = auth.currentUser?.uid;
-        if (!uid) {
-          console.error('AdaptWorkout: No user authenticated');
-          Alert.alert('Error', 'No user authenticated');
-          if (alive) {setLoading(false);}
-          return;
+    try {
+      console.log('AdaptWorkout: Starting load');
+      const uid = auth.currentUser?.uid;
+      if (!uid) {
+        console.error('AdaptWorkout: No user authenticated');
+        Alert.alert('Error', 'No user authenticated');
+        if (showLoadingSpinner) setLoading(false);
+        else setRefreshing(false);
+        return;
         }
         console.log('AdaptWorkout: User ID:', uid);
         const progRef = doc(db, 'users', uid, 'program', 'active');
@@ -221,7 +227,8 @@ const AdaptWorkoutScreen: React.FC = () => {
         console.log('AdaptWorkout: Program exists:', progSnap.exists());
         if (!progSnap.exists()) {
           Alert.alert('No Program', 'No active program found. Please set up your workout program first.');
-          if (alive) {setLoading(false);}
+          if (showLoadingSpinner) setLoading(false);
+          else setRefreshing(false);
           navigation.goBack();
           return;
         }
@@ -236,7 +243,8 @@ const AdaptWorkoutScreen: React.FC = () => {
 
         if (blocks.length === 0) {
           Alert.alert('No Exercises', `No exercises found for day ${curDay}. Total days in program: ${data.days?.length ?? 0}`);
-          if (alive) {setLoading(false);}
+          if (showLoadingSpinner) setLoading(false);
+          else setRefreshing(false);
           navigation.goBack();
           return;
         }
@@ -322,7 +330,6 @@ const AdaptWorkoutScreen: React.FC = () => {
           };
         });
 
-        if (!alive) {return;}
         console.log('AdaptWorkout: Setting adapted exercises:', enriched.length);
         console.log('AdaptWorkout: Setting library:', lib.length);
         setAdapted(enriched);
@@ -331,21 +338,29 @@ const AdaptWorkoutScreen: React.FC = () => {
       } catch (err) {
         console.error('Adapt load error:', err);
         Alert.alert('Error', `Failed to load workout: ${err}`);
-        if (alive) {
-          setLoading(false);
-          navigation.goBack();
-        }
+        if (showLoadingSpinner) setLoading(false);
+        else setRefreshing(false);
+        navigation.goBack();
       } finally {
-        if (alive) {
-          console.log('AdaptWorkout: Setting loading to false');
-          setLoading(false);
-        }
+        console.log('AdaptWorkout: Setting loading to false');
+        if (showLoadingSpinner) setLoading(false);
+        else setRefreshing(false);
       }
     };
-
-    load();
-    return () => { alive = false; };
+  
+  // Initial load
+  useEffect(() => {
+    loadData(true);
   }, []);
+
+  // Refocus load
+  useFocusEffect(
+    React.useCallback(() => {
+      if (!loading) {
+        loadData(false);
+      }
+    }, [loading])
+  );
 
   // ---------- suggestions tailored to the selected exercise ----------
   const suggestions: ExerciseCard[] = useMemo(() => {
@@ -451,12 +466,14 @@ const AdaptWorkoutScreen: React.FC = () => {
   if (loading) {
     console.log('AdaptWorkout: Still loading, showing spinner');
     return (
-      <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
-        <View style={styles.content}>
-          <ActivityIndicator size="large" color="#d32f2f" />
-          <Text style={{ color: '#fff', marginTop: 20, textAlign: 'center' }}>Loading exercises...</Text>
-        </View>
-      </LinearGradient>
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#0f0f0f' }} edges={['top']}>
+        <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
+          <View style={styles.content}>
+            <ActivityIndicator size="large" color="#d32f2f" />
+            <Text style={{ color: '#fff', marginTop: 20, textAlign: 'center' }}>Loading exercises...</Text>
+          </View>
+        </LinearGradient>
+      </SafeAreaView>
     );
   }
 
@@ -464,37 +481,40 @@ const AdaptWorkoutScreen: React.FC = () => {
   if (adapted.length === 0) {
     console.log('AdaptWorkout: No exercises in adapted array');
     return (
-      <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
-        <View style={styles.content}>
-          <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={22} color="#fff" />
-            <Text style={styles.backText}>Back</Text>
-          </Pressable>
-          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
-            <Ionicons name="barbell-outline" size={64} color="#666" />
-            <Text style={styles.title}>No Exercises Found</Text>
-            <Text style={{ color: '#999', textAlign: 'center', marginTop: 12 }}>
-              There are no exercises in today's workout to adapt.
-            </Text>
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#0f0f0f' }} edges={['top']}>
+        <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
+          <View style={styles.content}>
+            <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
+              <Ionicons name="arrow-back" size={22} color="#fff" />
+              <Text style={styles.backText}>Back</Text>
+            </Pressable>
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+              <Ionicons name="barbell-outline" size={64} color="#666" />
+              <Text style={styles.title}>No Exercises Found</Text>
+              <Text style={{ color: '#999', textAlign: 'center', marginTop: 12 }}>
+                There are no exercises in today's workout to adapt.
+              </Text>
+            </View>
           </View>
-        </View>
-      </LinearGradient>
+        </LinearGradient>
+      </SafeAreaView>
     );
   }
 
   console.log('AdaptWorkout: Rendering main content with', adapted.length, 'exercises');
 
   return (
-    <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.topBar}>
-          <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={22} color="#fff" />
-            <Text style={styles.backText}>Back</Text>
-          </Pressable>
-        </View>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#0f0f0f' }} edges={['top']}>
+      <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
+        <ScrollView contentContainerStyle={styles.content}>
+          <View style={styles.topBar}>
+            <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
+              <Ionicons name="arrow-back" size={22} color="#fff" />
+              <Text style={styles.backText}>Back</Text>
+            </Pressable>
+          </View>
 
-        <Text style={styles.title}>Adapt Today's Workout</Text>
+          <Text style={styles.title}>Adapt Today's Workout</Text>
 
         {adapted.map((ex: any, i: number) => {
           console.log('AdaptWorkout: Rendering exercise', i, ex.name);
@@ -595,6 +615,7 @@ const AdaptWorkoutScreen: React.FC = () => {
         <Toast message="Adapted workout saved!" onClose={() => setShowToast(false)} />
       )}
     </LinearGradient>
+    </SafeAreaView>
   );
 };
 

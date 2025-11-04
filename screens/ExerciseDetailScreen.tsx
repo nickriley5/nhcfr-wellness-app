@@ -154,7 +154,9 @@ const ExerciseDetailScreen: React.FC = () => {
           <View style={styles.videoContainer}>
             {(() => {
               const videoUri = exercise.videoUrl || exercise.videoUri;
+              console.log('🎥 ExerciseDetail - Video URI:', videoUri);
               const isYouTubeUrl = videoUri.includes('youtube.com') || videoUri.includes('youtu.be');
+              console.log('🎥 Is YouTube URL:', isYouTubeUrl);
 
               if (isYouTubeUrl) {
                 // Convert YouTube URL to embed format
@@ -165,6 +167,8 @@ const ExerciseDetailScreen: React.FC = () => {
                   videoId = videoUri.split('youtu.be/')[1].split('?')[0];
                 }
                 const embedUrl = `https://www.youtube.com/embed/${videoId}?playsinline=1&controls=1`;
+                console.log('🎥 YouTube Video ID:', videoId);
+                console.log('🎥 Embed URL:', embedUrl);
 
                 return (
                   <WebView

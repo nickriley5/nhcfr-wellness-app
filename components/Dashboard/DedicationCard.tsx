@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text } from 'react-native';
+import { View, Text, Pressable } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { dashboardStyles } from '../../styles/DashboardScreen.styles';
 
@@ -14,10 +14,12 @@ interface ConsistencyData {
 
 interface DedicationCardProps {
   consistencyData: ConsistencyData;
+  onPRPress?: () => void;
 }
 
 export const DedicationCard: React.FC<DedicationCardProps> = ({
   consistencyData,
+  onPRPress,
 }) => {
   return (
     <View style={dashboardStyles.horizontalCard}>
@@ -54,10 +56,14 @@ export const DedicationCard: React.FC<DedicationCardProps> = ({
       </View>
 
       {/* Recent PRs */}
-      <View style={dashboardStyles.prSection}>
+      <Pressable 
+        style={dashboardStyles.prSection}
+        onPress={onPRPress}
+      >
         <View style={dashboardStyles.prHeaderContainer}>
           <Ionicons name="trophy-outline" size={16} color="#ffd700" />
           <Text style={dashboardStyles.prHeader}>Recent PRs</Text>
+          {onPRPress && <Ionicons name="chevron-forward" size={16} color="#999" style={{ marginLeft: 4 }} />}
         </View>
         {consistencyData.recentPRs.length > 0 ? (
           consistencyData.recentPRs.map((pr, idx) => (
@@ -66,7 +72,7 @@ export const DedicationCard: React.FC<DedicationCardProps> = ({
         ) : (
           <Text style={dashboardStyles.prItem}>• No recent PRs - time to push!</Text>
         )}
-      </View>
+      </Pressable>
     </View>
   );
 };
