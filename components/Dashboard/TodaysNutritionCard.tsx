@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import { useNavigation } from '@react-navigation/native';
 import { dashboardStyles } from '../../styles/DashboardScreen.styles';
 import MacroCard from '../mealplan/MacroCard';
 
@@ -37,6 +38,8 @@ export const TodaysNutritionCard: React.FC<TodaysNutritionCardProps> = ({
   setShowHydrationGoalModal,
   addHydration,
 }) => {
+  const navigation = useNavigation();
+  
   // Check if we have any macro goals set (indicating a meal plan exists)
   const hasMealPlan = macrosToday.calories.goal !== undefined ||
                       macrosToday.protein.goal !== undefined ||
@@ -106,8 +109,15 @@ export const TodaysNutritionCard: React.FC<TodaysNutritionCardProps> = ({
           <Ionicons name="restaurant-outline" size={48} color="#666" />
           <Text style={styles.noMealPlanTitle}>No Meal Plan</Text>
           <Text style={styles.noMealPlanText}>
-            Create a meal plan from the Goals screen to start tracking your nutrition
+            Set up your nutrition goals to start tracking your meals
           </Text>
+          <Pressable
+            style={styles.createMealPlanButton}
+            onPress={() => navigation.navigate('GoalSettings' as never)}
+          >
+            <Ionicons name="add-circle-outline" size={20} color="#fff" />
+            <Text style={styles.createMealPlanButtonText}>Create Meal Plan</Text>
+          </Pressable>
         </View>
       )}
 
@@ -192,5 +202,20 @@ const styles = StyleSheet.create({
     color: '#999',
     textAlign: 'center',
     lineHeight: 20,
+    marginBottom: 20,
+  },
+  createMealPlanButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#d32f2f',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    gap: 8,
+  },
+  createMealPlanButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

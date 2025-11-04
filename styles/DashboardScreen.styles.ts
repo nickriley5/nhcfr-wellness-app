@@ -6,9 +6,11 @@ export const SECTION_WIDTH = screenWidth - 32; // Account for padding
 export const dashboardStyles = StyleSheet.create({
   screen: {
     flex: 1,
+    backgroundColor: '#0f0f0f',
   },
   content: {
     paddingBottom: 100,
+    flexGrow: 1,
   },
 
   // Header Styles

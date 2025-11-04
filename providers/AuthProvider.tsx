@@ -59,18 +59,30 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    console.log('🔥 AuthProvider - Setting up auth state listener...');
+    
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      console.log('🔥 Auth state changed. User:', firebaseUser?.uid || 'null');
       setUser(firebaseUser);
 
       if (firebaseUser) {
+        console.log('🔥 User authenticated:', {
+          uid: firebaseUser.uid,
+          email: firebaseUser.email,
+        });
+        
         try {
           // 🔥 Fetch Firestore profile document
+          console.log('🔥 Fetching user profile from Firestore...');
           const snap = await getDoc(doc(db, 'users', firebaseUser.uid));
+          console.log('🔥 Profile document exists:', snap.exists());
 
           // ✅ Type-safe data cast (no more as any)
           const firestoreData: FirestoreUserDoc = snap.exists()
             ? (snap.data() as FirestoreUserDoc)
             : {};
+          
+          console.log('🔥 Firestore data:', firestoreData);
 
           // ✅ Merge Auth + Firestore fields
           const mergedProfile: UserProfile = {
@@ -82,9 +94,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             ...firestoreData,               // spreads weight, height, bodyFat, etc.
           };
 
+          console.log('✅ Merged profile:', mergedProfile);
           setUserProfile(mergedProfile);
         } catch (err) {
-          console.error('Failed to fetch user profile:', err);
+          console.error('❌ Failed to fetch user profile:', err);
 
           // Fallback: only auth info
           setUserProfile({
@@ -93,10 +106,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           });
         }
       } else {
+        console.log('⚠️ No user authenticated');
         // Not logged in → reset profile
         setUserProfile(null);
       }
 
+      console.log('🔥 Auth loading complete');
       setLoading(false);
     });
 

@@ -1,6 +1,6 @@
 // components/Modals/HydrationSettingsModal.tsx
 import React from 'react';
-import { View, Text, ScrollView, Pressable } from 'react-native';
+import { View, Text, ScrollView, Pressable, Modal } from 'react-native';
 import { dashboardStyles } from '../../styles/DashboardScreen.styles';
 
 interface HydrationSettingsModalProps {
@@ -22,13 +22,15 @@ export default function HydrationSettingsModal({
   updateHydrationGoal,
   updateContainerSize,
 }: HydrationSettingsModalProps) {
-  if (!visible) {
-    return null;
-  }
-
   return (
-    <View style={dashboardStyles.modalOverlay}>
-      <View style={dashboardStyles.hydrationModal}>
+    <Modal
+      visible={visible}
+      transparent={true}
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <View style={dashboardStyles.modalOverlay}>
+        <View style={dashboardStyles.hydrationModal}>
         <Text style={dashboardStyles.modalTitle}>Hydration Settings</Text>
         <Text style={dashboardStyles.modalSubtitle}>Configure your water tracking</Text>
 
@@ -123,7 +125,8 @@ export default function HydrationSettingsModal({
             <Text style={dashboardStyles.modalCancelText}>Done</Text>
           </Pressable>
         </View>
+        </View>
       </View>
-    </View>
+    </Modal>
   );
 }

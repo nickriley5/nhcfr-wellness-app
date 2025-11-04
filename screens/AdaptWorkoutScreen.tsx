@@ -20,7 +20,8 @@ import { RootStackParamList } from '../App';
 import { auth, db } from '../firebase';
 import { doc, getDoc, setDoc, collection, getDocs } from 'firebase/firestore';
 import Toast from '../components/Toast';
-import Video from 'react-native-video';
+import VideoToggle from '../components/VideoToggle';
+import { getExerciseVideoData } from '../utils/exerciseVideoMap';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -189,12 +190,12 @@ const scoreCandidate = (current: ExerciseCard, cand: ExerciseCard) => {
 
 /* =================================================================== */
 const AdaptWorkoutScreen: React.FC = () => {
+  console.log('🔴 AdaptWorkoutScreen COMPONENT MOUNTED 🔴');
   const navigation = useNavigation<Nav>();
   const [adapted, setAdapted] = useState<ExerciseCard[]>([]);
   const [library, setLibrary] = useState<ExerciseCard[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [playingIndex, setPlayingIndex] = useState<number | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [currentIndex, setCurrentIndex] = useState<number | null>(null);
   const [showAllReplacements, setShowAllReplacements] = useState(false);
@@ -206,24 +207,58 @@ const AdaptWorkoutScreen: React.FC = () => {
 
     const load = async () => {
       try {
+        console.log('AdaptWorkout: Starting load');
         const uid = auth.currentUser?.uid;
-        if (!uid) {throw new Error('No user');}
+        if (!uid) {
+          console.error('AdaptWorkout: No user authenticated');
+          Alert.alert('Error', 'No user authenticated');
+          if (alive) {setLoading(false);}
+          return;
+        }
+        console.log('AdaptWorkout: User ID:', uid);
         const progRef = doc(db, 'users', uid, 'program', 'active');
         const progSnap = await getDoc(progRef);
-        if (!progSnap.exists()) {throw new Error('No active program');}
+        console.log('AdaptWorkout: Program exists:', progSnap.exists());
+        if (!progSnap.exists()) {
+          Alert.alert('No Program', 'No active program found. Please set up your workout program first.');
+          if (alive) {setLoading(false);}
+          navigation.goBack();
+          return;
+        }
 
         const data = progSnap.data() as any;
         const curDay = data?.metadata?.currentDay ?? data?.currentDay ?? 1;
         const dayIdx = Math.max(0, curDay - 1);
+        console.log('AdaptWorkout: Current day:', curDay, 'Day index:', dayIdx);
 
         const blocks: any[] = data.days?.[dayIdx]?.exercises ?? [];
+        console.log('AdaptWorkout: Exercises count:', blocks.length);
 
-        // Enrich today’s items
+        if (blocks.length === 0) {
+          Alert.alert('No Exercises', `No exercises found for day ${curDay}. Total days in program: ${data.days?.length ?? 0}`);
+          if (alive) {setLoading(false);}
+          navigation.goBack();
+          return;
+        }
+
+        // Enrich today's items
         const enriched: ExerciseCard[] = await Promise.all(
           blocks.map(async (blk: any) => {
             const exId = blk.id || blk.exerciseId || blk.name;
             const snap = exId ? await getDoc(doc(db, 'exercises', exId)) : null;
             const r = snap?.exists() ? (snap.data() as any) : {};
+            
+            console.log('Exercise data for', exId, ':', {
+              hasVideoUrl: !!r.videoUrl,
+              hasVideoUri: !!r.videoUri,
+              hasVideo_url: !!r.video_url,
+              hasBlkVideoUri: !!blk.videoUri,
+              videoUrl: r.videoUrl,
+              videoUri: r.videoUri,
+              video_url: r.video_url,
+              allKeys: Object.keys(r)
+            });
+            
             const name = r.name || blk.name || pretty(exId);
             const tags: string[] = Array.isArray(r.tags) ? r.tags : Array.isArray(blk.tags) ? blk.tags : [];
             const { pattern, muscles } = inferPatternAndMuscles(name, tags);
@@ -233,33 +268,54 @@ const AdaptWorkoutScreen: React.FC = () => {
               (r.equipment ?? blk.equipment ?? undefined);
             const category = inferCategory(name, tags);
 
+            // Try multiple sources for video URL
+            let videoUri = r.videoUrl || r.videoUri || r.video_url || blk.videoUri;
+            
+            // If no video URL found, try the exerciseVideoMap
+            if (!videoUri || videoUri.includes('w3schools')) {
+              const videoData = getExerciseVideoData(exId);
+              if (videoData?.videoUrl) {
+                videoUri = videoData.videoUrl;
+                console.log('Using exerciseVideoMap for', name, ':', videoUri);
+              }
+            }
+            
+            // Final fallback
+            if (!videoUri) {
+              videoUri = fallbackVideos[name] || fallbackVideos.Pushups;
+            }
+            
+            console.log('Final videoUri for', name, ':', videoUri);
+
             return {
               id: exId,
               name,
               tags,
               focusArea: r.focusArea ?? blk.focusArea,
-              videoUri: r.videoUrl || blk.videoUri || fallbackVideos[name] || fallbackVideos.Pushups,
+              videoUri,
               thumbnailUri: r.thumbnailUri || blk.thumbnailUri,
               pattern, muscles, equipKey, equipment, category,
             } as ExerciseCard;
           })
-        );
-
-        // Full library
+        );        // Full library
         const libSnap = await getDocs(collection(db, 'exercises'));
-        const lib: ExerciseCard[] = libSnap.docs.map((d) => {
+        const lib: ExerciseCard[] = libSnap.docs.map((d: any) => {
           const r = d.data() as any;
           const name = r.name || pretty(d.id);
           const tags: string[] = Array.isArray(r.tags) ? r.tags : [];
           const { pattern, muscles } = inferPatternAndMuscles(name, tags);
           const equipKey = equipKeyFrom(r.equipment, `${name} ${tags.join(' ')}`);
           const category = inferCategory(name, tags);
+          
+          // Try multiple possible video URL field names
+          const videoUri = r.videoUrl || r.videoUri || r.video_url || fallbackVideos[name] || fallbackVideos.Pushups;
+          
           return {
             id: d.id,
             name,
             tags,
             focusArea: r.focusArea,
-            videoUri: r.videoUrl || fallbackVideos[name] || fallbackVideos.Pushups,
+            videoUri,
             thumbnailUri: r.thumbnailUri,
             equipment: Array.isArray(r.equipment) ? r.equipment.join(', ') : r.equipment,
             pattern, muscles, equipKey, category,
@@ -267,12 +323,23 @@ const AdaptWorkoutScreen: React.FC = () => {
         });
 
         if (!alive) {return;}
+        console.log('AdaptWorkout: Setting adapted exercises:', enriched.length);
+        console.log('AdaptWorkout: Setting library:', lib.length);
         setAdapted(enriched);
         setLibrary(lib);
+        console.log('AdaptWorkout: Data set, loading should end');
       } catch (err) {
         console.error('Adapt load error:', err);
+        Alert.alert('Error', `Failed to load workout: ${err}`);
+        if (alive) {
+          setLoading(false);
+          navigation.goBack();
+        }
       } finally {
-        if (alive) {setLoading(false);}
+        if (alive) {
+          console.log('AdaptWorkout: Setting loading to false');
+          setLoading(false);
+        }
       }
     };
 
@@ -289,28 +356,28 @@ const AdaptWorkoutScreen: React.FC = () => {
     // category gate first (keeps curls away from mobility/conditioning lists)
     const pool =
       cur.category && cur.category !== 'unknown'
-        ? library.filter((c) => (c.category ?? 'unknown') === cur.category)
+        ? library.filter((c: ExerciseCard) => (c.category ?? 'unknown') === cur.category)
         : library;
 
     const MIN_SCORE = 6;
 
     const ranked = pool
-      .map((c) => ({ c, s: scoreCandidate(cur, c) }))
-      .filter((x) => x.s >= MIN_SCORE)
-      .sort((a, b) => b.s - a.s)
-      .map((x) => x.c);
+      .map((c: ExerciseCard) => ({ c, s: scoreCandidate(cur, c) }))
+      .filter((x: { c: ExerciseCard; s: number }) => x.s >= MIN_SCORE)
+      .sort((a: { c: ExerciseCard; s: number }, b: { c: ExerciseCard; s: number }) => b.s - a.s)
+      .map((x: { c: ExerciseCard; s: number }) => x.c);
 
     // elbow_flexion fallback: seed with curl family if nothing hit
     if (ranked.length === 0 && cur.pattern === 'elbow_flexion') {
       return pool
-        .filter((c) => /curl|bicep|biceps|preacher|hammer/.test(norm(c.name)))
+        .filter((c: ExerciseCard) => /curl|bicep|biceps|preacher|hammer/.test(norm(c.name)))
         .slice(0, 20);
     }
 
     // relaxed fallback by macro pattern
     if (ranked.length === 0 && cur.pattern) {
       const macro = macroFromPattern(cur.pattern);
-      const relaxed = pool.filter((c) => macroFromPattern(c.pattern) === macro && c.id !== cur.id);
+      const relaxed = pool.filter((c: ExerciseCard) => macroFromPattern(c.pattern) === macro && c.id !== cur.id);
       return relaxed.slice(0, 20);
     }
 
@@ -324,9 +391,6 @@ const AdaptWorkoutScreen: React.FC = () => {
     setModalVisible(true);
   };
 
-  const togglePlay = (i: number) =>
-    setPlayingIndex((prev) => (prev === i ? null : i));
-
   const selectReplacement = (replacement: ExerciseCard) => {
     if (currentIndex === null) {return;}
     const next = [...adapted];
@@ -339,10 +403,16 @@ const AdaptWorkoutScreen: React.FC = () => {
   const handleSave = async () => {
     try {
       const uid = auth.currentUser?.uid;
-      if (!uid) {return;}
+      if (!uid) {
+        Alert.alert('Error', 'User not authenticated');
+        return;
+      }
       const ref = doc(db, 'users', uid, 'program', 'active');
       const snap = await getDoc(ref);
-      if (!snap.exists()) {return;}
+      if (!snap.exists()) {
+        Alert.alert('Error', 'No active program found. Please set up your program first.');
+        return;
+      }
       const data = snap.data() as any;
       const dayIdx = (data.currentDay ?? 1) - 1;
 
@@ -371,18 +441,48 @@ const AdaptWorkoutScreen: React.FC = () => {
       }, 800);
     } catch (err) {
       console.error('Save error:', err);
-      Alert.alert('Error', 'Failed to save adapted workout.');
+      Alert.alert('Error', `Failed to save adapted workout: ${err}`);
     }
   };
 
   // ---------- render ----------
+  console.log('AdaptWorkout: Rendering, loading:', loading, 'adapted count:', adapted.length);
+  
   if (loading) {
+    console.log('AdaptWorkout: Still loading, showing spinner');
     return (
       <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
-        <ActivityIndicator size="large" color="#d32f2f" />
+        <View style={styles.content}>
+          <ActivityIndicator size="large" color="#d32f2f" />
+          <Text style={{ color: '#fff', marginTop: 20, textAlign: 'center' }}>Loading exercises...</Text>
+        </View>
       </LinearGradient>
     );
   }
+
+  // Check if we have exercises to show
+  if (adapted.length === 0) {
+    console.log('AdaptWorkout: No exercises in adapted array');
+    return (
+      <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
+        <View style={styles.content}>
+          <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={22} color="#fff" />
+            <Text style={styles.backText}>Back</Text>
+          </Pressable>
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+            <Ionicons name="barbell-outline" size={64} color="#666" />
+            <Text style={styles.title}>No Exercises Found</Text>
+            <Text style={{ color: '#999', textAlign: 'center', marginTop: 12 }}>
+              There are no exercises in today's workout to adapt.
+            </Text>
+          </View>
+        </View>
+      </LinearGradient>
+    );
+  }
+
+  console.log('AdaptWorkout: Rendering main content with', adapted.length, 'exercises');
 
   return (
     <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
@@ -394,29 +494,19 @@ const AdaptWorkoutScreen: React.FC = () => {
           </Pressable>
         </View>
 
-        <Text style={styles.title}>Adapt Today’s Workout</Text>
+        <Text style={styles.title}>Adapt Today's Workout</Text>
 
-        {adapted.map((ex, i) => (
+        {adapted.map((ex: any, i: number) => {
+          console.log('AdaptWorkout: Rendering exercise', i, ex.name);
+          return (
           <View key={`${ex.id}-${i}`} style={styles.card}>
             <Text style={styles.cardTitle}>{ex.name}</Text>
 
-            <Pressable onPress={() => togglePlay(i)} style={styles.videoBox}>
-              {playingIndex === i ? (
-                <Video
-                  source={{ uri: ex.videoUri }}
-                  style={styles.video}
-                  resizeMode="cover"
-                  paused={false}
-                  controls
-                  onEnd={() => setPlayingIndex(null)}
-                />
-              ) : (
-                <View style={styles.playOverlay}>
-                  <Ionicons name="play-circle-outline" size={42} color="#fff" />
-                  <Text style={styles.playText}>Preview</Text>
-                </View>
-              )}
-            </Pressable>
+            {ex.videoUri && (
+              <View style={styles.videoBox}>
+                <VideoToggle uri={ex.videoUri} />
+              </View>
+            )}
 
             <Text style={styles.metaLine}>
               {ex.equipment ? `🏷 ${ex.equipment}` : '🏷 No Equipment'}
@@ -427,7 +517,8 @@ const AdaptWorkoutScreen: React.FC = () => {
               <Text style={styles.buttonText}>Swap Exercise</Text>
             </Pressable>
           </View>
-        ))}
+          );
+        })}
 
         <Pressable style={styles.saveButton} onPress={handleSave}>
           <Ionicons name="save" size={20} color="#fff" style={styles.icon} />
@@ -448,8 +539,8 @@ const AdaptWorkoutScreen: React.FC = () => {
 
                 <FlatList
                   data={(suggestions || []).slice(0, showAllReplacements ? undefined : 10)}
-                  keyExtractor={(item) => item.id}
-                  renderItem={({ item }) => (
+                  keyExtractor={(item: ExerciseCard) => item.id}
+                  renderItem={({ item }: { item: ExerciseCard }) => (
                     <Pressable style={styles.replacementItem} onPress={() => selectReplacement(item)}>
                       <View style={styles.rowAlignCenter}>
                         {item.thumbnailUri ? (
@@ -476,7 +567,7 @@ const AdaptWorkoutScreen: React.FC = () => {
 
                 {suggestions.length > 10 && (
                   <Pressable
-                    onPress={() => setShowAllReplacements((p) => !p)}
+                    onPress={() => setShowAllReplacements((p: boolean) => !p)}
                     style={styles.showMoreButton}
                   >
                     <Text style={styles.showMoreText}>

@@ -225,7 +225,7 @@ const DrawerNavigation: React.FC = () => (
 export default DrawerNavigation;
 
 const styles = StyleSheet.create({
-  flex1: { flex: 1 },
+  flex1: { flex: 1, backgroundColor: '#0f0f0f' },
   drawerRoot: { flex: 1, justifyContent: 'space-between' },
   drawerContainer: { flex: 1, backgroundColor: '#1c1c1c' },
   profileSection: { alignItems: 'center', marginBottom: 24, paddingTop: 48 },

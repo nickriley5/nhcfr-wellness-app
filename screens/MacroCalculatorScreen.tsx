@@ -75,6 +75,14 @@ const MacroCalculatorScreen: React.FC = () => {
     return { protein: 0.3, carbs: 0.4, fat: 0.3 }; // Standard
   }, [dietStyle, customMacros]);
 
+  console.log('MacroCalculator - User Profile:', {
+    exists: !!userProfile,
+    age: userProfile?.age,
+    sex: userProfile?.sex,
+    weight: userProfile?.weight,
+    height: userProfile?.height,
+  });
+
   if (
     !userProfile ||
     userProfile.age === undefined ||
@@ -82,11 +90,31 @@ const MacroCalculatorScreen: React.FC = () => {
     !userProfile.weight ||
     !userProfile.height
   ) {
+    const missing = [];
+    if (!userProfile) missing.push('entire profile');
+    else {
+      if (userProfile.age === undefined) missing.push('age');
+      if (!userProfile.sex) missing.push('sex');
+      if (!userProfile.weight) missing.push('weight');
+      if (!userProfile.height) missing.push('height');
+    }
+    
+    console.log('MacroCalculator - Missing fields:', missing);
+    
     return (
       <View style={styles.center}>
         <Text style={styles.warn}>
-          Please complete your profile first (age, sex, height, weight).
+          Please complete your profile first.
         </Text>
+        <Text style={styles.warnDetail}>
+          Missing: {missing.join(', ')}
+        </Text>
+        <Pressable 
+          style={[styles.backBtn, { marginTop: 16 }]} 
+          onPress={() => navigation.navigate('EditProfile')}
+        >
+          <Text style={styles.backTxt}>Complete Profile</Text>
+        </Pressable>
         <Pressable style={styles.backBtn} onPress={() => navigation.goBack()}>
           <Text style={styles.backTxt}>Back</Text>
         </Pressable>
@@ -105,8 +133,9 @@ const MacroCalculatorScreen: React.FC = () => {
   const macros = calculateMacros(tdee, goalType, rateMode === 'lbs' ? rate : 0, macroSplit);
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.h1}>Macro Calculator</Text>
+    <View style={styles.container}>
+      <ScrollView contentContainerStyle={{ paddingBottom: 40, backgroundColor: '#0f0f0f' }}>
+        <Text style={styles.h1}>Macro Calculator</Text>
 
       {/* Activity Slider */}
       <Text style={styles.label}>Activity Factor: {activity.toFixed(2)}</Text>
@@ -204,7 +233,7 @@ const MacroCalculatorScreen: React.FC = () => {
                 step={1}
                 value={customMacros[macro]}
                 onValueChange={(val: number) => {
-                  setCustomMacros((prev) => ({ ...prev, [macro]: val }));
+                  setCustomMacros((prev: { protein: number; carbs: number; fat: number }) => ({ ...prev, [macro]: val }));
                 }}
               />
             </View>
@@ -243,12 +272,13 @@ const MacroCalculatorScreen: React.FC = () => {
         <Text style={styles.saveTxt}>Save & Generate Plan</Text>
       </Pressable>
     </ScrollView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { padding: 20 },
-  center   : { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 },
+  container: { padding: 20, backgroundColor: '#0f0f0f', flex: 1 },
+  center   : { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20, backgroundColor: '#0f0f0f' },
   h1       : { fontSize: 24, fontWeight: '700', marginBottom: 24, color: '#fff' },
   label    : { color: '#fff', marginBottom: 8 },
   row      : { marginBottom: 20 },
@@ -259,6 +289,7 @@ const styles = StyleSheet.create({
   goalTxtActive : { color: '#fff', fontWeight: '700' },
 
   warn     : { color: '#f39c12', marginVertical: 8 },
+  warnDetail: { color: '#f39c12', fontSize: 14, marginTop: 4 },
   warnRapid: { color: '#f39c12' },
   error    : { color: '#e74c3c' },
   results  : { marginTop: 24, padding: 20, backgroundColor: '#222', borderRadius: 8 },

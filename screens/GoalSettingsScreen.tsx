@@ -174,7 +174,13 @@ const GoalSettingsScreen: React.FC<GoalSettingsProps> = ({
   // ✅ Main handler to save everything & generate plan (Standard only)
   const handleGenerateMealPlan = async () => {
     try {
-      if (!uid) {return;}
+      console.log('🔥 GoalSettings - Starting meal plan generation...');
+      console.log('🔥 UID:', uid);
+      
+      if (!uid) {
+        console.error('❌ No UID - user not authenticated!');
+        return;
+      }
 
       const convertedGoalType: 'maintain' | 'fatloss' | 'muscle' =
         goalType === 'fat_loss'
@@ -196,28 +202,39 @@ const GoalSettingsScreen: React.FC<GoalSettingsProps> = ({
         dietaryRestriction,
       };
 
+      console.log('🔥 Meal Plan Data to save:', mealPlanData);
+      console.log('🔥 Firestore path:', `users/${uid}/mealPlan/active`);
+
       // ✅ Save mealPlan into Firestore
+      console.log('🔥 Attempting to write meal plan to Firestore...');
       await setDoc(doc(db, 'users', uid, 'mealPlan', 'active'), mealPlanData);
+      console.log('✅ Meal plan saved successfully!');
 
       // ✅ Save profile updates
+      const profileUpdates = {
+        weight,
+        targetWeight,
+        weeklyRate: rate,
+        calorieTarget,
+        proteinGrams,
+        fatGrams,
+        carbGrams,
+        goalType: convertedGoalType,
+        dietaryPreference,
+        dietaryRestriction,
+        dietMethod, // keep for compatibility
+        activityLevel,
+      };
+      
+      console.log('🔥 Profile updates to save:', profileUpdates);
+      console.log('🔥 Attempting to write profile updates...');
+      
       await setDoc(
         doc(db, 'users', uid),
-        {
-          weight,
-          targetWeight,
-          weeklyRate: rate,
-          calorieTarget,
-          proteinGrams,
-          fatGrams,
-          carbGrams,
-          goalType: convertedGoalType,
-          dietaryPreference,
-          dietaryRestriction,
-          dietMethod, // keep for compatibility
-          activityLevel,
-        },
+        profileUpdates,
         { merge: true }
       );
+      console.log('✅ Profile updates saved successfully!');
 
       // ✅ If opened as a modal → call Dashboard callback
       if (onGenerated) {

@@ -12,10 +12,17 @@ const firebaseConfig = {
   appId: '1:825542667540:android:a661181a090a0a0ec5e601',
 };
 
+console.log('🔥 Initializing Firebase...');
 const app = initializeApp(firebaseConfig);
+console.log('✅ Firebase app initialized');
 
 const auth = getAuth(app);
+console.log('✅ Firebase Auth initialized');
+
 const db = getFirestore(app);
+console.log('✅ Firestore initialized');
+console.log('🔥 Firestore instance:', db);
+console.log('🔥 Project ID:', firebaseConfig.projectId);
 
 // ✅ Suppress Firestore debug/info/warning logs globally (after initialization)
 setLogLevel('error');

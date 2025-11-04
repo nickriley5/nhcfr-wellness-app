@@ -323,8 +323,12 @@ const [selectedMinute, setSelectedMinute] = useState(new Date().getMinutes());
   // ✅ NEW: Get auto-selected meal type for display
   const autoSelected = !selectedMealType ? getSuggestedMealType() : null;
 
+  // Don't show main modal if sub-modals are open
+  const showMainModal = visible && !showCalendar && !showTimePicker;
+
   return (
-    <Modal visible={visible} transparent animationType="slide">
+    <>
+    <Modal visible={showMainModal} transparent animationType="slide">
       <View style={styles.overlay}>
         <View style={styles.modalContainer}>
           <ScrollView showsVerticalScrollIndicator={false}>
@@ -446,6 +450,7 @@ const [selectedMinute, setSelectedMinute] = useState(new Date().getMinutes());
           </ScrollView>
         </View>
       </View>
+    </Modal>
 
       {/* Calendar Modal */}
       <Modal visible={showCalendar} transparent animationType="slide">
@@ -573,7 +578,7 @@ const [selectedMinute, setSelectedMinute] = useState(new Date().getMinutes());
           </View>
         </View>
       </Modal>
-    </Modal>
+    </>
   );
 };
 

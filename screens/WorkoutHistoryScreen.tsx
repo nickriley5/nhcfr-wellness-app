@@ -11,6 +11,7 @@ import {
   TextInput,
   TouchableOpacity,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../firebase';
 import {
   collection,
@@ -21,8 +22,9 @@ import {
 } from 'firebase/firestore';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import LinearGradient from 'react-native-linear-gradient';
-import { useNavigation, NavigationProp } from '@react-navigation/native';
+import { useNavigation, NavigationProp, useFocusEffect } from '@react-navigation/native';
 import { RootStackParamList } from '../App';
+import { resolveExerciseDetails } from '../utils/exerciseUtils';
 
 interface WorkoutLog {
   dayTitle: string;
@@ -43,32 +45,70 @@ const WorkoutHistoryScreen: React.FC = () => {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showLastThree, setShowLastThree] = useState<Record<string, boolean>>({});
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    const fetchLogs = async () => {
-      try {
-        const uid = auth.currentUser?.uid;
-        if (!uid) {return;}
+  // Helper function to get readable exercise name
+  const getExerciseName = (exerciseId: string): string => {
+    const exercise = resolveExerciseDetails(exerciseId);
+    if (exercise && exercise.name) {
+      return exercise.name;
+    }
+    // Fallback: format the ID if not found
+    return exerciseId.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  };
 
-        const logRef = collection(db, 'users', uid, 'workoutLogs');
-        const q = query(logRef, orderBy('completedAt', 'desc'));
-        const snapshot = await getDocs(q);
-
-        const logsData: { id: string; log: WorkoutLog }[] = [];
-        snapshot.forEach(doc => {
-          logsData.push({ id: doc.id, log: doc.data() as WorkoutLog });
-        });
-
-        setLogs(logsData);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
+  const fetchLogs = async (showLoadingSpinner = false) => {
+    try {
+      if (showLoadingSpinner) {
+        setLoading(true);
+      } else {
+        setRefreshing(true);
       }
-    };
+      
+      const uid = auth.currentUser?.uid;
+      if (!uid) {
+        console.log('❌ No user ID found');
+        if (showLoadingSpinner) setLoading(false);
+        else setRefreshing(false);
+        return;
+      }
 
-    fetchLogs();
+      console.log('📊 Fetching workout logs for user:', uid);
+      const logRef = collection(db, 'users', uid, 'workoutLogs');
+      const q = query(logRef, orderBy('completedAt', 'desc'));
+      const snapshot = await getDocs(q);
+
+      const logsData: { id: string; log: WorkoutLog }[] = [];
+      snapshot.forEach(doc => {
+        logsData.push({ id: doc.id, log: doc.data() as WorkoutLog });
+      });
+
+      console.log('📊 Loaded', logsData.length, 'workout logs');
+      setLogs(logsData);
+    } catch (err) {
+      console.error('❌ Error loading workout logs:', err);
+    } finally {
+      if (showLoadingSpinner) {
+        setLoading(false);
+      } else {
+        setRefreshing(false);
+      }
+    }
+  };
+
+  // Initial load only
+  useEffect(() => {
+    fetchLogs(true);
   }, []);
+
+  // Refetch when screen comes into focus (without showing loading spinner)
+  useFocusEffect(
+    React.useCallback(() => {
+      if (!loading) {
+        fetchLogs(false);
+      }
+    }, [loading])
+  );
 
   const toggleExpand = (id: string) => {
     setExpanded(prev => (prev === id ? null : id));
@@ -121,15 +161,18 @@ const WorkoutHistoryScreen: React.FC = () => {
 
   if (loading) {
     return (
-      <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
-        <ActivityIndicator size="large" color="#d32f2f" />
-      </LinearGradient>
+      <SafeAreaView style={styles.safeArea}>
+        <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
+          <ActivityIndicator size="large" color="#d32f2f" />
+        </LinearGradient>
+      </SafeAreaView>
     );
   }
 
   return (
-    <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <SafeAreaView style={styles.safeArea}>
+      <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
+        <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>Workout History</Text>
 
         <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
@@ -138,9 +181,9 @@ const WorkoutHistoryScreen: React.FC = () => {
 </Pressable>
 
 
-        <Pressable style={styles.prLink} onPress={() => navigation.navigate('PRTracker')}>
-          <Ionicons name="trophy-outline" size={18} color="#4fc3f7" />
-          <Text style={styles.prText}> View All-Time PRs</Text>
+        <Pressable style={styles.prButton} onPress={() => navigation.navigate('PRTracker')}>
+          <Ionicons name="trophy-outline" size={20} color="#fff" />
+          <Text style={styles.prButtonText}>View All-Time PRs</Text>
         </Pressable>
 
         <TextInput
@@ -151,7 +194,16 @@ const WorkoutHistoryScreen: React.FC = () => {
           onChangeText={setSearchQuery}
         />
 
-        {logs
+        {logs.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Ionicons name="barbell-outline" size={64} color="#666" />
+            <Text style={styles.emptyTitle}>No Workout History</Text>
+            <Text style={styles.emptyText}>
+              Complete workouts to see them here. Your workout history will track all your progress!
+            </Text>
+          </View>
+        ) : (
+          logs
           .filter(l =>
             l.log.exercises.some(ex =>
               ex.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -171,11 +223,16 @@ const WorkoutHistoryScreen: React.FC = () => {
               </TouchableOpacity>
               {expanded === id && (
                 <View style={styles.cardBody}>
-                  {log.exercises.map((ex, idx) => (
+                  {log.exercises.map((ex, idx) => {
+                    const exerciseName = getExerciseName(ex.name);
+                    return (
                     <View key={idx} style={styles.exerciseBlock}>
                       <View style={styles.exerciseRow}>
-                        <Text style={styles.exerciseName}>{ex.name}</Text>
-                        <Pressable onPress={() => navigation.navigate('ProgressChart', { exerciseName: ex.name })}>
+                        <Text style={styles.exerciseName}>{exerciseName}</Text>
+                        <Pressable onPress={() => {
+                          console.log('📊 Navigating to chart. ID:', ex.name, 'Name:', exerciseName);
+                          navigation.navigate('ProgressChart', { exerciseName: ex.name });
+                        }}>
                           <Ionicons name="stats-chart" size={16} color="#4fc3f7" />
                         </Pressable>
                       </View>
@@ -206,18 +263,25 @@ const WorkoutHistoryScreen: React.FC = () => {
                           );
                         })}
                     </View>
-                  ))}
+                    );
+                  })}
                   {renderSmartSummary(log)}
                 </View>
               )}
             </View>
-          ))}
+          ))
+        )}
       </ScrollView>
     </LinearGradient>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#0f0f0f',
+  },
   container: { flex: 1 },
   content: { padding: 20 },
   title: {
@@ -227,16 +291,21 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     textAlign: 'center',
   },
-  prLink: {
+  prButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 14,
     justifyContent: 'center',
+    backgroundColor: '#d32f2f',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    marginBottom: 20,
   },
-  prText: {
-    color: '#4fc3f7',
-    fontSize: 14,
-    marginLeft: 6,
+  prButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
   },
   searchInput: {
     backgroundColor: '#1e1e1e',
@@ -336,6 +405,24 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     marginLeft: 8,
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 60,
+    paddingHorizontal: 20,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#fff',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
+    lineHeight: 20,
   },
 });
 

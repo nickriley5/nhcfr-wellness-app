@@ -160,7 +160,14 @@ export default function TodaysWorkoutCard({
                 </Pressable>
                 <Pressable
                   style={[dashboardStyles.btn, dashboardStyles.btnSecondary]}
-                  onPress={() => navigation.navigate('AdaptWorkout')}
+                  onPress={() => {
+                    console.log('Adapt button pressed');
+                    try {
+                      navigation.navigate('AdaptWorkout' as never);
+                    } catch (error) {
+                      console.error('Navigation error:', error);
+                    }
+                  }}
                 >
                   <Text style={dashboardStyles.btnSecondaryText}>Adapt</Text>
                 </Pressable>

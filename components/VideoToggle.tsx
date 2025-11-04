@@ -38,6 +38,14 @@ const VideoToggle: React.FC<VideoToggleProps> = ({ uri }) => {
           source={{ uri: getYouTubeEmbedUrl(uri) }}
           allowsInlineMediaPlayback
           mediaPlaybackRequiresUserAction={false}
+          javaScriptEnabled={true}
+          domStorageEnabled={true}
+          startInLoadingState={true}
+          scalesPageToFit={true}
+          onError={(syntheticEvent) => {
+            const { nativeEvent } = syntheticEvent;
+            console.warn('WebView error: ', nativeEvent);
+          }}
         />
       );
     } else {
@@ -49,6 +57,9 @@ const VideoToggle: React.FC<VideoToggleProps> = ({ uri }) => {
           resizeMode="contain"
           paused={false}
           onEnd={() => setExpanded(false)}
+          onError={(error) => {
+            console.error('Video error:', error);
+          }}
         />
       );
     }

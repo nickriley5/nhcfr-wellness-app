@@ -59,6 +59,7 @@ const ExerciseLibraryScreen: React.FC = () => {
 
         // If Firebase has data, use it; otherwise fall back to local data
         const finalExercises = exercisesList.length > 0 ? exercisesList : localExercises;
+        console.log('📚 Exercise library loaded:', finalExercises.length, 'exercises');
         setAllExercises(finalExercises);
         setExercises(finalExercises);
 
@@ -163,7 +164,9 @@ const ExerciseLibraryScreen: React.FC = () => {
       categories.add(categorizeExercise(exercise.focusArea));
     });
     return ['All', ...Array.from(categories).sort()];
-  };  const toggleFavorite = async (exerciseId: string) => {
+  };
+
+  const toggleFavorite = async (exerciseId: string) => {
     const uid = auth.currentUser?.uid;
     if (!uid) {return;}
 
@@ -293,6 +296,7 @@ const ExerciseLibraryScreen: React.FC = () => {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
+    backgroundColor: '#0f0f0f',
   },
   container: {
     flex: 1,

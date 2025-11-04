@@ -23,12 +23,14 @@ import PRTrackerScreen from './screens/PRTrackerScreen';
 import AdaptWorkoutScreen from './screens/AdaptWorkoutScreen';
 import GoalsScreen from './screens/GoalsScreen';
 import EditProfileScreen from './screens/EditProfileScreen';
+import WeighInScreen from './screens/WeighInScreen';
 import ProgramListScreen from './screens/ProgramListScreen';
 import ProgramPreviewScreen from './screens/ProgramPreviewScreen';
 import MacroCalculatorScreen from './screens/MacroCalculatorScreen';
 import GoalSettingsScreen from './screens/GoalSettingsScreen';
 import MacroPlanOverviewScreen from './screens/MacroPlanOverviewScreen';
-
+import ExerciseLibraryScreen from './screens/ExerciseLibraryScreen';
+import ExerciseDetailScreen from './screens/ExerciseDetailScreen';
 
 // Auth context
 import { AuthProvider, useAuth } from './providers/AuthProvider';
@@ -153,8 +155,8 @@ const AppNavigator = () => {
     headerTintColor: '#fff',
   }}
 />
-    <Stack.Screen name="ExerciseLibrary" component={require('./screens/ExerciseLibraryScreen').default} />
-    <Stack.Screen name="ExerciseDetail" component={require('./screens/ExerciseDetailScreen').default} />
+    <Stack.Screen name="ExerciseLibrary" component={ExerciseLibraryScreen} />
+    <Stack.Screen name="ExerciseDetail" component={ExerciseDetailScreen} />
     <Stack.Screen name="WorkoutHistory" component={WorkoutHistoryScreen} />
     <Stack.Screen name="ProgressChart" component={ProgressChartScreen} />
     <Stack.Screen name="PRTracker" component={PRTrackerScreen} options={{ headerShown: false }} />
@@ -173,9 +175,19 @@ const AppNavigator = () => {
     <Stack.Screen name="ProgramList" component={ProgramListScreen} />
     <Stack.Screen name="ProgramPreview" component={ProgramPreviewScreen} />
     <Stack.Screen name="MealPlan" component={MealPlanScreen} />
-    <Stack.Screen name="MealGoalSettings" component={require('./screens/GoalSettingsScreen').default} />
+    <Stack.Screen name="MealGoalSettings" component={GoalSettingsScreen} />
     <Stack.Screen name="GoalSettings" component={GoalSettingsScreen} />
     <Stack.Screen name="MacroPlanOverview" component={MacroPlanOverviewScreen} />
+    <Stack.Screen 
+      name="WeighIn" 
+      component={WeighInScreen}
+      options={{
+        headerShown: true,
+        title: 'Log Weight',
+        headerStyle: { backgroundColor: '#121212' },
+        headerTintColor: '#fff',
+      }}
+    />
   </>
 ) : (
         <>

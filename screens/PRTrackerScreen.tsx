@@ -10,6 +10,7 @@ import {
   StatusBar,
   Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../firebase';
 import { collection, getDocs } from 'firebase/firestore';
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -107,8 +108,8 @@ const PRTrackerScreen: React.FC = () => {
   }, []);
 
   return (
-    <View style={styles.safeArea}>
-      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="light-content" />
       <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
         <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>All-Time PRs</Text>
@@ -133,17 +134,17 @@ const PRTrackerScreen: React.FC = () => {
         )}
       </ScrollView>
     </LinearGradient>
-    </View>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
+    backgroundColor: '#0f0f0f',
   },
   container: {
     flex: 1,
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 10 : 50,
   },
   content: { padding: 20 },
   title: {

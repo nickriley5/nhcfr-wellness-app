@@ -207,7 +207,7 @@ useFocusEffect(
       <View style={styles.header}>
         <Text style={styles.title}>Your Program</Text>
         <View style={styles.headerIcons}>
-          <Pressable onPress={() => setShowFullSchedule(true)} style={styles.iconButton}>
+          <Pressable onPress={() => navigation.navigate('WorkoutHistory')} style={styles.iconButton}>
             <Ionicons name="calendar-outline" size={24} color="#d32f2f" />
           </Pressable>
           <Pressable onPress={() => navigation.navigate('ExerciseLibrary')} style={styles.iconButton}>
@@ -344,10 +344,12 @@ useFocusEffect(
       <Modal visible={showFullSchedule} animationType="slide">
         <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
           <View style={styles.modalHeader}>
-            <Text style={styles.title}>Full Schedule</Text>
-            <Pressable onPress={() => setShowFullSchedule(false)}>
-              <Ionicons name="close-circle" size={28} color="#d32f2f" />
+            <Pressable onPress={() => setShowFullSchedule(false)} style={styles.backButton}>
+              <Ionicons name="arrow-back" size={24} color="#fff" />
+              <Text style={styles.backText}>Back</Text>
             </Pressable>
+            <Text style={styles.title}>Full Schedule</Text>
+            <View style={{ width: 80 }} />
           </View>
 
           <ScrollView contentContainerStyle={styles.content}>
@@ -494,6 +496,17 @@ dayTabText: {
     justifyContent: 'space-between',
     padding: 16,
     alignItems: 'center',
+    paddingTop: 50,
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: 80,
+  },
+  backText: {
+    color: '#fff',
+    fontSize: 16,
+    marginLeft: 8,
   },
   weekBlock: { marginBottom: 16 },
   weekHeader: { fontSize: 18, color: '#d32f2f', fontWeight: '600' },

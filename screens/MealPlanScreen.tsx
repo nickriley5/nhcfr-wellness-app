@@ -11,7 +11,7 @@ import {
   Pressable,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { auth, db } from '../firebase';
 import { doc, getDoc, collection, onSnapshot, updateDoc, deleteDoc } from 'firebase/firestore';
@@ -82,6 +82,7 @@ const MealPlanScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [mealPlan, setMealPlan] = useState<MealPlanData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [initialLoad, setInitialLoad] = useState(true); // Track if this is the first load
   const [initialDescribeQuery, setInitialDescribeQuery] = useState<string>('');
 
   const [selectedDate, _setSelectedDate] = useState(new Date());
@@ -104,6 +105,21 @@ const MealPlanScreen: React.FC = () => {
   const [reDescribeTargetMeal, setReDescribeTargetMeal] = useState<any | null>(null);
 
   const uid = auth.currentUser?.uid;
+
+  // ✅ Force reload data when screen comes into focus
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  
+  useFocusEffect(
+    React.useCallback(() => {
+      console.log('🔥 MealPlanScreen focused - triggering data reload');
+      setRefreshTrigger((prev: number) => prev + 1);
+      
+      // Only reset modal states - don't set them to false which can cause flickering
+      return () => {
+        console.log('🔥 MealPlanScreen unfocused - cleanup');
+      };
+    }, [])
+  );
 
   // ✅ DEEP DEBUG: camera permission
   const requestCameraPermission = async (): Promise<boolean> => {
@@ -148,30 +164,60 @@ const MealPlanScreen: React.FC = () => {
     }
   };
 
-  // ✅ Fetch meal plan
+  // ✅ Fetch meal plan (refreshes when screen focuses via refreshTrigger)
   useEffect(() => {
     const fetchMealPlan = async () => {
-      if (!uid) {return;}
+      console.log('🔥 MealPlanScreen - Fetching meal plan... (trigger:', refreshTrigger, ', initialLoad:', initialLoad, ')');
+      console.log('🔥 UID:', uid);
+      
+      if (!uid) {
+        console.error('❌ No UID - user not authenticated!');
+        setLoading(false);
+        setInitialLoad(false);
+        return;
+      }
+      
+      // Only show loading spinner on initial load, not on refetches
+      if (initialLoad) {
+        setLoading(true);
+      }
+      
       try {
         const ref = doc(db, `users/${uid}/mealPlan/active`);
+        console.log('🔥 Firestore path:', `users/${uid}/mealPlan/active`);
+        console.log('🔥 Attempting to read from Firestore...');
+        
         const snap = await getDoc(ref);
-        if (snap.exists()) {setMealPlan(snap.data() as MealPlanData);}
+        console.log('🔥 Firestore read complete. Exists:', snap.exists());
+        
+        if (snap.exists()) {
+          const data = snap.data() as MealPlanData;
+          console.log('✅ Meal plan data retrieved:', data);
+          setMealPlan(data);
+        } else {
+          console.log('⚠️ No meal plan document found at path');
+          setMealPlan(null);
+        }
       } catch (err) {
-        console.error('Failed to fetch meal plan:', err);
+        console.error('❌ Failed to fetch meal plan:', err);
       } finally {
-        setLoading(false);
+        console.log('🔥 Setting loading to false');
+        if (initialLoad) {
+          setLoading(false);
+          setInitialLoad(false);
+        }
       }
     };
     fetchMealPlan();
-  }, [uid]);
+  }, [uid, refreshTrigger, initialLoad]);
 
   // ✅ Live meals for selected date
   useEffect(() => {
     if (!uid) {return;}
     const dateKey = format(selectedDate, 'yyyy-MM-dd');
     const mealLogRef = collection(db, `users/${uid}/mealLogs/${dateKey}/meals`);
-    const unsub = onSnapshot(mealLogRef, (snapshot) => {
-      const meals: MealCardProps[] = snapshot.docs.map((mealDoc) => {
+    const unsub = onSnapshot(mealLogRef, (snapshot: any) => {
+      const meals: MealCardProps[] = snapshot.docs.map((mealDoc: any) => {
         const data = mealDoc.data();
         return {
           id: mealDoc.id,
@@ -580,6 +626,22 @@ const prettyTime = (time?: string | null) => {
 
   const totals = calculateMealTotals();
 
+  console.log('📊 MealPlanScreen render state:', {
+    loading,
+    hasMealPlan: !!mealPlan,
+    mealPlan,
+    loggedMealsCount: loggedMeals.length,
+    totals,
+  });
+  
+  console.log('🎭 Modal states:', {
+    showMealLoggingModal,
+    showDescribeModal,
+    showQuickFavoritesModal,
+    showCameraModal,
+    showEditModal,
+  });
+
   const goToMacroOverview = () => {
     if (!mealPlan) {return;}
     navigation.navigate('MacroPlanOverview', {
@@ -596,6 +658,7 @@ const prettyTime = (time?: string | null) => {
 
   // ✅ Loading
   if (loading) {
+    console.log('⏳ Rendering LOADING state');
     return (
       <LinearGradient colors={['#0f0f0f', '#1a1a1a']} style={styles.container}>
         <View style={styles.loadingContainer}>
@@ -606,6 +669,30 @@ const prettyTime = (time?: string | null) => {
     );
   }
 
+  // ✅ No Meal Plan - Show Empty State
+  if (!mealPlan) {
+    console.log('📭 Rendering EMPTY state (no meal plan)');
+    return (
+      <LinearGradient colors={['#0f0f0f', '#1a1a1a']} style={styles.container}>
+        <View style={styles.emptyStateContainer}>
+          <Text style={styles.emptyStateIcon}>🍽️</Text>
+          <Text style={styles.emptyStateTitle}>No Meal Plan Yet</Text>
+          <Text style={styles.emptyStateText}>
+            Create your personalized meal plan to start tracking your nutrition and reach your goals
+          </Text>
+          <Pressable
+            style={styles.createPlanButton}
+            onPress={() => navigation.navigate('GoalSettings')}
+          >
+            <Text style={styles.createPlanButtonText}>Create Meal Plan</Text>
+          </Pressable>
+        </View>
+      </LinearGradient>
+    );
+  }
+
+  console.log('🔥 MealPlanScreen RENDERING MAIN CONTENT');
+
   return (
     <LinearGradient colors={['#0f0f0f', '#1a1a1a']} style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -614,14 +701,14 @@ const prettyTime = (time?: string | null) => {
         {/* Compact Date Navigation */}
         <View style={styles.dateNavContainer}>
           <Pressable
-            onPress={() =>
-              _setSelectedDate((prev) => {
+            onPress={() => {
+              _setSelectedDate((prev: Date) => {
                 const newDate = new Date(prev);
                 newDate.setDate(newDate.getDate() - 1);
                 return newDate;
               })
-            }
-            style={({ pressed }) => [styles.arrowButton, pressed && { opacity: 0.6 }]}
+            }}
+            style={({ pressed }: { pressed: boolean }) => [styles.arrowButton, pressed && { opacity: 0.6 }]}
           >
             <Text style={styles.arrowText}>←</Text>
           </Pressable>
@@ -630,14 +717,14 @@ const prettyTime = (time?: string | null) => {
 
           <Pressable
             onPress={() =>
-              _setSelectedDate((prev) => {
+              _setSelectedDate((prev: Date) => {
                 const newDate = new Date(prev);
                 newDate.setDate(newDate.getDate() + 1);
                 return newDate;
               })
             }
             disabled={format(selectedDate, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd')}
-            style={({ pressed }) => [
+            style={({ pressed }: { pressed: boolean }) => [
               styles.arrowButton,
               format(selectedDate, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd') && { opacity: 0.3 },
               pressed && { opacity: 0.6 },
@@ -647,65 +734,56 @@ const prettyTime = (time?: string | null) => {
           </Pressable>
         </View>
 
-        {!mealPlan ? (
+        {/* Macro Cards */}
+        <View style={styles.macroRowTop} key="macro-cards-container">
+          <MacroCard key="macro-calories" label="Calories" logged={totals.calories} target={mealPlan.calorieTarget} unit="kcal" variant="calories" />
+          <MacroCard key="macro-protein" label="Protein" logged={totals.protein} target={mealPlan.proteinGrams} unit="g" variant="protein" />
+          <MacroCard key="macro-carbs" label="Carbs" logged={totals.carbs} target={mealPlan.carbGrams} unit="g" variant="carb" />
+          <MacroCard key="macro-fat" label="Fat" logged={totals.fat} target={mealPlan.fatGrams} unit="g" variant="fat" />
+        </View>
+
+        <DashboardButton text="📊 View Full Plan" variant="blue" onPress={goToMacroOverview} />
+
+        <Text style={styles.subheading}>Today's Meals</Text>
+
+        {loggedMeals.length === 0 ? (
           <View style={styles.emptyMealsContainer}>
-            <Text style={styles.emptyMealsEmoji}>📊</Text>
-            <Text style={styles.emptyMealsText}>No meal plan found</Text>
-            <Text style={styles.emptyMealsSubtext}>Generate your personalized nutrition plan to get started</Text>
-            <DashboardButton text="Generate Meal Plan" variant="blue" onPress={() => navigation.navigate('GoalSettings')} />
+            <Text style={styles.emptyMealsEmoji}>🍽️</Text>
+            <Text style={styles.emptyMealsText}>No meals logged yet.</Text>
+            <Text style={styles.emptyMealsSubtext}>Start tracking your nutrition to reach your goals</Text>
+            <DashboardButton text="Log Your First Meal" variant="green" onPress={() => setShowMealLoggingModal(true)} />
           </View>
         ) : (
-          <>
-            {/* Macro Cards */}
-            <View style={styles.macroRowTop}>
-              <MacroCard label="Calories" logged={totals.calories} target={mealPlan.calorieTarget} unit="kcal" variant="calories" />
-              <MacroCard label="Protein" logged={totals.protein} target={mealPlan.proteinGrams} unit="g" variant="protein" />
-              <MacroCard label="Carbs" logged={totals.carbs} target={mealPlan.carbGrams} unit="g" variant="carb" />
-              <MacroCard label="Fat" logged={totals.fat} target={mealPlan.fatGrams} unit="g" variant="fat" />
+          loggedMeals.map((meal: MealCardProps) => (
+            <View key={meal.id} style={styles.mealBlock}>
+              <Text style={styles.mealMeta}>
+                {meal.mealEmoji || '�🍽️'} {prettyMealLabel(meal.mealType)}
+                {meal.plannedTime ? ` • ${prettyTime(meal.plannedTime)}` : ''}
+              </Text>
+
+              <MealCard {...meal} onEdit={handleEditMeal} />
             </View>
-
-            <DashboardButton text="📊 View Full Plan" variant="blue" onPress={goToMacroOverview} />
-
-            <Text style={styles.subheading}>Today's Meals</Text>
-
-            {loggedMeals.length === 0 ? (
-  <View style={styles.emptyMealsContainer}>
-    <Text style={styles.emptyMealsEmoji}>🍽️</Text>
-    <Text style={styles.emptyMealsText}>No meals logged yet.</Text>
-    <Text style={styles.emptyMealsSubtext}>Start tracking your nutrition to reach your goals</Text>
-    <DashboardButton text="Log Your First Meal" variant="green" onPress={() => setShowMealLoggingModal(true)} />
-  </View>
-) : (
-  loggedMeals.map((meal) => (
-    <View key={meal.id} style={styles.mealBlock}>
-      <Text style={styles.mealMeta}>
-        {meal.mealEmoji || '🍽️'} {prettyMealLabel(meal.mealType)}
-        {meal.plannedTime ? ` • ${prettyTime(meal.plannedTime)}` : ''}
-      </Text>
-
-      <MealCard {...meal} onEdit={handleEditMeal} />
-    </View>
-  ))
-)}
-
-          </>
+          ))
         )}
       </ScrollView>
 
       {/* ✅ Log Food Button */}
       <LogFoodButton onPress={() => setShowMealLoggingModal(true)} />
 
-      {/* ✅ MODALS */}
-      <MealLoggingModal
-        visible={showMealLoggingModal}
-        onClose={() => setShowMealLoggingModal(false)}
-        onOpenDescribeModal={handleOpenDescribeModal}
-        onOpenQuickAdd={handleOpenQuickAdd}
-        onOpenCamera={handleOpenCamera}
-      />
+      {/* ✅ MODALS - Only render one at a time to prevent crashes */}
+      {showMealLoggingModal && !showDescribeModal && !showQuickFavoritesModal && !showCameraModal && !showEditModal && (
+        <MealLoggingModal
+          visible={true}
+          onClose={() => setShowMealLoggingModal(false)}
+          onOpenDescribeModal={handleOpenDescribeModal}
+          onOpenQuickAdd={handleOpenQuickAdd}
+          onOpenCamera={handleOpenCamera}
+        />
+      )}
 
+      {showDescribeModal && (
       <DescribeMealModal
-  visible={showDescribeModal}
+  visible={true}
   onClose={() => {
   setShowDescribeModal(false);
   setPendingPhotoUri(null);
@@ -722,10 +800,11 @@ const prettyTime = (time?: string | null) => {
   existingItems={Array.isArray(reDescribeTargetMeal?.foodItems) ? reDescribeTargetMeal.foodItems.map(storageToParsed) : []}  // ✅ pass parsed shape
   onApplyRedescribe={handleApplyRedescribe}
 />
+      )}
 
-
+      {showQuickFavoritesModal && (
       <QuickFavoritesModal
-        visible={showQuickFavoritesModal}
+        visible={true}
         onClose={() => {
           setShowQuickFavoritesModal(false);
           setCurrentMealContext(null);
@@ -733,9 +812,11 @@ const prettyTime = (time?: string | null) => {
         onFoodLogged={handleFoodLogged}
         mealContext={currentMealContext}
       />
+      )}
 
+      {showCameraModal && (
       <CameraModal
-        visible={showCameraModal}
+        visible={true}
         onClose={() => {
           setShowCameraModal(false);
           setSelectedImageUri(null);
@@ -744,9 +825,11 @@ const prettyTime = (time?: string | null) => {
         imageUri={selectedImageUri}
         onMealLogged={handleCameraModalComplete}
       />
+      )}
 
+      {showEditModal && (
       <MealEditModal
-        visible={showEditModal}
+        visible={true}
         meal={editingMeal}
         dateKey={format(selectedDate, 'yyyy-MM-dd')}
         onClose={() => {
@@ -755,7 +838,7 @@ const prettyTime = (time?: string | null) => {
         }}
         onSave={handleSaveEditedMeal}
         onDelete={handleDeleteMeal}
-        onReDescribe={(meal) => {
+        onReDescribe={(meal: any) => {
           setReDescribeTargetMeal(meal);
           setShowEditModal(false);
           setInitialDescribeQuery(meal.originalDescription || '');
@@ -770,6 +853,7 @@ const prettyTime = (time?: string | null) => {
           }, 250);
         }}
       />
+      )}
     </LinearGradient>
   );
 };
@@ -794,6 +878,45 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 16,
     textAlign: 'center',
+  },
+
+  // ✅ Empty State (No Meal Plan)
+  emptyStateContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+  },
+  emptyStateIcon: {
+    fontSize: 80,
+    marginBottom: 24,
+  },
+  emptyStateTitle: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#fff',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  emptyStateText: {
+    fontSize: 16,
+    color: '#999',
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 32,
+  },
+  createPlanButton: {
+    backgroundColor: '#d32f2f',
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+    borderRadius: 12,
+    minWidth: 200,
+    alignItems: 'center',
+  },
+  createPlanButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
   },
 
   // ✅ Empty Meals State

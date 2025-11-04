@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { auth, db } from '../firebase';
-import { doc, updateDoc, getDoc } from 'firebase/firestore';
+import { doc, updateDoc, getDoc, setDoc } from 'firebase/firestore';
 
 const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -65,7 +65,7 @@ const EnvironmentCalendarModal = ({
   }, [visible]);
 
   const handleSelect = (day: string, value: string) => {
-    setSelections((prev) => ({ ...prev, [day]: value }));
+    setSelections((prev: { [key: string]: string }) => ({ ...prev, [day]: value }));
   };
 
   const handleSave = async () => {
@@ -80,13 +80,28 @@ const EnvironmentCalendarModal = ({
     }
 
     const uid = auth.currentUser?.uid;
-    if (!uid) {return;}
+    if (!uid) {
+      Alert.alert('Error', 'User not authenticated');
+      return;
+    }
 
-    await updateDoc(doc(db, 'users', uid), {
-      'schedule.environmentMap': selections,
-    });
+    try {
+      await setDoc(
+        doc(db, 'users', uid),
+        {
+          schedule: {
+            environmentMap: selections,
+          },
+        },
+        { merge: true }
+      );
 
-    onClose();
+      Alert.alert('Success', 'Weekly schedule saved!');
+      onClose();
+    } catch (error) {
+      console.error('Error saving schedule:', error);
+      Alert.alert('Error', 'Failed to save schedule. Please try again.');
+    }
   };
 
   return (

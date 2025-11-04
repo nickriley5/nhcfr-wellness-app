@@ -51,10 +51,11 @@ const ProfileCompletionBanner = ({ percent, pulseAnim, onPress }: Props) => {
 
 const styles = StyleSheet.create({
   outlinedButton: {
-    width: '100%',
     paddingVertical: 14,
+    paddingHorizontal: 20,
     alignItems: 'center',
     marginBottom: 16,
+    marginHorizontal: 16,
     borderWidth: 2,
     borderColor: '#4fc3f7',
     borderRadius: 10,

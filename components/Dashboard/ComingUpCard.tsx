@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
-import LinearGradient from 'react-native-linear-gradient';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { CompositeNavigationProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
@@ -122,41 +121,36 @@ export const ComingUpCard: React.FC<ComingUpCardProps> = ({
 
   return (
     <View style={dashboardStyles.horizontalCard}>
-      <LinearGradient
-        colors={['rgba(51, 214, 166, 0.1)', 'rgba(76, 195, 247, 0.05)']}
-        style={dashboardStyles.comingUpGradient}
-      >
-        <View style={dashboardStyles.comingUpHeader}>
-          <View style={dashboardStyles.comingUpHeaderLeft}>
-            <View style={dashboardStyles.comingUpTitleRow}>
-              <Ionicons name="calendar-outline" size={20} color="#33d6a6" />
-              <Text style={dashboardStyles.tileHeaderClean}>Coming Up</Text>
-            </View>
-            <Text style={dashboardStyles.comingUpSubtitle}>
-              Tomorrow's session
-            </Text>
+      <View style={dashboardStyles.comingUpHeader}>
+        <View style={dashboardStyles.comingUpHeaderLeft}>
+          <View style={dashboardStyles.comingUpTitleRow}>
+            <Ionicons name="calendar-outline" size={20} color="#33d6a6" />
+            <Text style={dashboardStyles.tileHeaderClean}>Coming Up</Text>
           </View>
-          <View style={dashboardStyles.dayIndicator}>
-            <Text style={dashboardStyles.dayIndicatorText}>
-              {new Date(Date.now() + 24 * 60 * 60 * 1000).toLocaleDateString('en-US', { weekday: 'short' })}
-            </Text>
-          </View>
+          <Text style={dashboardStyles.comingUpSubtitle}>
+            Tomorrow's session
+          </Text>
         </View>
-
-        {getTomorrowPreview()}
-
-        <View style={dashboardStyles.comingUpActions}>
-          <Pressable
-            style={[dashboardStyles.btn, dashboardStyles.btnPreviewSecondary]}
-            onPress={() => setShowPreviewModal(true)}
-          >
-            <Ionicons name="eye-outline" size={16} color="#33d6a6" />
-            <Text style={dashboardStyles.btnPreviewSecondaryText}>
-              {tomorrowInfo?.isRestDay ? 'Rest Day Tips' : 'Preview'}
-            </Text>
-          </Pressable>
+        <View style={dashboardStyles.dayIndicator}>
+          <Text style={dashboardStyles.dayIndicatorText}>
+            {new Date(Date.now() + 24 * 60 * 60 * 1000).toLocaleDateString('en-US', { weekday: 'short' })}
+          </Text>
         </View>
-      </LinearGradient>
+      </View>
+
+      {getTomorrowPreview()}
+
+      <View style={dashboardStyles.comingUpActions}>
+        <Pressable
+          style={[dashboardStyles.btn, dashboardStyles.btnPreviewSecondary]}
+          onPress={() => setShowPreviewModal(true)}
+        >
+          <Ionicons name="eye-outline" size={16} color="#33d6a6" />
+          <Text style={dashboardStyles.btnPreviewSecondaryText}>
+            {tomorrowInfo?.isRestDay ? 'Rest Day Tips' : 'Preview'}
+          </Text>
+        </Pressable>
+      </View>
 
       <TomorrowPreviewModal
         visible={showPreviewModal}

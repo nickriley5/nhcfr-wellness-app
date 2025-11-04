@@ -128,7 +128,7 @@ export default function DashboardScreen() {
 
   useFocusEffect(
     React.useCallback(() => {
-      setBump((b) => b + 1);
+      setBump((b: number) => b + 1);
       return () => {};
     }, [])
   );
@@ -455,77 +455,89 @@ export default function DashboardScreen() {
 
             {/* Weight Tracking */}
             <WeightTrackingTile
-              onWeightUpdated={() => setBump((b) => b + 1)}
+              onWeightUpdated={() => setBump((b: number) => b + 1)}
             />
           </ScrollView>
         </View>
       </ScrollView>
 
-      {/* ✅ ALL MODALS - exactly as in original */}
-      <MealLoggingModal
-        visible={showMealLoggingModal}
-        onClose={() => setShowMealLoggingModal(false)}
-        onOpenDescribeModal={handleOpenDescribeModal}
-        onOpenQuickAdd={handleOpenQuickAdd}
-        onOpenCamera={handlePickPhoto}
-      />
+      {/* ✅ CONDITIONALLY RENDER MODALS - only mount when visible to prevent view recycling crashes */}
+      {showMealLoggingModal && (
+        <MealLoggingModal
+          visible={showMealLoggingModal}
+          onClose={() => setShowMealLoggingModal(false)}
+          onOpenDescribeModal={handleOpenDescribeModal}
+          onOpenQuickAdd={handleOpenQuickAdd}
+          onOpenCamera={handlePickPhoto}
+        />
+      )}
 
-      <DescribeMealModal
-        visible={showDescribeModal}
-        onClose={() => {
-          setShowDescribeModal(false);
-          setPendingPhotoUri(null);
-          setCurrentMealContext(null);
-          setInitialDescribeQuery('');
-        }}
-        onMealLogged={handleMealLogged}
-        pendingPhotoUri={pendingPhotoUri}
-        mealContext={currentMealContext}
-        initialQuery={initialDescribeQuery}
-        reDescribeMode={false}
-        existingItems={[]}
-        onApplyRedescribe={() => {}}
-      />
+      {showDescribeModal && (
+        <DescribeMealModal
+          visible={showDescribeModal}
+          onClose={() => {
+            setShowDescribeModal(false);
+            setPendingPhotoUri(null);
+            setCurrentMealContext(null);
+            setInitialDescribeQuery('');
+          }}
+          onMealLogged={handleMealLogged}
+          pendingPhotoUri={pendingPhotoUri}
+          mealContext={currentMealContext}
+          initialQuery={initialDescribeQuery}
+          reDescribeMode={false}
+          existingItems={[]}
+          onApplyRedescribe={() => {}}
+        />
+      )}
 
-      <QuickFavoritesModal
-        visible={showQuickFavoritesModal}
-        onClose={() => {
-          setShowQuickFavoritesModal(false);
-          setCurrentMealContext(null);
-        }}
-        onFoodLogged={handleFoodLogged}
-        mealContext={currentMealContext}
-      />
+      {showQuickFavoritesModal && (
+        <QuickFavoritesModal
+          visible={showQuickFavoritesModal}
+          onClose={() => {
+            setShowQuickFavoritesModal(false);
+            setCurrentMealContext(null);
+          }}
+          onFoodLogged={handleFoodLogged}
+          mealContext={currentMealContext}
+        />
+      )}
 
-      <CameraModal
-        visible={showCameraModal}
-        onClose={() => {
-          setShowCameraModal(false);
-          setSelectedImageUri(null);
-          setCurrentMealContext(null);
-        }}
-        imageUri={selectedImageUri}
-        onMealLogged={handleCameraModalComplete}
-      />
+      {showCameraModal && (
+        <CameraModal
+          visible={showCameraModal}
+          onClose={() => {
+            setShowCameraModal(false);
+            setSelectedImageUri(null);
+            setCurrentMealContext(null);
+          }}
+          imageUri={selectedImageUri}
+          onMealLogged={handleCameraModalComplete}
+        />
+      )}
 
       {/* Environment Calendar Modal */}
-      <EnvironmentCalendarModal
-        visible={showEnvironmentCalendar}
-        onClose={() => {
-          setShowEnvironmentCalendar(false);
-          // Refresh the dashboard data to pick up schedule changes
-          setBump((b) => b + 1);
-        }}
-      />
+      {showEnvironmentCalendar && (
+        <EnvironmentCalendarModal
+          visible={showEnvironmentCalendar}
+          onClose={() => {
+            setShowEnvironmentCalendar(false);
+            // Refresh the dashboard data to pick up schedule changes
+            setBump((b: number) => b + 1);
+          }}
+        />
+      )}
 
       {/* Hydration Settings Modal */}
-      <HydrationSettingsModal
-        visible={showHydrationGoalModal}
-        onClose={() => setShowHydrationGoalModal(false)}
-        hydrationToday={hydrationToday}
-        updateHydrationGoal={updateHydrationGoal}
-        updateContainerSize={updateContainerSize}
-      />
+      {showHydrationGoalModal && (
+        <HydrationSettingsModal
+          visible={showHydrationGoalModal}
+          onClose={() => setShowHydrationGoalModal(false)}
+          hydrationToday={hydrationToday}
+          updateHydrationGoal={updateHydrationGoal}
+          updateContainerSize={updateContainerSize}
+        />
+      )}
     </LinearGradient>
   );
 }
