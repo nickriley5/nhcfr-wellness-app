@@ -36,6 +36,7 @@ import CameraModal from '../components/mealplan/CameraModal';
 import QuickFavoritesModal from '../components/mealplan/QuickFavorites';
 import MealEditModal from '../components/mealplan/MealEditModal';
 import { calculateItemMacros, sumMacros, validateMealAccuracy } from '../utils/precisionMath';
+import AIMealPlanner from '../components/AIMealPlanner';
 
 /* -------------------------- TYPES -------------------------- */
 interface MealPlanData {
@@ -94,6 +95,7 @@ const MealPlanScreen: React.FC = () => {
   const [showQuickFavoritesModal, setShowQuickFavoritesModal] = useState(false);
   const [showCameraModal, setShowCameraModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showAIMealPlanner, setShowAIMealPlanner] = useState(false);
 
   // ✅ CAMERA & PHOTO STATES
   const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
@@ -786,18 +788,26 @@ const prettyTime = (time?: string | null) => {
       </ScrollView>
 
       {/* ✅ Log Food Button */}
-      <LogFoodButton onPress={() => {
-        console.log('🍽️ Log Food button pressed');
-        console.log('🍽️ Current modal states:', {
-          showMealLoggingModal,
-          showDescribeModal,
-          showQuickFavoritesModal,
-          showCameraModal,
-          showEditModal
-        });
-        setShowMealLoggingModal(true);
-        console.log('🍽️ Set showMealLoggingModal to true');
-      }} />
+      <View style={styles.floatingButtonContainer}>
+        <Pressable
+          style={styles.aiMealButton}
+          onPress={() => setShowAIMealPlanner(true)}
+        >
+          <Ionicons name="sparkles" size={24} color="#fff" />
+        </Pressable>
+        <LogFoodButton onPress={() => {
+          console.log('🍽️ Log Food button pressed');
+          console.log('🍽️ Current modal states:', {
+            showMealLoggingModal,
+            showDescribeModal,
+            showQuickFavoritesModal,
+            showCameraModal,
+            showEditModal
+          });
+          setShowMealLoggingModal(true);
+          console.log('🍽️ Set showMealLoggingModal to true');
+        }} />
+      </View>
 
       {/* ✅ MODALS - Only render one at a time to prevent crashes */}
       {(() => {
@@ -897,6 +907,13 @@ const prettyTime = (time?: string | null) => {
         }}
       />
       )}
+
+      {/* AI MEAL PLANNER MODAL */}
+      <AIMealPlanner
+        visible={showAIMealPlanner}
+        onClose={() => setShowAIMealPlanner(false)}
+        mealType="lunch"
+      />
     </LinearGradient>
   );
 };
@@ -1016,5 +1033,28 @@ mealMeta: {
   marginLeft: 4,
   marginBottom: 6,
 },
+
+  // AI Meal Button
+  floatingButtonContainer: {
+    position: 'absolute',
+    bottom: 20,
+    right: 20,
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'center',
+  },
+  aiMealButton: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#6a11cb',
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 8,
+    shadowColor: '#6a11cb',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+  },
 
 });

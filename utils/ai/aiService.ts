@@ -4,22 +4,23 @@
  */
 
 import axios from 'axios';
+import Config from 'react-native-config';
 
 // ============= CONFIGURATION =============
-// Add your API keys here or use environment variables
+// API keys are loaded from .env file via react-native-config
 const AI_CONFIG = {
   openai: {
-    apiKey: process.env.OPENAI_API_KEY || '',
+    apiKey: Config.OPENAI_API_KEY || '',
     baseURL: 'https://api.openai.com/v1',
     model: 'gpt-4-turbo-preview',
   },
   anthropic: {
-    apiKey: process.env.ANTHROPIC_API_KEY || '',
+    apiKey: Config.ANTHROPIC_API_KEY || '',
     baseURL: 'https://api.anthropic.com/v1',
     model: 'claude-3-5-sonnet-20241022',
   },
   gemini: {
-    apiKey: process.env.GEMINI_API_KEY || '',
+    apiKey: Config.GEMINI_API_KEY || '',
     baseURL: 'https://generativelanguage.googleapis.com/v1beta',
     model: 'gemini-1.5-pro',
   },
@@ -74,7 +75,7 @@ export interface FormAnalysis {
  */
 export async function sendAIMessage(
   messages: AIMessage[],
-  provider: 'openai' | 'anthropic' | 'gemini' = 'openai',
+  provider: 'openai' | 'anthropic' | 'gemini' = 'gemini',
   options?: {
     temperature?: number;
     maxTokens?: number;

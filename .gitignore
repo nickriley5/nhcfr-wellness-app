@@ -76,3 +76,7 @@ yarn-error.log
 
 # Firebase service account credentials
 serviceAccountKey.json
+
+# Environment variables (contains API keys)
+.env
+.env.local

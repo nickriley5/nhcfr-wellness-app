@@ -375,6 +375,30 @@ export default function DashboardScreen() {
           onPress={() => navigation.navigate('Profile')}
         />
 
+        {/* AI Coach Section */}
+        <Pressable
+          style={dashboardStyles.aiCoachCard}
+          onPress={() => navigation.navigate('AIChat')}
+        >
+          <LinearGradient
+            colors={['#6a11cb', '#2575fc']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={dashboardStyles.aiCoachGradient}
+          >
+            <View style={dashboardStyles.aiCoachContent}>
+              <Ionicons name="chatbubbles" size={32} color="#fff" />
+              <View style={dashboardStyles.aiCoachText}>
+                <Text style={dashboardStyles.aiCoachTitle}>AI Fitness Coach</Text>
+                <Text style={dashboardStyles.aiCoachSubtitle}>
+                  Get personalized workout & nutrition advice
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={24} color="#fff" />
+            </View>
+          </LinearGradient>
+        </Pressable>
+
         {/* SECTION 1: Wellness & Readiness - COMMENTED OUT FOR PHASE 2 WEARABLE INTEGRATION */}
         {/*
         <View style={dashboardStyles.sectionContainer}>

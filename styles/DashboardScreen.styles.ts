@@ -973,4 +973,40 @@ export const dashboardStyles = StyleSheet.create({
     gap: 8,
     marginBottom: 8,
   },
+
+  // AI Coach Card Styles
+  aiCoachCard: {
+    marginHorizontal: 16,
+    marginBottom: 24,
+    borderRadius: 16,
+    overflow: 'hidden',
+    elevation: 8,
+    shadowColor: '#6a11cb',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  aiCoachGradient: {
+    padding: 20,
+    borderRadius: 16,
+  },
+  aiCoachContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  aiCoachText: {
+    flex: 1,
+  },
+  aiCoachTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#fff',
+    marginBottom: 4,
+  },
+  aiCoachSubtitle: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.9)',
+    fontWeight: '500',
+  },
 });

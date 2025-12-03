@@ -19,6 +19,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import type { ProgramDay } from '../types/Exercise';
 // import { regenerateActiveProgram } from '../utils/programService';
 import { resolveExerciseDetails } from '../utils/exerciseUtils';
+import AIWorkoutAssistant from '../components/AIWorkoutAssistant';
 
 
 interface StoredState {
@@ -78,6 +79,7 @@ const WorkoutScreen: React.FC = () => {
   const [days, setDays] = useState<ProgramDay[]>([]);
   const [weeksArr, setWeeksArr] = useState<ProgramDay[][]>([]);
   const [selectedWeekIdx, setSelectedWeekIdx] = useState(0);
+  const [showAIAssistant, setShowAIAssistant] = useState(false);
   const [selectedDayIdx, setSelectedDayIdx] = useState(0);
   const [showFullSchedule, setShowFullSchedule] = useState(false);
 
@@ -207,6 +209,9 @@ useFocusEffect(
       <View style={styles.header}>
         <Text style={styles.title}>Your Program</Text>
         <View style={styles.headerIcons}>
+          <Pressable onPress={() => setShowAIAssistant(true)} style={styles.iconButton}>
+            <Ionicons name="sparkles" size={24} color="#6a11cb" />
+          </Pressable>
           <Pressable onPress={() => navigation.navigate('WorkoutHistory')} style={styles.iconButton}>
             <Ionicons name="calendar-outline" size={24} color="#d32f2f" />
           </Pressable>
@@ -366,6 +371,12 @@ useFocusEffect(
           </ScrollView>
         </LinearGradient>
       </Modal>
+
+      {/* AI WORKOUT ASSISTANT MODAL */}
+      <AIWorkoutAssistant
+        visible={showAIAssistant}
+        onClose={() => setShowAIAssistant(false)}
+      />
     </LinearGradient>
   );
 };

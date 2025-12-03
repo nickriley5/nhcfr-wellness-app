@@ -31,6 +31,7 @@ import GoalSettingsScreen from './screens/GoalSettingsScreen';
 import MacroPlanOverviewScreen from './screens/MacroPlanOverviewScreen';
 import ExerciseLibraryScreen from './screens/ExerciseLibraryScreen';
 import ExerciseDetailScreen from './screens/ExerciseDetailScreen';
+import AIChatScreen from './screens/AIChatScreen';
 
 // Auth context
 import { AuthProvider, useAuth } from './providers/AuthProvider';
@@ -100,6 +101,7 @@ export type RootStackParamList = {
   goalType: 'maintain' | 'fatloss' | 'muscle';
   name: string;
 };
+  AIChat: undefined;
 };
 
 
@@ -184,6 +186,16 @@ const AppNavigator = () => {
       options={{
         headerShown: true,
         title: 'Log Weight',
+        headerStyle: { backgroundColor: '#121212' },
+        headerTintColor: '#fff',
+      }}
+    />
+    <Stack.Screen 
+      name="AIChat" 
+      component={AIChatScreen}
+      options={{
+        headerShown: true,
+        title: 'AI Coach',
         headerStyle: { backgroundColor: '#121212' },
         headerTintColor: '#fff',
       }}

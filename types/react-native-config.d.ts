@@ -6,6 +6,10 @@ declare module 'react-native-config' {
     FIREBASE_STORAGE_BUCKET?: string;
     FIREBASE_MESSAGING_SENDER_ID?: string;
     FIREBASE_APP_ID?: string;
+    // AI API Keys
+    GEMINI_API_KEY?: string;
+    OPENAI_API_KEY?: string;
+    ANTHROPIC_API_KEY?: string;
   }
 
   export const Config: NativeConfig;
