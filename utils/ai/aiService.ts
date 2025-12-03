@@ -7,20 +7,36 @@ import axios from 'axios';
 import Config from 'react-native-config';
 
 // ============= CONFIGURATION =============
-// API keys are loaded from .env file via react-native-config
+// API keys - Fallback to hardcoded for development if Config is null
+// TODO: For production, use react-native-config properly
+const getConfig = () => {
+  // If Config is null or undefined, use hardcoded values
+  if (!Config || typeof Config.GEMINI_API_KEY === 'undefined') {
+    console.warn('⚠️ react-native-config not loaded, using hardcoded API keys');
+    return {
+      GEMINI_API_KEY: 'AIzaSyBPEC65Rlz3MeBC8BcKX-CvX5BkPP3hXwY',
+      OPENAI_API_KEY: '',
+      ANTHROPIC_API_KEY: '',
+    };
+  }
+  return Config;
+};
+
+const config = getConfig();
+
 const AI_CONFIG = {
   openai: {
-    apiKey: Config.OPENAI_API_KEY || '',
+    apiKey: config.OPENAI_API_KEY || '',
     baseURL: 'https://api.openai.com/v1',
     model: 'gpt-4-turbo-preview',
   },
   anthropic: {
-    apiKey: Config.ANTHROPIC_API_KEY || '',
+    apiKey: config.ANTHROPIC_API_KEY || '',
     baseURL: 'https://api.anthropic.com/v1',
     model: 'claude-3-5-sonnet-20241022',
   },
   gemini: {
-    apiKey: Config.GEMINI_API_KEY || '',
+    apiKey: config.GEMINI_API_KEY || '',
     baseURL: 'https://generativelanguage.googleapis.com/v1beta',
     model: 'gemini-1.5-pro',
   },
@@ -82,6 +98,13 @@ export async function sendAIMessage(
     systemPrompt?: string;
   }
 ): Promise<AIResponse> {
+  // Validate API key exists
+  const providerConfig = AI_CONFIG[provider];
+  if (!providerConfig.apiKey) {
+    throw new Error(`${provider} API key not configured. Please check your .env file.`);
+  }
+  
+  console.log(`🤖 Sending message to ${provider}...`);
   const config = AI_CONFIG[provider];
   
   if (!config.apiKey) {
@@ -306,7 +329,10 @@ export async function chatWithCoach(
     experience?: string;
   }
 ): Promise<string> {
-  const systemPrompt = `You are a professional fitness and nutrition coach specializing in firefighter wellness. 
+  try {
+    console.log('💬 chatWithCoach called with:', { userMessage, historyLength: conversationHistory.length });
+    
+    const systemPrompt = `You are a professional fitness and nutrition coach specializing in firefighter wellness. 
 Your name is "Coach AI" and you provide evidence-based, practical advice.
 ${userProfile?.name ? `You're talking to ${userProfile.name}.` : ''}
 ${userProfile?.goals ? `Their goals are: ${userProfile.goals.join(', ')}` : ''}
@@ -314,14 +340,20 @@ ${userProfile?.experience ? `Experience level: ${userProfile.experience}` : ''}
 
 Be encouraging, knowledgeable, and concise. Focus on actionable advice.`;
 
-  const messages: AIMessage[] = [
-    { role: 'system', content: systemPrompt },
-    ...conversationHistory,
-    { role: 'user', content: userMessage },
-  ];
+    const messages: AIMessage[] = [
+      { role: 'system', content: systemPrompt },
+      ...conversationHistory,
+      { role: 'user', content: userMessage },
+    ];
 
-  const response = await sendAIMessage(messages);
-  return response.content;
+    console.log('💬 Sending message to AI...');
+    const response = await sendAIMessage(messages);
+    console.log('💬 AI response received:', response.content.substring(0, 100) + '...');
+    return response.content;
+  } catch (error) {
+    console.error('💬 chatWithCoach error:', error);
+    throw new Error(`AI Chat Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
 }
 
 /**
