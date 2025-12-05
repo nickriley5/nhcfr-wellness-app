@@ -11,6 +11,7 @@ import {
   Modal,
   KeyboardAvoidingView,
   Platform,
+  StatusBar,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -98,6 +99,8 @@ interface MainExercisesSectionProps {
   progress: WorkoutSet[][];
   lastSession: Record<string, { reps: string; weight: string }[]>;
   timedRef: React.MutableRefObject<Record<string, TimedStatus[]>>;
+  manuallyCompleted: Set<string>;
+  setManuallyCompleted: React.Dispatch<React.SetStateAction<Set<string>>>;
   formatDesc: (ex: EnrichedExercise) => string;
   startTimedSet: (exId: string, setIdx: number, targetSec: number) => void;
   resetTimedSet: (exId: string, setIdx: number, targetSec: number) => void;
@@ -116,6 +119,8 @@ const MainExercisesSection: React.FC<MainExercisesSectionProps> = ({
   progress,
   lastSession,
   timedRef,
+  manuallyCompleted,
+  setManuallyCompleted,
   formatDesc,
   startTimedSet,
   resetTimedSet,
@@ -127,7 +132,7 @@ const MainExercisesSection: React.FC<MainExercisesSectionProps> = ({
       <Text style={styles.sectionHeader}>{title}</Text>
 
       {list.map((ex, exIdx) => {
-        const isComplete = progress[exIdx]?.every((s) => s.reps && s.weight);
+        const isComplete = manuallyCompleted.has(ex.id);
         const last = lastSession[ex.id] ?? [];
 
         return (
@@ -142,19 +147,17 @@ const MainExercisesSection: React.FC<MainExercisesSectionProps> = ({
                 <Ionicons name="stats-chart" size={20} color="#4fc3f7" />
               </Pressable>
 
-              {/* ○ / ✔︎ toggle */}
+              {/* ○ / ✔︎ toggle - Manual completion */}
               <Pressable
                 onPress={() => {
-                  const next = progress.map((sets, i) =>
-                    i === exIdx
-                      ? sets.map((_s) =>
-                          isComplete ? { reps: '', weight: '' } : { reps: '✓', weight: '✓' }
-                        )
-                      : sets
-                  );
-                  next[exIdx].forEach((s, j) => {
-                    updateInput(exIdx, j, 'reps', s.reps);
-                    updateInput(exIdx, j, 'weight', s.weight);
+                  setManuallyCompleted(prev => {
+                    const next = new Set(prev);
+                    if (next.has(ex.id)) {
+                      next.delete(ex.id);
+                    } else {
+                      next.add(ex.id);
+                    }
+                    return next;
                   });
                 }}
               >
@@ -335,6 +338,8 @@ const WorkoutDetailScreen: React.FC = () => {
 }
 
   /* -------- inputs -------- */
+  const [manuallyCompleted, setManuallyCompleted] = useState<Set<string>>(new Set());
+  
   const [progress, setProgress] = useState<WorkoutSet[][]>(() =>
     day.exercises.map((blk: ExerciseBlock) =>
       Array.from({ length: blk.sets ?? 1 }).map(() => ({ reps: '', weight: '' } as WorkoutSet))
@@ -397,7 +402,7 @@ const WorkoutDetailScreen: React.FC = () => {
 
   /* ── enrichment ── */
   const enrich = async (blk: ExerciseBlock): Promise<EnrichedExercise> => {
-    console.log(`🔍 Enriching exercise: "${blk.name}" (ID: ${blk.id})`);
+    console.log(`🔍 Enriching exercise ID: ${blk.id}`);
     
     // Map human-readable IDs to actual hexadecimal IDs in database
     const exerciseIdMap: Record<string, string> = {
@@ -992,11 +997,7 @@ const WorkoutDetailScreen: React.FC = () => {
 
   return (
     <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.flex1}
-      />
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>{day.title}</Text>
 
         {/* Adapt CTA */}
@@ -1044,6 +1045,8 @@ const WorkoutDetailScreen: React.FC = () => {
           progress={progress}
           lastSession={lastSession}
           timedRef={timedRef}
+          manuallyCompleted={manuallyCompleted}
+          setManuallyCompleted={setManuallyCompleted}
           formatDesc={formatDesc}
           startTimedSet={startTimedSet}
           resetTimedSet={resetTimedSet}
@@ -1270,7 +1273,11 @@ const WorkoutDetailScreen: React.FC = () => {
 /* ───────── styles ───────── */
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  content: { padding: 24, paddingBottom: 120 }, // leave space for timer bar
+  content: { 
+    padding: 24, 
+    paddingBottom: 120, 
+    flexGrow: 1 
+  }, // leave space for timer bar, flexGrow ensures content fills screen
   title: {
     fontSize: 22,
     fontWeight: '700',
