@@ -79,7 +79,45 @@ const AIWorkoutAssistant: React.FC<Props> = ({ visible, onClose, onApplyRecommen
 
     setLoading(true);
     try {
-      const rec = await getWorkoutRecommendation(userContext);
+      // Import exercise library
+      const { exercises } = await import('../data/exercises');
+      
+      // Filter exercises based on available equipment
+      const userEquipment = userContext.equipment.map((e: string) => e.toLowerCase());
+      const availableExercises = exercises
+        .filter(ex => {
+          const exerciseEquipment = (ex.equipment || '').toLowerCase();
+          
+          // Check if user has the equipment
+          const hasEquipment = exerciseEquipment === 'bodyweight' || 
+                               exerciseEquipment === '' ||
+                               userEquipment.some((eq: string) => exerciseEquipment.includes(eq.toLowerCase()));
+          
+          // Include exercises with video URLs (both YouTube and direct files)
+          const hasVideo = ex.videoUrl && ex.videoUrl.trim() !== '';
+          
+          return hasEquipment && hasVideo;
+        })
+        .map(ex => ({
+          id: ex.id,
+          name: ex.name,
+          equipment: ex.equipment || '',
+          focusArea: ex.focusArea || '',
+          videoUrl: ex.videoUrl, // Include video URL for debugging
+        }));
+
+      const youtubeCount = availableExercises.filter(ex => 
+        ex.videoUrl?.includes('youtube.com') || ex.videoUrl?.includes('youtu.be')
+      ).length;
+      
+      console.log(`📚 Filtered to ${availableExercises.length} exercises based on equipment:`, userEquipment);
+      console.log(`   📺 YouTube videos: ${youtubeCount}, Direct videos: ${availableExercises.length - youtubeCount}`);
+      console.log(`📊 Token estimate: ~${availableExercises.length * 4} input tokens for exercise list`);
+
+      const rec = await getWorkoutRecommendation({
+        ...userContext,
+        availableExercises,
+      });
       setRecommendation(rec);
     } catch (error) {
       console.error('Error getting recommendation:', error);

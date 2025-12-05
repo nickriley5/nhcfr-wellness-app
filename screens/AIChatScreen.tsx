@@ -133,11 +133,12 @@ const AIChatScreen = () => {
       });
 
     } catch (error) {
-      console.error('Error sending message:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('❌ Error sending message:', errorMessage);
       Toast.show({
         type: 'error',
         text1: 'Failed to send message',
-        text2: 'Please try again',
+        text2: errorMessage,
       });
     } finally {
       setLoading(false);

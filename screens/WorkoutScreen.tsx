@@ -15,8 +15,9 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { auth, db } from '../firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
 import type { ProgramDay } from '../types/Exercise';
+import Toast from 'react-native-toast-message';
 // import { regenerateActiveProgram } from '../utils/programService';
 import { resolveExerciseDetails } from '../utils/exerciseUtils';
 import AIWorkoutAssistant from '../components/AIWorkoutAssistant';
@@ -282,7 +283,7 @@ useFocusEffect(
 
             {/* Warm-up */}
             <Text style={styles.sectionHeader}>Warm-up</Text>
-            {today.warmup.map((blk, i) => (
+            {(today.warmup || []).map((blk, i) => (
               <View
                 key={`wu-${i}`}
                 style={[
@@ -297,7 +298,7 @@ useFocusEffect(
 
             {/* Main exercises */}
             <Text style={styles.sectionHeader}>Exercises</Text>
-            {today.exercises.map((blk, i) => (
+            {(today.exercises || []).map((blk, i) => (
               <View
                 key={`ex-${i}`}
                 style={[
@@ -312,7 +313,7 @@ useFocusEffect(
 
             {/* Cool-down */}
             <Text style={styles.sectionHeader}>Cool-down</Text>
-            {today.cooldown.map((blk, i) => (
+            {(today.cooldown || []).map((blk, i) => (
               <View
                 key={`cd-${i}`}
                 style={[
@@ -376,6 +377,119 @@ useFocusEffect(
       <AIWorkoutAssistant
         visible={showAIAssistant}
         onClose={() => setShowAIAssistant(false)}
+        onApplyRecommendation={async (recommendation) => {
+          console.log('📋 Applying AI workout recommendation:', recommendation);
+          
+          try {
+            const uid = auth.currentUser?.uid;
+            if (!uid) {
+              Toast.show({
+                type: 'error',
+                text1: 'Not logged in',
+                text2: 'Please sign in to save workout',
+              });
+              return;
+            }
+
+            // Import exercise library to match names to IDs
+            const { exercises: exerciseLibrary } = await import('../data/exercises');
+            
+            // Convert AI recommendation to workout program format
+            console.log('🎯 AI recommended exercises:', recommendation.exercises);
+            
+            const aiWorkoutDays: ProgramDay[] = [{
+              week: 1,
+              day: 1,
+              title: 'AI Generated Workout',
+              priority: 1,
+              type: 'training' as const,
+              phase: 'Strength' as const,
+              warmup: [],
+              exercises: recommendation.exercises.map((exerciseName: string) => {
+                // Find the matching exercise in the library
+                const matchedExercise = exerciseLibrary.find(
+                  ex => ex.name.toLowerCase() === exerciseName.toLowerCase()
+                );
+                
+                if (matchedExercise) {
+                  const isYouTube = matchedExercise.videoUrl?.includes('youtube.com') || matchedExercise.videoUrl?.includes('youtu.be');
+                  console.log(`✅ Matched: "${exerciseName}"`);
+                  console.log(`   ID: ${matchedExercise.id}`);
+                  console.log(`   Video: ${matchedExercise.videoUrl ? (isYouTube ? 'YouTube' : 'Direct MP4') : 'NONE'}`);
+                  console.log(`   URL: ${matchedExercise.videoUrl?.substring(0, 60)}...`);
+                } else {
+                  console.error(`❌ NOT FOUND: "${exerciseName}" - video will not be available`);
+                }
+                
+                return {
+                  id: matchedExercise?.id || exerciseName.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
+                  name: matchedExercise?.name || exerciseName,
+                  sets: 3,
+                  repsOrDuration: '8-12 reps',
+                  rpe: recommendation.difficultyScore,
+                  tags: recommendation.focusAreas || [],
+                  replacements: matchedExercise?.swapOptions || [],
+                };
+              }),
+              cooldown: [],
+            }];
+            
+            console.log('💾 Saving workout with', aiWorkoutDays[0].exercises.length, 'exercises');
+
+            // Save as active program
+            await setDoc(
+              doc(db, 'users', uid, 'program', 'active'),
+              {
+                programId: 'ai-generated',
+                metadata: {
+                  currentDay: 1,
+                  startDate: Timestamp.now(),
+                  daysPerWeek: 1,
+                  aiGenerated: true,
+                },
+                template: {
+                  name: 'AI Generated Workout',
+                  description: recommendation.rationale,
+                  daysPerWeek: 1,
+                  durationWeeks: 1,
+                  difficulty: recommendation.difficultyScore > 7 ? 'Advanced' : recommendation.difficultyScore > 4 ? 'Intermediate' : 'Beginner',
+                  focus: recommendation.focusAreas,
+                },
+                days: aiWorkoutDays,
+              },
+              { merge: false }
+            );
+
+            // Refresh the program display first
+            const snap = await getDoc(doc(db, 'users', uid, 'program', 'active'));
+            if (snap.exists()) {
+              const data = snap.data();
+              const programDays = data.days as ProgramDay[];
+              setState({ currentDayIndex: 0 });
+              setDays(programDays);
+              
+              Toast.show({
+                type: 'success',
+                text1: 'Workout Ready! 💪',
+                text2: 'Your AI workout is now active',
+              });
+
+              // Navigate to workout detail with the day data
+              navigation.navigate('WorkoutDetail', {
+                day: programDays[0],
+                weekIdx: 0,
+                dayIdx: 0,
+              });
+            }
+          } catch (error) {
+            console.error('Error applying AI workout:', error);
+            Toast.show({
+              type: 'error',
+              text1: 'Failed to apply workout',
+              text2: 'Please try again',
+            });
+          }
+        }}
       />
     </LinearGradient>
   );

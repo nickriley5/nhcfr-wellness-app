@@ -397,6 +397,8 @@ const WorkoutDetailScreen: React.FC = () => {
 
   /* ── enrichment ── */
   const enrich = async (blk: ExerciseBlock): Promise<EnrichedExercise> => {
+    console.log(`🔍 Enriching exercise: "${blk.name}" (ID: ${blk.id})`);
+    
     // Map human-readable IDs to actual hexadecimal IDs in database
     const exerciseIdMap: Record<string, string> = {
       'banded_face_pull': '609e6c422c9349a885fa69c2dd2141f7', // Banded Face Pulls
@@ -410,11 +412,29 @@ const WorkoutDetailScreen: React.FC = () => {
 
     const snap = await getDoc(doc(db, 'exercises', actualId));
     const meta: FirestoreExercise = snap.exists() ? (snap.data() as any) : {};
+    
+    if (snap.exists()) {
+      const isYouTube = meta.videoUrl?.includes('youtube.com') || meta.videoUrl?.includes('youtu.be');
+      console.log(`📦 Found in Firebase: ${meta.name}, Video: ${meta.videoUrl ? (isYouTube ? 'YouTube' : 'Direct') : 'NO'}`);
+      if (meta.videoUrl) {
+        console.log(`   URL: ${meta.videoUrl.substring(0, 60)}...`);
+      }
+    }
 
     // If Firebase doesn't have the exercise, try to find it in local exercises.ts by name
     if (!snap.exists() || !meta.videoUrl) {
+      console.log(`🔄 Not in Firebase or no video, checking local exercises.ts...`);
+      
       // First try direct ID lookup in local exercises
       const localExercise = resolveExerciseDetails(actualId);
+      if (localExercise) {
+        const isYouTube = localExercise.videoUrl?.includes('youtube.com') || localExercise.videoUrl?.includes('youtu.be');
+        console.log(`📚 Local exercise lookup by ID (${actualId}): Found: ${localExercise.name}`);
+        console.log(`   Video type: ${isYouTube ? 'YouTube' : 'Direct MP4'}`);
+        console.log(`   URL: ${localExercise.videoUrl?.substring(0, 60)}...`);
+      } else {
+        console.log(`📚 Local exercise lookup by ID (${actualId}): Not found`);
+      }
 
       if (localExercise && localExercise.videoUrl) {
         Object.assign(meta, {
@@ -532,13 +552,16 @@ const WorkoutDetailScreen: React.FC = () => {
     }
 
     // Original logic for normal exercises
+    const videoUri = meta.videoUrl && meta.videoUrl.trim()
+      ? meta.videoUrl
+      : fallbackVideoUrl;
+    
+    console.log(`🎬 Final video URI for "${meta.name ?? pretty(blk.id)}": ${videoUri}`);
+    
     return {
       id: blk.id,
       name: meta.name ?? pretty(blk.id),
-      videoUri:
-        meta.videoUrl && meta.videoUrl.trim()
-          ? meta.videoUrl
-          : fallbackVideoUrl,
+      videoUri,
       setsCount: meta.sets ?? blk.sets ?? 3,
       repsCount:
         meta.reps ??

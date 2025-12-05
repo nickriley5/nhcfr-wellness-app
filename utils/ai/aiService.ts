@@ -4,25 +4,15 @@
  */
 
 import axios from 'axios';
-import Config from 'react-native-config';
 
 // ============= CONFIGURATION =============
-// API keys - Fallback to hardcoded for development if Config is null
-// TODO: For production, use react-native-config properly
-const getConfig = () => {
-  // If Config is null or undefined, use hardcoded values
-  if (!Config || typeof Config.GEMINI_API_KEY === 'undefined') {
-    console.warn('⚠️ react-native-config not loaded, using hardcoded API keys');
-    return {
-      GEMINI_API_KEY: 'AIzaSyBPEC65Rlz3MeBC8BcKX-CvX5BkPP3hXwY',
-      OPENAI_API_KEY: '',
-      ANTHROPIC_API_KEY: '',
-    };
-  }
-  return Config;
+// Hardcoded API keys for now (react-native-config not working)
+// TODO: Fix react-native-config setup for production
+const config = {
+  GEMINI_API_KEY: 'AIzaSyBPEC65Rlz3MeBC8BcKX-CvX5BkPP3hXwY',
+  OPENAI_API_KEY: '',
+  ANTHROPIC_API_KEY: '',
 };
-
-const config = getConfig();
 
 const AI_CONFIG = {
   openai: {
@@ -38,7 +28,7 @@ const AI_CONFIG = {
   gemini: {
     apiKey: config.GEMINI_API_KEY || '',
     baseURL: 'https://generativelanguage.googleapis.com/v1beta',
-    model: 'gemini-1.5-pro',
+    model: 'gemini-2.5-flash',
   },
 };
 
@@ -130,7 +120,8 @@ export async function sendAIMessage(
     
     return response;
   } catch (error) {
-    console.error(`AI Service Error (${provider}):`, error);
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error(`AI Service Error (${provider}):`, errorMsg);
     throw error;
   }
 }
@@ -205,13 +196,89 @@ async function sendGeminiMessage(
   config: typeof AI_CONFIG.gemini,
   options?: any
 ): Promise<AIResponse> {
-  const formattedMessages = messages.map(m => ({
+  // Gemini doesn't support system messages - merge system prompt into first user message
+  const systemMessage = messages.find(m => m.role === 'system');
+  const nonSystemMessages = messages.filter(m => m.role !== 'system');
+  
+  // Gemini requires alternating user/model messages
+  // Filter to ensure proper alternation (remove consecutive messages of same role)
+  const alternatingMessages: AIMessage[] = [];
+  let lastRole: string | null = null;
+  
+  for (const msg of nonSystemMessages) {
+    if (msg.role !== lastRole) {
+      alternatingMessages.push(msg);
+      lastRole = msg.role;
+    }
+  }
+  
+  // If we only have user messages (no assistant responses), just send the last one
+  // with system prompt prepended
+  if (alternatingMessages.every(m => m.role === 'user')) {
+    const lastUserMessage = alternatingMessages[alternatingMessages.length - 1];
+    const messageText = systemMessage 
+      ? `${systemMessage.content}\n\nUser: ${lastUserMessage.content}`
+      : lastUserMessage.content;
+    
+    const formattedMessages = [{
+      role: 'user',
+      parts: [{ text: messageText }],
+    }];
+    
+    const url = `${config.baseURL}/models/${config.model}:generateContent?key=${config.apiKey}`;
+    console.log('🌐 Gemini API URL:', url.replace(config.apiKey, 'API_KEY_HIDDEN'));
+    console.log('📨 Request payload:', JSON.stringify({ contents: formattedMessages }, null, 2));
+
+    const response = await axios.post<any>(
+      url,
+      {
+        contents: formattedMessages,
+        generationConfig: {
+          temperature: options?.temperature || 0.7,
+          maxOutputTokens: options?.maxTokens || 4000,
+          topP: 0.95,
+          topK: 40,
+        },
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    console.log('📥 Gemini response received:', JSON.stringify(response.data).substring(0, 200));
+    
+    if (!response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+      console.error('❌ Unexpected Gemini response structure:', JSON.stringify(response.data, null, 2));
+      throw new Error('Invalid response from Gemini API');
+    }
+
+    return {
+      content: response.data.candidates[0].content.parts[0].text,
+      model: config.model,
+    };
+  }
+  
+  // If there's a system message, prepend it to the first user message
+  if (systemMessage && alternatingMessages.length > 0) {
+    const firstUserMsg = alternatingMessages.find(m => m.role === 'user');
+    if (firstUserMsg) {
+      firstUserMsg.content = `${systemMessage.content}\n\nUser: ${firstUserMsg.content}`;
+    }
+  }
+
+  const formattedMessages = alternatingMessages.map(m => ({
     role: m.role === 'assistant' ? 'model' : 'user',
     parts: [{ text: m.content }],
   }));
 
+  const url = `${config.baseURL}/models/${config.model}:generateContent?key=${config.apiKey}`;
+  console.log('🌐 Gemini API URL:', url.replace(config.apiKey, 'API_KEY_HIDDEN'));
+  console.log('📨 Request payload:', JSON.stringify({ contents: formattedMessages }, null, 2));
+
   const response = await axios.post<any>(
-    `${config.baseURL}/models/${config.model}:generateContent?key=${config.apiKey}`,
+    url,
     {
       contents: formattedMessages,
       generationConfig: {
@@ -226,10 +293,41 @@ async function sendGeminiMessage(
     }
   );
 
+  console.log('📥 Gemini response received:', JSON.stringify(response.data).substring(0, 200));
+  
+  if (!response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+    console.error('❌ Unexpected Gemini response structure:', JSON.stringify(response.data, null, 2));
+    throw new Error('Invalid response from Gemini API');
+  }
+
   return {
     content: response.data.candidates[0].content.parts[0].text,
     model: config.model,
   };
+}
+
+// ============= HELPER FUNCTIONS =============
+
+/**
+ * Clean markdown formatting from AI responses (e.g., ```json ... ```)
+ */
+function cleanJsonResponse(text: string): string {
+  // Remove markdown code blocks
+  let cleaned = text.trim();
+  
+  // Remove ```json or ``` at the start
+  if (cleaned.startsWith('```json')) {
+    cleaned = cleaned.substring(7);
+  } else if (cleaned.startsWith('```')) {
+    cleaned = cleaned.substring(3);
+  }
+  
+  // Remove ``` at the end
+  if (cleaned.endsWith('```')) {
+    cleaned = cleaned.substring(0, cleaned.length - 3);
+  }
+  
+  return cleaned.trim();
 }
 
 // ============= SPECIALIZED AI FUNCTIONS =============
@@ -244,31 +342,38 @@ export async function getWorkoutRecommendation(userContext: {
   recentWorkouts: string[];
   injuries?: string[];
   preferences?: string[];
+  availableExercises?: Array<{ id: string; name: string; equipment: string; focusArea: string }>;
 }): Promise<WorkoutRecommendation> {
-  const prompt = `You are an expert fitness coach for firefighters. Based on the following user context, recommend a workout:
+  // Build compact exercise list (newline-separated, no quotes to save tokens)
+  let exerciseListText = '';
+  if (userContext.availableExercises && userContext.availableExercises.length > 0) {
+    const exerciseNames = userContext.availableExercises.map(ex => ex.name).join('\n');
+    exerciseListText = `\n\nAVAILABLE EXERCISES (choose 4-6):\n${exerciseNames}`;
+  }
+
+  const prompt = `Fitness coach: Create workout for firefighter.
 
 Goal: ${userContext.goal}
-Experience Level: ${userContext.experience}
-Available Equipment: ${userContext.equipment.join(', ')}
-Recent Workouts: ${userContext.recentWorkouts.join(', ')}
-${userContext.injuries ? `Injuries/Limitations: ${userContext.injuries.join(', ')}` : ''}
-${userContext.preferences ? `Preferences: ${userContext.preferences.join(', ')}` : ''}
+Level: ${userContext.experience}
+Equipment: ${userContext.equipment.join(', ')}
+Recent: ${userContext.recentWorkouts.join(', ') || 'none'}${exerciseListText}
 
-Provide a JSON response with:
-1. exercises: array of exercise names that fit the context
-2. rationale: brief explanation of why these exercises were chosen
-3. estimatedDuration: workout duration in minutes
-4. difficultyScore: 1-10 difficulty rating
-5. focusAreas: array of muscle groups/areas targeted
-
-Return ONLY valid JSON, no additional text.`;
+Respond with ONLY this JSON format (no extra text):
+{
+  "exercises": ["Exercise 1", "Exercise 2"],
+  "rationale": "Brief 1-2 sentence explanation",
+  "estimatedDuration": 45,
+  "difficultyScore": 7,
+  "focusAreas": ["Chest", "Back"]
+}`;
 
   const response = await sendAIMessage([
     { role: 'system', content: 'You are a professional fitness AI specialized in firefighter wellness programs.' },
     { role: 'user', content: prompt },
   ]);
 
-  const parsed = JSON.parse(response.content);
+  const cleanedResponse = cleanJsonResponse(response.content);
+  const parsed = JSON.parse(cleanedResponse);
   return parsed as WorkoutRecommendation;
 }
 
@@ -308,12 +413,17 @@ Provide a JSON array of 3 meal suggestions. Each should include:
 
 Return ONLY valid JSON array, no additional text.`;
 
-  const response = await sendAIMessage([
-    { role: 'system', content: 'You are a professional nutrition AI specialized in firefighter meal planning.' },
-    { role: 'user', content: prompt },
-  ]);
+  const response = await sendAIMessage(
+    [
+      { role: 'system', content: 'You are a professional nutrition AI specialized in firefighter meal planning.' },
+      { role: 'user', content: prompt },
+    ],
+    'gemini',
+    { maxTokens: 8000 }
+  );
 
-  const parsed = JSON.parse(response.content);
+  const cleanedResponse = cleanJsonResponse(response.content);
+  const parsed = JSON.parse(cleanedResponse);
   return parsed as MealSuggestion[];
 }
 
@@ -351,8 +461,9 @@ Be encouraging, knowledgeable, and concise. Focus on actionable advice.`;
     console.log('💬 AI response received:', response.content.substring(0, 100) + '...');
     return response.content;
   } catch (error) {
-    console.error('💬 chatWithCoach error:', error);
-    throw new Error(`AI Chat Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+    console.error('💬 chatWithCoach error:', errorMsg);
+    throw new Error(`AI Chat Error: ${errorMsg}`);
   }
 }
 

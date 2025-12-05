@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import Video from 'react-native-video';
-import { WebView } from 'react-native-webview';
+import YoutubePlayer from 'react-native-youtube-iframe';
 
 interface VideoToggleProps {
   uri: string;
@@ -16,9 +16,14 @@ const VideoToggle: React.FC<VideoToggleProps> = ({ uri }) => {
 
   // Check if it's a YouTube URL
   const isYouTubeUrl = uri.includes('youtube.com') || uri.includes('youtu.be');
+  
+  // Debug logging
+  if (isYouTubeUrl) {
+    console.log('🎥 YouTube video detected:', uri.substring(0, 60));
+  }
 
-  // Convert YouTube URL to embed format
-  const getYouTubeEmbedUrl = (url: string) => {
+  // Extract YouTube video ID
+  const getYouTubeVideoId = (url: string) => {
     let videoId = '';
 
     if (url.includes('youtube.com/watch?v=')) {
@@ -27,24 +32,24 @@ const VideoToggle: React.FC<VideoToggleProps> = ({ uri }) => {
       videoId = url.split('youtu.be/')[1].split('?')[0];
     }
 
-    return `https://www.youtube.com/embed/${videoId}?playsinline=1&controls=1`;
+    return videoId;
   };
 
   const renderVideo = () => {
     if (isYouTubeUrl) {
+      const videoId = getYouTubeVideoId(uri);
+      console.log('📺 Rendering YouTube player for video ID:', videoId);
+      
       return (
-        <WebView
-          style={styles.video}
-          source={{ uri: getYouTubeEmbedUrl(uri) }}
-          allowsInlineMediaPlayback
-          mediaPlaybackRequiresUserAction={false}
-          javaScriptEnabled={true}
-          domStorageEnabled={true}
-          startInLoadingState={true}
-          scalesPageToFit={true}
-          onError={(syntheticEvent) => {
-            const { nativeEvent } = syntheticEvent;
-            console.warn('WebView error: ', nativeEvent);
+        <YoutubePlayer
+          height={300}
+          videoId={videoId}
+          play={false}
+          onError={(error) => {
+            console.error('❌ YouTube player error:', error);
+          }}
+          onReady={() => {
+            console.log('✅ YouTube player ready');
           }}
         />
       );
@@ -58,7 +63,10 @@ const VideoToggle: React.FC<VideoToggleProps> = ({ uri }) => {
           paused={false}
           onEnd={() => setExpanded(false)}
           onError={(error) => {
-            console.error('Video error:', error);
+            console.error('❌ Video playback error:', {
+              uri: uri,
+              errorType: error?.error?.errorString || 'Unknown error',
+            });
           }}
         />
       );
