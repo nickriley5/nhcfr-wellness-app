@@ -55,6 +55,42 @@ export interface WorkoutRecommendation {
   focusAreas: string[];
 }
 
+export interface PeriodizedProgram {
+  programName: string;
+  totalWeeks: number;
+  periodizationModel: 'linear' | 'undulating' | 'block';
+  phases: Array<{
+    phaseName: string;
+    weekRange: string;
+    focus: string;
+    description: string;
+  }>;
+  weeks: Array<{
+    weekNumber: number;
+    phase: string;
+    isDeload: boolean;
+    volumeMultiplier: number;
+    days: Array<{
+      dayNumber: number;
+      dayName: string;
+      focus: string;
+      warmup: string[];
+      exercises: Array<{
+        name: string;
+        sets: number;
+        reps: string;
+        restSeconds: number;
+        rpe?: number;
+        notes?: string;
+      }>;
+      cooldown: string[];
+      estimatedDuration: number;
+    }>;
+  }>;
+  progressionPlan: string;
+  deloadStrategy: string;
+}
+
 export interface MealSuggestion {
   name: string;
   ingredients: string[];
@@ -396,6 +432,292 @@ Respond with ONLY this JSON (no markdown, no extra text):
 }
 
 /**
+ * Generate a complete periodized training program with progressive overload
+ */
+export async function generatePeriodizedProgram(programContext: {
+  goal: string;
+  experience: string;
+  equipment: string[];
+  totalWeeks: number;
+  daysPerWeek: number;
+  periodizationModel?: 'linear' | 'undulating' | 'block';
+  availableExercises?: Array<{ id: string; name: string; equipment: string; focusArea: string }>;
+}): Promise<PeriodizedProgram> {
+  // Build compact exercise list
+  let exerciseListText = '';
+  if (programContext.availableExercises && programContext.availableExercises.length > 0) {
+    const exerciseNames = programContext.availableExercises.map(ex => ex.name).join('\n');
+    exerciseListText = `\n\nAVAILABLE EXERCISES (use ONLY these):\n${exerciseNames}`;
+  }
+
+  // Determine periodization model based on goal
+  let defaultPeriodization: 'linear' | 'undulating' | 'block' = 'linear';
+  const goalLower = programContext.goal.toLowerCase();
+  if (goalLower.includes('strength')) {
+    defaultPeriodization = 'linear';
+  } else if (goalLower.includes('vo2') || goalLower.includes('cardio') || goalLower.includes('endurance')) {
+    defaultPeriodization = 'block';
+  } else if (goalLower.includes('hypertrophy') || goalLower.includes('muscle')) {
+    defaultPeriodization = 'undulating';
+  }
+
+  const periodization = programContext.periodizationModel || defaultPeriodization;
+
+  const prompt = `You are an elite strength & conditioning coach specializing in firefighter fitness. Create a COMPLETE ${programContext.totalWeeks}-week periodized training program.
+
+USER PROFILE:
+- Goal: ${programContext.goal}
+- Experience: ${programContext.experience}
+- Equipment: ${programContext.equipment.join(', ')}
+- Duration: ${programContext.totalWeeks} weeks
+- Training Days: ${programContext.daysPerWeek} days per week
+- Periodization Model: ${periodization}${exerciseListText}
+
+PERIODIZATION PRINCIPLES TO APPLY:
+
+${periodization === 'linear' ? `LINEAR PERIODIZATION (for Strength):
+- Weeks 1-4: Hypertrophy Phase (3-4 sets × 8-12 reps, RPE 7-8)
+- Weeks 5-8: Strength Phase (4-5 sets × 4-6 reps, RPE 8-9)
+- Weeks 9-11: Power/Peak Phase (3-4 sets × 2-4 reps, RPE 9)
+- Week 12: Deload (reduce volume by 40%)` : ''}
+
+${periodization === 'undulating' ? `UNDULATING PERIODIZATION (for Hypertrophy):
+- Vary intensity within each week:
+  - Day 1: Heavy (4 sets × 4-6 reps, RPE 8-9)
+  - Day 2: Moderate (3 sets × 8-12 reps, RPE 7-8)
+  - Day 3: Light (3 sets × 12-15 reps, RPE 6-7)
+- Every 4th week: Deload (reduce all volume by 40%)` : ''}
+
+${periodization === 'block' ? `BLOCK PERIODIZATION (for VO2 Max/Endurance):
+- Weeks 1-4: Base Building (high volume, low intensity)
+- Weeks 5-8: Threshold/Tempo (moderate volume, moderate-high intensity)
+- Weeks 9-11: Peak/Interval (lower volume, high intensity)
+- Week 12: Taper (reduce volume by 50%)` : ''}
+
+PROGRESSIVE OVERLOAD RULES:
+1. Increase volume by 5-10% each week within a phase
+2. Maintain exercise selection for 4 weeks before swapping
+3. Every 4th week is a DELOAD (reduce sets by 40%, keep intensity)
+4. Use RPE (Rate of Perceived Exertion) 1-10 scale for auto-regulation
+5. Include appropriate rest periods:
+   - Strength: 3-5 minutes
+   - Hypertrophy: 60-90 seconds
+   - Endurance/HIIT: 30-60 seconds
+
+EXERCISE SELECTION CRITERIA:
+1. Start with compound movements (squat, deadlift, press variations)
+2. Follow with accessory exercises (isolation work)
+3. Balance muscle groups (push/pull, upper/lower)
+4. Include firefighter-specific movements (carries, crawls, climbs)
+5. Use ONLY exercises from the AVAILABLE EXERCISES list
+6. Maintain exercise consistency within each 4-week block
+
+PROGRAM STRUCTURE:
+- Include warm-up (5-10 min dynamic mobility)
+- Include cool-down (5-10 min static stretch/mobility)
+- Estimate realistic workout duration
+- Provide clear progression notes
+
+Return ONLY valid JSON with this EXACT structure (no markdown, no extra text):
+{
+  "programName": "12-Week Firefighter Strength Program",
+  "totalWeeks": 12,
+  "periodizationModel": "linear",
+  "phases": [
+    {
+      "phaseName": "Hypertrophy",
+      "weekRange": "1-4",
+      "focus": "Muscle building and work capacity",
+      "description": "Build foundational strength with higher volume"
+    }
+  ],
+  "weeks": [
+    {
+      "weekNumber": 1,
+      "phase": "Hypertrophy",
+      "isDeload": false,
+      "volumeMultiplier": 1.0,
+      "days": [
+        {
+          "dayNumber": 1,
+          "dayName": "Upper Body Push",
+          "focus": "Chest, Shoulders, Triceps",
+          "warmup": ["Band Pull-Aparts", "Arm Circles"],
+          "exercises": [
+            {
+              "name": "Dumbbell Bench Press",
+              "sets": 4,
+              "reps": "8-10",
+              "restSeconds": 90,
+              "rpe": 7,
+              "notes": "Control the descent"
+            }
+          ],
+          "cooldown": ["Chest Stretch", "Shoulder Mobility"],
+          "estimatedDuration": 50
+        }
+      ]
+    }
+  ],
+  "progressionPlan": "Increase weight by 2.5-5% when you can complete all sets at top of rep range with RPE 7-8",
+  "deloadStrategy": "Every 4th week, reduce sets by 40% and maintain same weight/reps"
+}
+
+IMPORTANT: Generate ALL ${programContext.totalWeeks} weeks with ${programContext.daysPerWeek} days each. Be specific with exercise names from the available list.`;
+
+  const response = await sendAIMessage(
+    [
+      {
+        role: 'system',
+        content: 'You are a certified strength coach with 15+ years experience in periodized program design. You specialize in firefighter training and understand the demands of the profession.',
+      },
+      { role: 'user', content: prompt },
+    ],
+    'gemini',
+    { temperature: 0.7, maxTokens: 8000 } // Need more tokens for full program
+  );
+
+  const cleanedResponse = cleanJsonResponse(response.content);
+  const parsed = JSON.parse(cleanedResponse);
+  return parsed as PeriodizedProgram;
+}
+
+/**
+ * Get dynamic coaching adjustments based on last workout feedback
+ */
+export async function getWorkoutAdjustments(context: {
+  lastWorkout?: {
+    completedAt: string;
+    exercises: Array<{
+      name: string;
+      sets: number;
+      reps?: number;
+      weight?: number;
+      completed: boolean;
+    }>;
+    feedback?: {
+      feeling: string;
+      note?: string;
+    };
+  };
+  scheduledWorkout: {
+    dayName: string;
+    focus: string;
+    exercises: Array<{
+      name: string;
+      sets: number;
+      reps: string;
+      restSeconds: number;
+    }>;
+  };
+  programContext: {
+    currentWeek: number;
+    totalWeeks: number;
+    goal: string;
+    phase: string;
+  };
+}): Promise<{
+  shouldAdjust: boolean;
+  coachingAdvice: string;
+  adjustedWorkout?: {
+    exercises: Array<{
+      name: string;
+      sets: number;
+      reps: string;
+      restSeconds: number;
+      notes?: string;
+    }>;
+  };
+  reasoning: string;
+}> {
+  const lastWorkoutInfo = context.lastWorkout
+    ? `LAST WORKOUT (${context.lastWorkout.completedAt}):
+Feeling: ${context.lastWorkout.feedback?.feeling || 'Not provided'}
+Note: ${context.lastWorkout.feedback?.note || 'None'}
+Completion Rate: ${context.lastWorkout.exercises.filter(e => e.completed).length}/${context.lastWorkout.exercises.length} exercises completed
+Exercises performed:
+${context.lastWorkout.exercises
+  .map(
+    ex =>
+      `- ${ex.name}: ${ex.sets} sets${ex.weight ? ` @ ${ex.weight}lbs` : ''}${!ex.completed ? ' (INCOMPLETE)' : ''}`
+  )
+  .join('\n')}`
+    : 'No previous workout data available';
+
+  const prompt = `You are an elite strength coach analyzing a firefighter's training session to make intelligent adjustments.
+
+${lastWorkoutInfo}
+
+CURRENT PROGRAM CONTEXT:
+Week ${context.programContext.currentWeek} of ${context.programContext.totalWeeks}
+Phase: ${context.programContext.phase}
+Goal: ${context.programContext.goal}
+
+NEXT SCHEDULED WORKOUT:
+Day: ${context.scheduledWorkout.dayName}
+Focus: ${context.scheduledWorkout.focus}
+Planned Exercises:
+${context.scheduledWorkout.exercises.map(ex => `- ${ex.name}: ${ex.sets} sets × ${ex.reps}, rest ${ex.restSeconds}s`).join('\n')}
+
+COACHING TASK:
+Based on the user's feedback ("${context.lastWorkout?.feedback?.feeling}") and notes ("${context.lastWorkout?.feedback?.note || 'none'}"), determine:
+
+1. Should we adjust today's workout? Consider:
+   - If they felt "Exhausted" or "Tough" with negative notes (structure fires, poor sleep, etc.) → REDUCE intensity/volume
+   - If they felt "Strong" or "Good" consistently → Maybe INCREASE slightly
+   - If workout completion was low (< 75%) → SIMPLIFY or REDUCE volume
+   - If they're in a deload week → Keep it light regardless
+
+2. Provide specific coaching advice (2-3 sentences) that:
+   - Acknowledges their situation
+   - Explains the adjustment rationale
+   - Motivates them appropriately
+
+3. If adjusting, modify the workout (keep same exercises, adjust sets/reps/rest)
+
+ADJUSTMENT GUIDELINES:
+- For "Exhausted" with work stress: Reduce volume by 30-40%, increase rest periods
+- For "Tough" but no major issues: Reduce volume by 10-20%
+- For "Good/Strong": Proceed as planned or consider 5-10% increase
+- Always prioritize recovery over pushing through fatigue
+
+Return ONLY valid JSON:
+{
+  "shouldAdjust": true,
+  "coachingAdvice": "I see you responded to 2 structure fires last night and felt exhausted. Let's reduce today's volume by 35% and focus on quality movement. Recovery is where adaptation happens.",
+  "adjustedWorkout": {
+    "exercises": [
+      {
+        "name": "Dumbbell Bench Press",
+        "sets": 3,
+        "reps": "6-8",
+        "restSeconds": 120,
+        "notes": "Focus on form, don't push to failure"
+      }
+    ]
+  },
+  "reasoning": "Reduced sets from 4 to 3, lowered reps to prioritize recovery"
+}`;
+
+  const response = await sendAIMessage(
+    [
+      {
+        role: 'system',
+        content:
+          'You are an expert strength coach who understands periodization, fatigue management, and the physical demands of firefighting. You make intelligent, context-aware training adjustments.',
+      },
+      { role: 'user', content: prompt },
+    ],
+    'gemini',
+    { temperature: 0.6, maxTokens: 2000 }
+  );
+
+  const cleanedResponse = cleanJsonResponse(response.content);
+  const parsed = JSON.parse(cleanedResponse);
+  return parsed;
+}
+
+/**
  * Get AI-powered meal suggestions based on nutrition goals
  */
 export async function getMealSuggestions(nutritionContext: {
@@ -557,6 +879,8 @@ Return ONLY valid JSON, no additional text.`;
 export default {
   sendAIMessage,
   getWorkoutRecommendation,
+  generatePeriodizedProgram,
+  getWorkoutAdjustments,
   getMealSuggestions,
   chatWithCoach,
   analyzeExerciseForm,
