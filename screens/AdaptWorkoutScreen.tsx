@@ -19,7 +19,7 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
 import { auth, db } from '../firebase';
-import { doc, getDoc, setDoc, collection, getDocs } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, getDocs, query, orderBy } from 'firebase/firestore';
 import Toast from '../components/Toast';
 import VideoToggle from '../components/VideoToggle';
 import { getExerciseVideoData } from '../utils/exerciseVideoMap';
@@ -202,6 +202,11 @@ const AdaptWorkoutScreen: React.FC = () => {
   const [currentIndex, setCurrentIndex] = useState<number | null>(null);
   const [showAllReplacements, setShowAllReplacements] = useState(false);
   const [showToast, setShowToast] = useState(false);
+  const [activeWorkoutSource, setActiveWorkoutSource] = useState<{
+    type: 'ai' | 'program';
+    workoutId?: string;
+    dayIdx: number;
+  } | null>(null);
 
   // ---------- load today's plan (enriched) + full library ----------
   const loadData = async (showLoadingSpinner = false) => {
@@ -222,23 +227,71 @@ const AdaptWorkoutScreen: React.FC = () => {
         return;
         }
         console.log('AdaptWorkout: User ID:', uid);
-        const progRef = doc(db, 'users', uid, 'program', 'active');
-        const progSnap = await getDoc(progRef);
-        console.log('AdaptWorkout: Program exists:', progSnap.exists());
-        if (!progSnap.exists()) {
-          Alert.alert('No Program', 'No active program found. Please set up your workout program first.');
-          if (showLoadingSpinner) setLoading(false);
-          else setRefreshing(false);
-          navigation.goBack();
-          return;
+        
+        // Check for AI workouts first (takes precedence)
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        
+        const aiWorkoutsQuery = query(
+          collection(db, 'users', uid, 'aiWorkouts'),
+          orderBy('createdAt', 'desc')
+        );
+        const aiWorkoutsSnap = await getDocs(aiWorkoutsQuery);
+        
+        let latestAiWorkout = null;
+        aiWorkoutsSnap.forEach(docSnap => {
+          const data = docSnap.data();
+          const createdAt = data.createdAt?.toDate();
+          if (createdAt && createdAt >= todayStart) {
+            if (!latestAiWorkout || createdAt > latestAiWorkout.createdAt) {
+              latestAiWorkout = {
+                id: docSnap.id,
+                data,
+                createdAt,
+              };
+            }
+          }
+        });
+        
+        let blocks: any[] = [];
+        let dayIdx = 0;
+        
+        if (latestAiWorkout) {
+          // Use AI workout exercises
+          console.log('AdaptWorkout: Using AI workout from today');
+          const aiDay = latestAiWorkout.data.days?.[0];
+          blocks = aiDay?.exercises ?? [];
+          console.log('AdaptWorkout: AI Exercises count:', blocks.length);
+          setActiveWorkoutSource({
+            type: 'ai',
+            workoutId: latestAiWorkout.id,
+            dayIdx: 0,
+          });
+        } else {
+          // Fall back to active program
+          console.log('AdaptWorkout: Using active program');
+          const progRef = doc(db, 'users', uid, 'program', 'active');
+          const progSnap = await getDoc(progRef);
+          console.log('AdaptWorkout: Program exists:', progSnap.exists());
+          if (!progSnap.exists()) {
+            Alert.alert('No Program', 'No active program found. Please set up your workout program first.');
+            if (showLoadingSpinner) setLoading(false);
+            else setRefreshing(false);
+            navigation.goBack();
+            return;
+          }
+
+          const data = progSnap.data() as any;
+          const curDay = data?.metadata?.currentDay ?? data?.currentDay ?? 1;
+          dayIdx = Math.max(0, curDay - 1);
+          console.log('AdaptWorkout: Current day:', curDay, 'Day index:', dayIdx);
+
+          blocks = data.days?.[dayIdx]?.exercises ?? [];
+          setActiveWorkoutSource({
+            type: 'program',
+            dayIdx,
+          });
         }
-
-        const data = progSnap.data() as any;
-        const curDay = data?.metadata?.currentDay ?? data?.currentDay ?? 1;
-        const dayIdx = Math.max(0, curDay - 1);
-        console.log('AdaptWorkout: Current day:', curDay, 'Day index:', dayIdx);
-
-        const blocks: any[] = data.days?.[dayIdx]?.exercises ?? [];
         console.log('AdaptWorkout: Exercises count:', blocks.length);
 
         if (blocks.length === 0) {
@@ -418,42 +471,81 @@ const AdaptWorkoutScreen: React.FC = () => {
   const handleSave = async () => {
     try {
       const uid = auth.currentUser?.uid;
-      if (!uid) {
-        Alert.alert('Error', 'User not authenticated');
+      if (!uid || !activeWorkoutSource) {
+        Alert.alert('Error', 'User not authenticated or no workout source found');
         return;
       }
-      const ref = doc(db, 'users', uid, 'program', 'active');
-      const snap = await getDoc(ref);
-      if (!snap.exists()) {
-        Alert.alert('Error', 'No active program found. Please set up your program first.');
-        return;
-      }
-      const data = snap.data() as any;
-      const dayIdx = (data.currentDay ?? 1) - 1;
 
-      const merged = (data.days?.[dayIdx]?.exercises ?? []).map((orig: any, i: number) => {
-        const a = adapted[i];
-        return {
-          ...orig,
-          id: a?.id ?? orig.id,
-          name: a?.name ?? orig.name,
-          videoUri: a?.videoUri ?? orig.videoUri ?? '',
-          thumbnailUri: a?.thumbnailUri ?? orig.thumbnailUri ?? '',
-        };
-      });
-
-      data.days[dayIdx].exercises = merged;
-      await setDoc(ref, data, { merge: true });
-      setShowToast(true);
-
-      setTimeout(() => {
-        navigation.navigate('WorkoutDetail', {
-          day: data.days[dayIdx],
-          weekIdx: data.currentWeek ?? 0,
-          dayIdx,
-          adapt: true,
+      if (activeWorkoutSource.type === 'ai') {
+        // Save to AI workout
+        const aiRef = doc(db, 'users', uid, 'aiWorkouts', activeWorkoutSource.workoutId!);
+        const aiSnap = await getDoc(aiRef);
+        if (!aiSnap.exists()) {
+          Alert.alert('Error', 'AI workout not found');
+          return;
+        }
+        
+        const aiData = aiSnap.data() as any;
+        const dayIdx = activeWorkoutSource.dayIdx;
+        
+        const merged = (aiData.days?.[dayIdx]?.exercises ?? []).map((orig: any, i: number) => {
+          const a = adapted[i];
+          return {
+            ...orig,
+            id: a?.id ?? orig.id,
+            name: a?.name ?? orig.name,
+            videoUri: a?.videoUri ?? orig.videoUri ?? '',
+            thumbnailUri: a?.thumbnailUri ?? orig.thumbnailUri ?? '',
+          };
         });
-      }, 800);
+        
+        aiData.days[dayIdx].exercises = merged;
+        await setDoc(aiRef, aiData, { merge: true });
+        setShowToast(true);
+        
+        setTimeout(() => {
+          navigation.navigate('WorkoutDetail', {
+            day: aiData.days[dayIdx],
+            weekIdx: 0,
+            dayIdx,
+            adapt: true,
+          });
+        }, 800);
+      } else {
+        // Save to regular program
+        const ref = doc(db, 'users', uid, 'program', 'active');
+        const snap = await getDoc(ref);
+        if (!snap.exists()) {
+          Alert.alert('Error', 'No active program found. Please set up your program first.');
+          return;
+        }
+        const data = snap.data() as any;
+        const dayIdx = activeWorkoutSource.dayIdx;
+
+        const merged = (data.days?.[dayIdx]?.exercises ?? []).map((orig: any, i: number) => {
+          const a = adapted[i];
+          return {
+            ...orig,
+            id: a?.id ?? orig.id,
+            name: a?.name ?? orig.name,
+            videoUri: a?.videoUri ?? orig.videoUri ?? '',
+            thumbnailUri: a?.thumbnailUri ?? orig.thumbnailUri ?? '',
+          };
+        });
+
+        data.days[dayIdx].exercises = merged;
+        await setDoc(ref, data, { merge: true });
+        setShowToast(true);
+
+        setTimeout(() => {
+          navigation.navigate('WorkoutDetail', {
+            day: data.days[dayIdx],
+            weekIdx: data.currentWeek ?? 0,
+            dayIdx,
+            adapt: true,
+          });
+        }, 800);
+      }
     } catch (err) {
       console.error('Save error:', err);
       Alert.alert('Error', `Failed to save adapted workout: ${err}`);

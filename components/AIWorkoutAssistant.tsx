@@ -236,8 +236,22 @@ const AIWorkoutAssistant: React.FC<Props> = ({ visible, onClose, onApplyRecommen
                   </View>
                 </View>
 
+                {recommendation.warmup && recommendation.warmup.length > 0 && (
+                  <View style={styles.exercisesCard}>
+                    <Text style={styles.sectionTitle}>🔥 Warm-Up ({recommendation.warmup.length})</Text>
+                    {recommendation.warmup.map((exercise, index) => (
+                      <View key={index} style={styles.exerciseItem}>
+                        <View style={[styles.exerciseNumber, { backgroundColor: '#FF9800' }]}>
+                          <Text style={styles.exerciseNumberText}>{index + 1}</Text>
+                        </View>
+                        <Text style={styles.exerciseName}>{exercise}</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
                 <View style={styles.exercisesCard}>
-                  <Text style={styles.exercisesTitle}>Exercises ({recommendation.exercises.length}):</Text>
+                  <Text style={styles.sectionTitle}>💪 Main Exercises ({recommendation.exercises.length})</Text>
                   {recommendation.exercises.map((exercise, index) => (
                     <View key={index} style={styles.exerciseItem}>
                       <View style={styles.exerciseNumber}>
@@ -247,6 +261,20 @@ const AIWorkoutAssistant: React.FC<Props> = ({ visible, onClose, onApplyRecommen
                     </View>
                   ))}
                 </View>
+
+                {recommendation.cooldown && recommendation.cooldown.length > 0 && (
+                  <View style={styles.exercisesCard}>
+                    <Text style={styles.sectionTitle}>🧘 Cool-Down ({recommendation.cooldown.length})</Text>
+                    {recommendation.cooldown.map((exercise, index) => (
+                      <View key={index} style={styles.exerciseItem}>
+                        <View style={[styles.exerciseNumber, { backgroundColor: '#2196F3' }]}>
+                          <Text style={styles.exerciseNumberText}>{index + 1}</Text>
+                        </View>
+                        <Text style={styles.exerciseName}>{exercise}</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
 
                 <View style={styles.buttonRow}>
                   <Pressable
@@ -439,6 +467,12 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   exercisesTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+    marginBottom: 12,
+  },
+  sectionTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: '#fff',

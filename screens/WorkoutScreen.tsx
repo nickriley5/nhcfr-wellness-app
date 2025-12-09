@@ -394,8 +394,37 @@ useFocusEffect(
             // Import exercise library to match names to IDs
             const { exercises: exerciseLibrary } = await import('../data/exercises');
             
-            // Convert AI recommendation to workout program format
-            console.log('🎯 AI recommended exercises:', recommendation.exercises);
+            // Helper function to map exercise name to library entry
+            const mapExercise = (exerciseName: string, defaultSets: number = 3, defaultReps: string = '8-12 reps') => {
+              const matchedExercise = exerciseLibrary.find(
+                ex => ex.name.toLowerCase() === exerciseName.toLowerCase()
+              );
+              
+              if (matchedExercise) {
+                const isYouTube = matchedExercise.videoUrl?.includes('youtube.com') || matchedExercise.videoUrl?.includes('youtu.be');
+                console.log(`✅ Matched: "${exerciseName}"`);
+                console.log(`   ID: ${matchedExercise.id}`);
+                console.log(`   Video: ${matchedExercise.videoUrl ? (isYouTube ? 'YouTube' : 'Direct MP4') : 'NONE'}`);
+              } else {
+                console.error(`❌ NOT FOUND: "${exerciseName}" - video will not be available`);
+              }
+              
+              return {
+                id: matchedExercise?.id || exerciseName.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
+                name: matchedExercise?.name || exerciseName,
+                sets: defaultSets,
+                repsOrDuration: defaultReps,
+                rpe: recommendation.difficultyScore,
+                tags: recommendation.focusAreas || [],
+                replacements: matchedExercise?.swapOptions || [],
+              };
+            };
+            
+            // Convert AI recommendation to workout program format with warm-ups and cool-downs
+            console.log('🎯 AI recommended:');
+            console.log('   Warm-up:', recommendation.warmup);
+            console.log('   Main exercises:', recommendation.exercises);
+            console.log('   Cool-down:', recommendation.cooldown);
             
             const aiWorkoutDays: ProgramDay[] = [{
               week: 1,
@@ -404,43 +433,23 @@ useFocusEffect(
               priority: 1,
               type: 'training' as const,
               phase: 'Strength' as const,
-              warmup: [],
-              exercises: recommendation.exercises.map((exerciseName: string) => {
-                // Find the matching exercise in the library
-                const matchedExercise = exerciseLibrary.find(
-                  ex => ex.name.toLowerCase() === exerciseName.toLowerCase()
-                );
-                
-                if (matchedExercise) {
-                  const isYouTube = matchedExercise.videoUrl?.includes('youtube.com') || matchedExercise.videoUrl?.includes('youtu.be');
-                  console.log(`✅ Matched: "${exerciseName}"`);
-                  console.log(`   ID: ${matchedExercise.id}`);
-                  console.log(`   Video: ${matchedExercise.videoUrl ? (isYouTube ? 'YouTube' : 'Direct MP4') : 'NONE'}`);
-                  console.log(`   URL: ${matchedExercise.videoUrl?.substring(0, 60)}...`);
-                } else {
-                  console.error(`❌ NOT FOUND: "${exerciseName}" - video will not be available`);
-                }
-                
-                return {
-                  id: matchedExercise?.id || exerciseName.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
-                  name: matchedExercise?.name || exerciseName,
-                  sets: 3,
-                  repsOrDuration: '8-12 reps',
-                  rpe: recommendation.difficultyScore,
-                  tags: recommendation.focusAreas || [],
-                  replacements: matchedExercise?.swapOptions || [],
-                };
-              }),
-              cooldown: [],
+              warmup: (recommendation.warmup || []).map(ex => mapExercise(ex, 2, '10 reps')),
+              exercises: (recommendation.exercises || []).map(ex => mapExercise(ex, 3, '8-12 reps')),
+              cooldown: (recommendation.cooldown || []).map(ex => mapExercise(ex, 1, '30 sec hold')),
             }];
             
-            console.log('💾 Saving workout with', aiWorkoutDays[0].exercises.length, 'exercises');
+            console.log('💾 Saving AI workout:');
+            console.log(`   Warm-up: ${aiWorkoutDays[0].warmup.length} exercises`);
+            console.log(`   Main: ${aiWorkoutDays[0].exercises.length} exercises`);
+            console.log(`   Cool-down: ${aiWorkoutDays[0].cooldown.length} exercises`);
 
-            // Save as active program
+            // Save as a separate AI workout document (doesn't overwrite active program)
+            const aiWorkoutId = `ai_${Date.now()}`;
             await setDoc(
-              doc(db, 'users', uid, 'program', 'active'),
+              doc(db, 'users', uid, 'aiWorkouts', aiWorkoutId),
               {
                 programId: 'ai-generated',
+                createdAt: Timestamp.now(),
                 metadata: {
                   currentDay: 1,
                   startDate: Timestamp.now(),
@@ -456,31 +465,23 @@ useFocusEffect(
                   focus: recommendation.focusAreas,
                 },
                 days: aiWorkoutDays,
-              },
-              { merge: false }
+              }
             );
 
-            // Refresh the program display first
-            const snap = await getDoc(doc(db, 'users', uid, 'program', 'active'));
-            if (snap.exists()) {
-              const data = snap.data();
-              const programDays = data.days as ProgramDay[];
-              setState({ currentDayIndex: 0 });
-              setDays(programDays);
-              
-              Toast.show({
-                type: 'success',
-                text1: 'Workout Ready! 💪',
-                text2: 'Your AI workout is now active',
-              });
+            console.log(`✅ Saved AI workout to: aiWorkouts/${aiWorkoutId}`);
+            
+            Toast.show({
+              type: 'success',
+              text1: 'AI Workout Ready! 💪',
+              text2: 'Starting your workout now',
+            });
 
-              // Navigate to workout detail with the day data
-              navigation.navigate('WorkoutDetail', {
-                day: programDays[0],
-                weekIdx: 0,
-                dayIdx: 0,
-              });
-            }
+            // Navigate directly to workout detail
+            navigation.navigate('WorkoutDetail', {
+              day: aiWorkoutDays[0],
+              weekIdx: 0,
+              dayIdx: 0,
+            });
           } catch (error) {
             console.error('Error applying AI workout:', error);
             Toast.show({

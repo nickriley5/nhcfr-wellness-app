@@ -58,6 +58,12 @@ export function useDashboardData(view: 'week' | 'month' | 'all', bump: number = 
     weekIdx: number;
     dayIdx: number;
   } | null>(null);
+  
+  const [aiWorkoutInfo, setAiWorkoutInfo] = useState<{
+    day: ProgramDay;
+    workoutId: string;
+    createdAt: Date;
+  } | null>(null);
 
   const [macrosToday, setMacrosToday] = useState<{
     calories: MacroRow;
@@ -95,6 +101,50 @@ export function useDashboardData(view: 'week' | 'month' | 'all', bump: number = 
         // Double-check authentication before making Firestore calls
         if (!auth.currentUser) {
           return;
+        }
+
+        // Check for AI workouts first (takes precedence)
+        const aiWorkoutsQuery = query(
+          collection(db, 'users', user.uid, 'aiWorkouts'),
+          orderBy('createdAt', 'desc')
+        );
+        const aiWorkoutsSnap = await getDocs(aiWorkoutsQuery);
+        
+        if (!auth.currentUser) {
+          return;
+        }
+        
+        // Get the most recent AI workout from today
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        let latestAiWorkout = null;
+        
+        aiWorkoutsSnap.forEach(docSnap => {
+          const data = docSnap.data();
+          const createdAt = data.createdAt?.toDate();
+          if (createdAt && createdAt >= todayStart) {
+            if (!latestAiWorkout || createdAt > latestAiWorkout.createdAt) {
+              latestAiWorkout = {
+                id: docSnap.id,
+                data,
+                createdAt,
+              };
+            }
+          }
+        });
+        
+        if (latestAiWorkout) {
+          // AI workout exists from today - use it
+          const aiDay = latestAiWorkout.data.days?.[0];
+          if (aiDay) {
+            setAiWorkoutInfo({
+              day: aiDay,
+              workoutId: latestAiWorkout.id,
+              createdAt: latestAiWorkout.createdAt,
+            });
+          }
+        } else {
+          setAiWorkoutInfo(null);
         }
 
         // Program existence + today's day info
@@ -352,6 +402,7 @@ export function useDashboardData(view: 'week' | 'month' | 'all', bump: number = 
     mealPlanExists,
     exerciseLibrary,
     todayInfo,
+    aiWorkoutInfo,
     macrosToday,
   };
 }

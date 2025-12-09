@@ -46,7 +46,9 @@ export interface AIResponse {
 }
 
 export interface WorkoutRecommendation {
+  warmup: string[];
   exercises: string[];
+  cooldown: string[];
   rationale: string;
   estimatedDuration: number;
   difficultyScore: number;
@@ -348,29 +350,45 @@ export async function getWorkoutRecommendation(userContext: {
   let exerciseListText = '';
   if (userContext.availableExercises && userContext.availableExercises.length > 0) {
     const exerciseNames = userContext.availableExercises.map(ex => ex.name).join('\n');
-    exerciseListText = `\n\nAVAILABLE EXERCISES (choose 4-6):\n${exerciseNames}`;
+    exerciseListText = `\n\nAVAILABLE EXERCISES:\n${exerciseNames}`;
   }
 
-  const prompt = `Fitness coach: Create workout for firefighter.
+  const prompt = `You are a professional strength and conditioning coach creating a workout for a firefighter.
 
+PROFILE:
 Goal: ${userContext.goal}
 Level: ${userContext.experience}
 Equipment: ${userContext.equipment.join(', ')}
-Recent: ${userContext.recentWorkouts.join(', ') || 'none'}${exerciseListText}
+Recent Workouts: ${userContext.recentWorkouts.join(', ') || 'none'}${exerciseListText}
 
-Respond with ONLY this JSON format (no extra text):
+CREATE A PROFESSIONAL-GRADE WORKOUT:
+1. Select 2-3 warm-up exercises (mobility/activation - NOT the same as main exercises)
+2. Select 4-6 main exercises (compound movements first, then accessories)
+3. Select 2-3 cool-down exercises (stretching/mobility)
+4. VARY exercises based on recent workouts - don't repeat the same movements
+5. Balance muscle groups (push/pull, upper/lower)
+6. Use ONLY exercises from the AVAILABLE EXERCISES list
+7. Match difficulty to experience level
+
+Respond with ONLY this JSON (no markdown, no extra text):
 {
-  "exercises": ["Exercise 1", "Exercise 2"],
-  "rationale": "Brief 1-2 sentence explanation",
+  "warmup": ["Exercise 1", "Exercise 2"],
+  "exercises": ["Exercise 1", "Exercise 2", "Exercise 3", "Exercise 4"],
+  "cooldown": ["Exercise 1", "Exercise 2"],
+  "rationale": "Brief explanation of why these exercises work together",
   "estimatedDuration": 45,
   "difficultyScore": 7,
   "focusAreas": ["Chest", "Back"]
 }`;
 
-  const response = await sendAIMessage([
-    { role: 'system', content: 'You are a professional fitness AI specialized in firefighter wellness programs.' },
-    { role: 'user', content: prompt },
-  ]);
+  const response = await sendAIMessage(
+    [
+      { role: 'system', content: 'You are a certified strength coach with 10+ years experience designing firefighter training programs. Create varied, professional workouts.' },
+      { role: 'user', content: prompt },
+    ],
+    'gemini',
+    { temperature: 0.9, maxTokens: 4000 } // Higher temperature for more variety
+  );
 
   const cleanedResponse = cleanJsonResponse(response.content);
   const parsed = JSON.parse(cleanedResponse);

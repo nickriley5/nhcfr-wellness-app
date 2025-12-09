@@ -1,10 +1,14 @@
 // components/Dashboard/TodaysWorkoutCard.tsx
-import React from 'react';
-import { View, Text, Pressable } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, Pressable, Alert } from 'react-native';
 import { NavigationProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { dashboardStyles } from '../../styles/DashboardScreen.styles';
+import { auth, db } from '../../firebase';
+import { doc, deleteDoc } from 'firebase/firestore';
+import Toast from 'react-native-toast-message';
+import { ProgramDay } from '../../types/Exercise';
 
 interface TodaysWorkoutCardProps {
   programExists: boolean;
@@ -25,6 +29,11 @@ interface TodaysWorkoutCardProps {
     prMessages: string[];
   } | null;
   todayInfo: any;
+  aiWorkoutInfo: {
+    day: ProgramDay;
+    workoutId: string;
+    createdAt: Date;
+  } | null;
   navigation: NavigationProp<any>;
   setShowEnvironmentCalendar: (show: boolean) => void;
   getEnvironmentIcon: (environment: string) => React.JSX.Element;
@@ -32,6 +41,7 @@ interface TodaysWorkoutCardProps {
   summarizeMains: (day: any) => string;
   countSets: (day: any) => number;
   estimateTime: (day: any) => number;
+  onRefresh: () => void;
 }
 
 export default function TodaysWorkoutCard({
@@ -39,6 +49,7 @@ export default function TodaysWorkoutCard({
   programInfo,
   todayWorkoutSummary,
   todayInfo,
+  aiWorkoutInfo,
   navigation,
   setShowEnvironmentCalendar,
   getEnvironmentIcon,
@@ -46,11 +57,101 @@ export default function TodaysWorkoutCard({
   summarizeMains,
   countSets,
   estimateTime,
+  onRefresh,
 }: TodaysWorkoutCardProps) {
+  const [dismissingAI, setDismissingAI] = useState(false);
+
+  const handleDismissAIWorkout = async () => {
+    if (!aiWorkoutInfo) return;
+
+    Alert.alert(
+      'Return to Original Workout?',
+      'This will remove the AI-generated workout and return to your scheduled workout.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Return',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setDismissingAI(true);
+              const uid = auth.currentUser?.uid;
+              if (!uid) return;
+
+              await deleteDoc(doc(db, 'users', uid, 'aiWorkouts', aiWorkoutInfo.workoutId));
+
+              Toast.show({
+                type: 'success',
+                text1: 'Returned to Scheduled Workout',
+                text2: 'AI workout dismissed',
+              });
+
+              // Small delay to ensure Firestore propagates the change
+              setTimeout(() => {
+                onRefresh();
+              }, 500);
+            } catch (error) {
+              console.error('Error dismissing AI workout:', error);
+              Toast.show({
+                type: 'error',
+                text1: 'Failed to dismiss',
+                text2: 'Please try again',
+              });
+            } finally {
+              setDismissingAI(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   return (
     <View style={dashboardStyles.horizontalCard}>
       <Text style={dashboardStyles.tileHeader}>Today's Workout</Text>
-      {programExists && programInfo ? (
+      
+      {/* Show AI Workout if available */}
+      {aiWorkoutInfo ? (
+        <>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+            <Ionicons name="sparkles" size={20} color="#a855f7" />
+            <Text style={[dashboardStyles.workoutTitle, { marginLeft: 8, marginBottom: 0 }]}>
+              AI Generated Workout
+            </Text>
+          </View>
+          
+          <Text style={dashboardStyles.workoutMeta}>
+            {summarizeMains(aiWorkoutInfo.day)} • {countSets(aiWorkoutInfo.day)} sets • ~{estimateTime(aiWorkoutInfo.day)} min
+          </Text>
+          
+          <Text style={[dashboardStyles.helperText, { marginTop: 8, marginBottom: 12 }]}>
+            Custom workout generated just for you. Includes warm-up and cool-down exercises.
+          </Text>
+
+          <Pressable
+            style={[dashboardStyles.btn, dashboardStyles.btnPrimary, { width: '100%' }]}
+            onPress={() =>
+              navigation.navigate('WorkoutDetail', {
+                day: aiWorkoutInfo.day,
+                weekIdx: 0,
+                dayIdx: 0,
+              })
+            }
+          >
+            <Text style={dashboardStyles.btnPrimaryText}>Start AI Workout</Text>
+          </Pressable>
+
+          <Pressable
+            style={[dashboardStyles.linkWrap, { marginTop: 12 }]}
+            onPress={handleDismissAIWorkout}
+            disabled={dismissingAI}
+          >
+            <Text style={dashboardStyles.linkText}>
+              {dismissingAI ? 'Dismissing...' : 'Return to Scheduled Workout'}
+            </Text>
+          </Pressable>
+        </>
+      ) : programExists && programInfo ? (
         <>
           {!programInfo.hasSchedule ? (
             <>

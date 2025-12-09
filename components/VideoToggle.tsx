@@ -22,22 +22,72 @@ const VideoToggle: React.FC<VideoToggleProps> = ({ uri }) => {
     console.log('🎥 YouTube video detected:', uri.substring(0, 60));
   }
 
-  // Extract YouTube video ID
+  // Extract YouTube video ID with better error handling
   const getYouTubeVideoId = (url: string) => {
-    let videoId = '';
+    try {
+      let videoId = '';
 
-    if (url.includes('youtube.com/watch?v=')) {
-      videoId = url.split('v=')[1].split('&')[0];
-    } else if (url.includes('youtu.be/')) {
-      videoId = url.split('youtu.be/')[1].split('?')[0];
+      // Handle youtube.com/watch?v=VIDEO_ID format
+      if (url.includes('youtube.com/watch?v=')) {
+        const params = url.split('?')[1];
+        if (params) {
+          const vParam = params.split('&').find(p => p.startsWith('v='));
+          if (vParam) {
+            videoId = vParam.split('=')[1];
+          }
+        }
+      } 
+      // Handle youtube.com/shorts/VIDEO_ID format
+      else if (url.includes('youtube.com/shorts/')) {
+        const parts = url.split('youtube.com/shorts/')[1];
+        if (parts) {
+          videoId = parts.split('?')[0].split('/')[0];
+        }
+      }
+      // Handle youtu.be/VIDEO_ID format
+      else if (url.includes('youtu.be/')) {
+        const parts = url.split('youtu.be/')[1];
+        if (parts) {
+          videoId = parts.split('?')[0].split('/')[0];
+        }
+      }
+      // Handle youtube.com/embed/VIDEO_ID format
+      else if (url.includes('youtube.com/embed/')) {
+        const parts = url.split('youtube.com/embed/')[1];
+        if (parts) {
+          videoId = parts.split('?')[0].split('/')[0];
+        }
+      }
+
+      // Validate video ID (should be 11 characters)
+      if (videoId && videoId.length === 11) {
+        console.log('✅ Extracted YouTube video ID:', videoId);
+        return videoId;
+      } else {
+        console.error('❌ Invalid YouTube video ID length:', videoId, 'from URL:', url);
+        return '';
+      }
+    } catch (error) {
+      console.error('❌ Error extracting YouTube video ID:', error, 'from URL:', url);
+      return '';
     }
-
-    return videoId;
   };
 
   const renderVideo = () => {
     if (isYouTubeUrl) {
       const videoId = getYouTubeVideoId(uri);
+      
+      if (!videoId) {
+        console.error('❌ Failed to extract valid YouTube video ID from:', uri);
+        return (
+          <View style={styles.errorContainer}>
+            <Ionicons name="alert-circle-outline" size={48} color="#d32f2f" />
+            <Text style={styles.errorText}>Unable to load YouTube video</Text>
+            <Text style={styles.errorSubtext}>Invalid video URL format</Text>
+          </View>
+        );
+      }
+      
       console.log('📺 Rendering YouTube player for video ID:', videoId);
       
       return (
@@ -46,10 +96,10 @@ const VideoToggle: React.FC<VideoToggleProps> = ({ uri }) => {
           videoId={videoId}
           play={false}
           onError={(error) => {
-            console.error('❌ YouTube player error:', error);
+            console.error('❌ YouTube player error:', error, 'for video ID:', videoId);
           }}
           onReady={() => {
-            console.log('✅ YouTube player ready');
+            console.log('✅ YouTube player ready for video ID:', videoId);
           }}
         />
       );
@@ -135,6 +185,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     gap: 4,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+    backgroundColor: '#1a1a1a',
+  },
+  errorText: {
+    color: '#d32f2f',
+    fontSize: 16,
+    fontWeight: '600',
+    marginTop: 12,
+    textAlign: 'center',
+  },
+  errorSubtext: {
+    color: '#999',
+    fontSize: 14,
+    marginTop: 6,
+    textAlign: 'center',
   },
 });
 

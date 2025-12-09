@@ -70,6 +70,7 @@ export default function DashboardScreen() {
     completionPercent,
     programExists,
     todayInfo,
+    aiWorkoutInfo,
     macrosToday,
   } = useDashboardData(view, bump);
 
@@ -434,6 +435,7 @@ export default function DashboardScreen() {
               programInfo={programInfo}
               todayWorkoutSummary={todayWorkoutSummary}
               todayInfo={todayInfo}
+              aiWorkoutInfo={aiWorkoutInfo}
               navigation={navigation}
               setShowEnvironmentCalendar={setShowEnvironmentCalendar}
               getEnvironmentIcon={getEnvironmentIcon}
@@ -441,6 +443,7 @@ export default function DashboardScreen() {
               summarizeMains={summarizeMains}
               countSets={countSets}
               estimateTime={estimateTime}
+              onRefresh={() => setBump(prev => prev + 1)}
             />
 
             {/* Streak & Achievements Card */}

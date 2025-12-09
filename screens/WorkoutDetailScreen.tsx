@@ -16,6 +16,7 @@ import {
 import LinearGradient from 'react-native-linear-gradient';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import Toast from '../components/Toast';
+import WorkoutFeedbackModal, { WorkoutFeedback } from '../components/Modals/WorkoutFeedbackModal';
 import PRCelebration from '../components/PRCelebration';
 import { useNavigation, useRoute, RouteProp, StackActions } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -30,6 +31,7 @@ import {
   limit,
   orderBy,
   query,
+  setDoc,
   Timestamp,
   writeBatch,
 } from 'firebase/firestore';
@@ -364,6 +366,8 @@ const WorkoutDetailScreen: React.FC = () => {
   const [summaryVisible, setSummaryVisible] = useState(false);
   const [prMsgs, setPrMsgs] = useState<string[]>([]);
   const [showPR, setShowPR] = useState(false);
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [workoutFeedback, setWorkoutFeedback] = useState<WorkoutFeedback | null>(null);
 
   /* -------- large countdown display -------- */
   const [activeTimer, setActiveTimer] = useState<{
@@ -373,32 +377,7 @@ const WorkoutDetailScreen: React.FC = () => {
     totalTime: number;
   } | null>(null);
 
-  /* ---- header: Adapt button ---- */
-  // Move headerRight button out of render to avoid inline component definition
-  const HeaderRightButton = React.useCallback(() => (
-    <Pressable
-      onPress={() => {
-        console.log('🔄 Header Adapt button pressed');
-        console.log('🔄 Workout state:', workState);
-        navigation.navigate('AdaptWorkout');
-      }}
-      disabled={workState === 'running'}
-      style={({ pressed }) => ({
-        opacity: pressed || workState === 'running' ? 0.6 : 1,
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-      })}
-      accessibilityLabel="Adapt workout"
-    >
-      <Ionicons name="swap-horizontal" size={22} color="#fff" />
-    </Pressable>
-  ), [navigation, workState]);
-
-  useLayoutEffect(() => {
-    navigation.setOptions({
-      headerRight: HeaderRightButton,
-    });
-  }, [navigation, workState, HeaderRightButton]);
+  /* ---- header: Removed Adapt button ---- */
 
   /* ── enrichment ── */
   const enrich = async (blk: ExerciseBlock): Promise<EnrichedExercise> => {
@@ -852,11 +831,14 @@ const WorkoutDetailScreen: React.FC = () => {
   };
 
   /* ── SAVE ── */
+  const [savedLogId, setSavedLogId] = useState<string | null>(null);
+  
   const saveWorkout = async () => {
     const uid = auth.currentUser?.uid;
     if (!uid) {return;}
 
     const logId = Date.now().toString();
+    setSavedLogId(logId);
 
     // Pre-calculate PR information for each exercise
     const exercisePRInfo: Record<string, { currentMax: number; previousMax: number; isPR: boolean }> = {};
@@ -962,13 +944,14 @@ const WorkoutDetailScreen: React.FC = () => {
         console.log('🎉 Setting showPR to true');
         setShowPR(true);
         console.log('🎉 PR celebration state updated');
-        // Delay summary to let PR celebration show first
+        // Show feedback modal after PR celebration
         setTimeout(() => {
-          setSummaryVisible(true);
+          setShowPR(false);
+          setShowFeedbackModal(true);
         }, 3500);
       } else {
-        console.log('⚠️ No PRs detected, skipping celebration');
-        setSummaryVisible(true);
+        console.log('⚠️ No PRs detected, going straight to feedback');
+        setShowFeedbackModal(true);
       }
     } catch (e) {
       console.error(e);
@@ -1000,43 +983,47 @@ const WorkoutDetailScreen: React.FC = () => {
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>{day.title}</Text>
 
-        {/* Adapt CTA */}
-        <Pressable
-          style={styles.adaptBtn}
-          onPress={() => navigation.navigate('AdaptWorkout')}
-          disabled={workState === 'running'}
-        >
-          <Ionicons name="swap-horizontal" size={20} color="#fff" style={styles.iconRight} />
-          <Text style={styles.btnTxt}>Adapt Today’s Workout</Text>
-        </Pressable>
 
-        {/* WARM-UP – motivational message */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Warm-up</Text>
-          <View style={styles.motivationalCard}>
-            <View style={styles.motivationalHeader}>
-              <Ionicons name="flame" size={24} color="#ff6b35" />
-              <Text style={styles.motivationalTitle}>Prepare Your Body</Text>
+        {/* WARM-UP */}
+        {warmup.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Warm-up</Text>
+            <View style={styles.motivationalCard}>
+              <View style={styles.motivationalHeader}>
+                <Ionicons name="flame" size={24} color="#ff6b35" />
+                <Text style={styles.motivationalTitle}>Prepare Your Body</Text>
+              </View>
+              <Text style={styles.motivationalText}>
+                Take 5-10 minutes to properly warm up your body. Focus on dynamic movements that increase your heart rate, mobilize your joints, and activate the muscle groups you'll be training today.
+              </Text>
+              <View style={styles.motivationalPoints}>
+                <View style={styles.motivationalPoint}>
+                  <Ionicons name="heart" size={16} color="#ff6b35" />
+                  <Text style={styles.motivationalPointText}>Get your blood flowing</Text>
+                </View>
+                <View style={styles.motivationalPoint}>
+                  <Ionicons name="refresh" size={16} color="#ff6b35" />
+                  <Text style={styles.motivationalPointText}>Mobilize your joints</Text>
+                </View>
+                <View style={styles.motivationalPoint}>
+                  <Ionicons name="fitness" size={16} color="#ff6b35" />
+                  <Text style={styles.motivationalPointText}>Prime your muscles</Text>
+                </View>
+              </View>
             </View>
-            <Text style={styles.motivationalText}>
-              Take 5-10 minutes to properly warm up your body. Focus on dynamic movements that increase your heart rate, mobilize your joints, and activate the muscle groups you'll be training today.
-            </Text>
-            <View style={styles.motivationalPoints}>
-              <View style={styles.motivationalPoint}>
-                <Ionicons name="heart" size={16} color="#ff6b35" />
-                <Text style={styles.motivationalPointText}>Get your blood flowing</Text>
+            
+            {/* Warm-up exercises */}
+            {warmup.map((ex, idx) => (
+              <View key={ex.id} style={styles.card}>
+                <Text style={styles.cardTitle}>{ex.name}</Text>
+                <Text style={styles.recommend}>{formatDesc(ex)}</Text>
+                {ex.videoUri && (
+                  <VideoToggle uri={ex.videoUri} />
+                )}
               </View>
-              <View style={styles.motivationalPoint}>
-                <Ionicons name="refresh" size={16} color="#ff6b35" />
-                <Text style={styles.motivationalPointText}>Mobilize your joints</Text>
-              </View>
-              <View style={styles.motivationalPoint}>
-                <Ionicons name="fitness" size={16} color="#ff6b35" />
-                <Text style={styles.motivationalPointText}>Prime your muscles</Text>
-              </View>
-            </View>
+            ))}
           </View>
-        </View>
+        )}
 
         {/* MAIN WORK */}
         <MainExercisesSection
@@ -1056,33 +1043,46 @@ const WorkoutDetailScreen: React.FC = () => {
           }
         />
 
-        {/* COOL-DOWN – motivational message */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Cool-down</Text>
-          <View style={styles.motivationalCard}>
-            <View style={styles.motivationalHeader}>
-              <Ionicons name="leaf" size={24} color="#4caf50" />
-              <Text style={styles.motivationalTitle}>Recovery & Restoration</Text>
+        {/* COOL-DOWN */}
+        {cooldown.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Cool-down</Text>
+            <View style={styles.motivationalCard}>
+              <View style={styles.motivationalHeader}>
+                <Ionicons name="leaf" size={24} color="#4caf50" />
+                <Text style={styles.motivationalTitle}>Recovery & Restoration</Text>
+              </View>
+              <Text style={styles.motivationalText}>
+                Excellent work! Now take 5-10 minutes to properly cool down. Focus on gentle stretching, deep breathing, and allowing your heart rate to gradually return to normal.
+              </Text>
+              <View style={styles.motivationalPoints}>
+                <View style={styles.motivationalPoint}>
+                  <Ionicons name="heart-outline" size={16} color="#4caf50" />
+                  <Text style={styles.motivationalPointText}>Lower your heart rate</Text>
+                </View>
+                <View style={styles.motivationalPoint}>
+                  <Ionicons name="body" size={16} color="#4caf50" />
+                  <Text style={styles.motivationalPointText}>Stretch your muscles</Text>
+                </View>
+                <View style={styles.motivationalPoint}>
+                  <Ionicons name="medical" size={16} color="#4caf50" />
+                  <Text style={styles.motivationalPointText}>Promote recovery</Text>
+                </View>
+              </View>
             </View>
-            <Text style={styles.motivationalText}>
-              Excellent work! Now take 5-10 minutes to properly cool down. Focus on gentle stretching, deep breathing, and allowing your heart rate to gradually return to normal.
-            </Text>
-            <View style={styles.motivationalPoints}>
-              <View style={styles.motivationalPoint}>
-                <Ionicons name="heart-outline" size={16} color="#4caf50" />
-                <Text style={styles.motivationalPointText}>Lower your heart rate</Text>
+            
+            {/* Cool-down exercises */}
+            {cooldown.map((ex, idx) => (
+              <View key={ex.id} style={styles.card}>
+                <Text style={styles.cardTitle}>{ex.name}</Text>
+                <Text style={styles.recommend}>{formatDesc(ex)}</Text>
+                {ex.videoUri && (
+                  <VideoToggle uri={ex.videoUri} />
+                )}
               </View>
-              <View style={styles.motivationalPoint}>
-                <Ionicons name="body" size={16} color="#4caf50" />
-                <Text style={styles.motivationalPointText}>Stretch your muscles</Text>
-              </View>
-              <View style={styles.motivationalPoint}>
-                <Ionicons name="medical" size={16} color="#4caf50" />
-                <Text style={styles.motivationalPointText}>Promote recovery</Text>
-              </View>
-            </View>
+            ))}
           </View>
-        </View>
+        )}
 
         <Pressable
           style={styles.saveBtn}
@@ -1266,6 +1266,42 @@ const WorkoutDetailScreen: React.FC = () => {
       {showPR && (
         <PRCelebration visible={showPR} messages={prMsgs} onClose={() => setShowPR(false)} />
       )}
+      
+      {/* Workout Feedback Modal */}
+      <WorkoutFeedbackModal
+        visible={showFeedbackModal}
+        onClose={() => {
+          setShowFeedbackModal(false);
+          setSummaryVisible(true);
+        }}
+        onSubmit={async (feedback) => {
+          setWorkoutFeedback(feedback);
+          
+          // Save feedback to the workout log
+          const uid = auth.currentUser?.uid;
+          if (uid && savedLogId) {
+            try {
+              await setDoc(
+                doc(db, 'users', uid, 'workoutLogs', savedLogId),
+                {
+                  feedback: {
+                    feeling: feedback.feeling,
+                    note: feedback.note,
+                    submittedAt: Timestamp.now(),
+                  },
+                },
+                { merge: true }
+              );
+              console.log('✅ Workout feedback saved');
+            } catch (error) {
+              console.error('❌ Failed to save feedback:', error);
+            }
+          }
+          
+          setShowFeedbackModal(false);
+          setSummaryVisible(true);
+        }}
+      />
     </LinearGradient>
   );
 };
