@@ -983,6 +983,15 @@ const WorkoutDetailScreen: React.FC = () => {
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>{day.title}</Text>
 
+        {/* Adapt CTA */}
+        <Pressable
+          style={styles.adaptBtn}
+          onPress={() => navigation.navigate('AdaptWorkout')}
+          disabled={workState === 'running'}
+        >
+          <Ionicons name="swap-horizontal" size={20} color="#fff" style={styles.iconRight} />
+          <Text style={styles.btnTxt}>Adapt Today's Workout</Text>
+        </Pressable>
 
         {/* WARM-UP */}
         {warmup.length > 0 && (
