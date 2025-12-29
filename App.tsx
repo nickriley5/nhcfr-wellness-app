@@ -14,9 +14,10 @@ import Toast from 'react-native-toast-message';
 import LoginScreen from './screens/LoginScreen';
 import RegisterScreen from './screens/RegisterScreen';
 import MealPlanScreen from './screens/MealPlanScreen';
-// import CheckInScreen from './screens/CheckInScreen'; // COMMENTED OUT FOR PHASE 2
+import CheckInScreen from './screens/CheckInScreen';
 import DrawerNavigation from './navigation/DrawerNavigation';
 import WorkoutDetailScreen from './screens/WorkoutDetailScreen';
+import CardioWorkoutScreen from './screens/CardioWorkoutScreen';
 import WorkoutHistoryScreen from './screens/WorkoutHistoryScreen';
 import ProgressChartScreen from './screens/ProgressChartScreen';
 import PRTrackerScreen from './screens/PRTrackerScreen';
@@ -62,13 +63,24 @@ export type RootStackParamList = {
   Login: undefined;
   Register: undefined;
   AppDrawer: NavigatorScreenParams<RootDrawerParamList>;
-  // CheckIn: undefined; // COMMENTED OUT FOR PHASE 2
+  CheckIn: undefined;
   WeighIn: undefined;
   WorkoutDetail: {
     day: ProgramDay;
     weekIdx: number;
     dayIdx: number;
     adapt?: boolean;
+  };
+  CardioWorkout: {
+    session: {
+      dayOfWeek: string;
+      type: string;
+      duration: number;
+      intensity: string;
+      notes?: string;
+      targetHeartRate?: string;
+    };
+    weekNumber: number;
   };
   AdaptWorkout: undefined;
   ExerciseLibrary: undefined;
@@ -145,7 +157,7 @@ const AppNavigator = () => {
       {user ? (
   <>
     <Stack.Screen name="AppDrawer" component={DrawerNavigation} />
-    {/* <Stack.Screen name="CheckIn" component={CheckInScreen} /> COMMENTED OUT FOR PHASE 2 */}
+    <Stack.Screen name="CheckIn" component={CheckInScreen} />
     <Stack.Screen name="MacroCalculator" component={MacroCalculatorScreen} />
     <Stack.Screen
   name="WorkoutDetail"
@@ -156,6 +168,11 @@ const AppNavigator = () => {
     headerStyle: { backgroundColor: '#121212' },
     headerTintColor: '#fff',
   }}
+/>
+    <Stack.Screen
+  name="CardioWorkout"
+  component={CardioWorkoutScreen}
+  options={{ headerShown: false }}
 />
     <Stack.Screen name="ExerciseLibrary" component={ExerciseLibraryScreen} />
     <Stack.Screen name="ExerciseDetail" component={ExerciseDetailScreen} />

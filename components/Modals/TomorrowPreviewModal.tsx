@@ -18,6 +18,7 @@ const { height: screenHeight } = Dimensions.get('window');
 
 // Utility function to format exercise names (convert underscores to spaces and capitalize)
 const formatExerciseName = (id: string): string => {
+  if (!id) return 'Unknown Exercise';
   return id
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (c) => c.toUpperCase()); // capitalize each word

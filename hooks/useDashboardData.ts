@@ -148,6 +148,7 @@ export function useDashboardData(view: 'week' | 'month' | 'all', bump: number = 
         }
 
         // Program existence + today's day info
+        // Check for prewritten program first
         const progSnap = await getDoc(doc(db, 'users', user.uid, 'program', 'active'));
 
         // Check again after async operation
@@ -155,7 +156,7 @@ export function useDashboardData(view: 'week' | 'month' | 'all', bump: number = 
           return;
         }
 
-        setProgramExists(progSnap.exists());
+        let hasProgram = progSnap.exists();
 
         if (progSnap.exists()) {
           const prog: any = progSnap.data();
@@ -173,8 +174,84 @@ export function useDashboardData(view: 'week' | 'month' | 'all', bump: number = 
             setTodayInfo(null);
           }
         } else {
-          setTodayInfo(null);
+          // Check for active AI program if no prewritten program
+          console.log('🔍 Checking for AI programs...');
+          const aiProgramsRef = collection(db, 'users', user.uid, 'aiPrograms');
+          
+          // First, get ALL programs to debug
+          const allProgramsSnap = await getDocs(aiProgramsRef);
+          console.log('📋 Total AI Programs:', allProgramsSnap.size);
+          allProgramsSnap.forEach(doc => {
+            const data = doc.data();
+            console.log('  - Program:', data.programName, 'isActive:', data.isActive, 'isArchived:', data.isArchived);
+          });
+          
+          // Query for active programs (isActive=true AND isArchived is either false or undefined)
+          const aiProgramsSnap = await getDocs(query(aiProgramsRef, where('isActive', '==', true)));
+          
+          console.log('📋 AI Programs found with isActive=true:', aiProgramsSnap.size);
+          
+          if (!aiProgramsSnap.empty) {
+            // Filter out archived programs in case isArchived field is missing in some docs
+            const activePrograms = aiProgramsSnap.docs.filter(doc => {
+              const data = doc.data();
+              return !data.isArchived; // Will be true if isArchived is false or undefined
+            });
+            
+            if (activePrograms.length > 0) {
+              const aiProgram = activePrograms[0].data() as any;
+              console.log('✅ Active AI Program:', aiProgram.programName, 'Week:', aiProgram.currentWeek, 'Day:', aiProgram.currentDay);
+              hasProgram = true;
+            
+            // Get current day from AI program
+            const currentWeek = aiProgram.currentWeek || 1;
+            const currentDay = aiProgram.currentDay || 1;
+            
+            const week = aiProgram.weeks?.find((w: any) => w.weekNumber === currentWeek);
+            const day = week?.days?.find((d: any) => d.dayNumber === currentDay);
+            
+            if (day) {
+              // Convert AI program day to ProgramDay format
+              const nameToId = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+              
+              const programDay: ProgramDay = {
+                title: `${day.dayName} - Week ${currentWeek}`,
+                warmup: day.warmup?.map((w: string) => ({ 
+                  exerciseId: nameToId(w), 
+                  repsOrDuration: '5-10 reps' 
+                })) || [],
+                exercises: day.exercises?.map((ex: any) => ({
+                  exerciseId: ex.id || nameToId(ex.name),
+                  sets: ex.sets,
+                  repsOrDuration: ex.reps,
+                  restSeconds: ex.restSeconds,
+                  notes: ex.notes || '',
+                })) || [],
+                cooldown: day.cooldown?.map((c: string) => ({ 
+                  exerciseId: nameToId(c), 
+                  repsOrDuration: '30-60 sec' 
+                })) || [],
+              };
+              
+              setTodayInfo({
+                day: programDay,
+                weekIdx: currentWeek - 1,
+                dayIdx: currentDay - 1,
+              });
+            } else {
+              setTodayInfo(null);
+            }
+            } else {
+              // No active non-archived programs found
+              setTodayInfo(null);
+            }
+          } else {
+            // No AI programs with isActive=true found
+            setTodayInfo(null);
+          }
         }
+
+        setProgramExists(hasProgram);
 
         // Meal plan existence
         const mealSnap = await getDoc(doc(db, 'users', user.uid, 'mealPlan', 'active'));

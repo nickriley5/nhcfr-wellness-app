@@ -17,6 +17,7 @@ import LinearGradient from 'react-native-linear-gradient';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import Toast from '../components/Toast';
 import WorkoutFeedbackModal, { WorkoutFeedback } from '../components/Modals/WorkoutFeedbackModal';
+import CoachingAdviceModal from '../components/Modals/CoachingAdviceModal';
 import PRCelebration from '../components/PRCelebration';
 import { useNavigation, useRoute, RouteProp, StackActions } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -39,6 +40,7 @@ import { checkAndAdjustRestDays } from '../utils/performanceMonitor';
 import type { ExerciseBlock } from '../utils/types';
 import EnhancedTimerBar from '../components/EnhancedTimerBar';
 import VideoToggle from '../components/VideoToggle';
+import { generateCoachingAdvice } from '../utils/coachingService';
 import { resolveExerciseDetails } from '../utils/exerciseUtils';
 import { exercises as exerciseLibrary } from '../data/exercises';
 import { exercises } from '../data/exercises';
@@ -369,6 +371,11 @@ const WorkoutDetailScreen: React.FC = () => {
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [workoutFeedback, setWorkoutFeedback] = useState<WorkoutFeedback | null>(null);
 
+  /* -------- coaching advice -------- */
+  const [showCoachingModal, setShowCoachingModal] = useState(false);
+  const [coachingData, setCoachingData] = useState<any>(null);
+  const [coachingChecked, setCoachingChecked] = useState(false);
+
   /* -------- large countdown display -------- */
   const [activeTimer, setActiveTimer] = useState<{
     exerciseId: string;
@@ -382,6 +389,20 @@ const WorkoutDetailScreen: React.FC = () => {
   /* ── enrichment ── */
   const enrich = async (blk: ExerciseBlock): Promise<EnrichedExercise> => {
     console.log(`🔍 Enriching exercise ID: ${blk.id}`);
+    
+    // Safety check for undefined or empty ID
+    if (!blk.id) {
+      console.error('❌ Exercise block has no ID:', blk);
+      return {
+        id: 'unknown',
+        name: 'Unknown Exercise',
+        videoUri: '',
+        setsCount: 3,
+        repsCount: 10,
+        rpe: 7,
+        type: 'reps' as const,
+      };
+    }
     
     // Map human-readable IDs to actual hexadecimal IDs in database
     const exerciseIdMap: Record<string, string> = {
@@ -675,6 +696,9 @@ const WorkoutDetailScreen: React.FC = () => {
       });
     };
   }, [day]);
+
+  /* ── COACHING ADVICE - REMOVED (Now triggered from Dashboard based on check-ins) ── */
+  // Automatic coaching removed - AI now analyzes check-in data and provides recommendations on Dashboard
 
   /* ── GLOBAL TIMER EFFECT ── */
   useEffect(() => {
@@ -1309,6 +1333,25 @@ const WorkoutDetailScreen: React.FC = () => {
           
           setShowFeedbackModal(false);
           setSummaryVisible(true);
+        }}
+      />
+
+      {/* Coaching Advice Modal */}
+      <CoachingAdviceModal
+        visible={showCoachingModal}
+        onClose={() => setShowCoachingModal(false)}
+        coachingAdvice={coachingData?.coachingAdvice || ''}
+        shouldAdjust={coachingData?.shouldAdjust || false}
+        adjustedWorkout={coachingData?.adjustedWorkout}
+        onAcceptAdjustments={() => {
+          console.log('🤖 User accepted coaching adjustments');
+          // TODO: Apply the adjusted workout to the current exercises
+          // For now, just close the modal and let them continue
+          setShowCoachingModal(false);
+        }}
+        onUseOriginal={() => {
+          console.log('🤖 User chose to use original workout');
+          setShowCoachingModal(false);
         }}
       />
     </LinearGradient>

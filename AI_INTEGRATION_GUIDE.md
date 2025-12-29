@@ -6,19 +6,27 @@ This AI integration adds powerful machine learning capabilities to your firefigh
 
 1. **AI Chat Coach** - Real-time conversational fitness/nutrition coaching
 2. **Smart Workout Recommendations** - Personalized workout generation based on goals, equipment, and progress
-3. **AI Meal Planner** - Intelligent meal suggestions matching nutrition targets
-4. **Form Analysis** - Exercise form feedback (ready for video integration)
-5. **Adaptive Programming** - Auto-adjusting training based on user progress
+3. **Periodized Program Generation** ✨ NEW - Complete multi-week training programs with progressive overload
+4. **Dynamic Coaching Adjustments** ✨ NEW - AI analyzes feedback and adjusts workouts intelligently
+5. **AI Meal Planner** - Intelligent meal suggestions matching nutrition targets
+6. **Form Analysis** - Exercise form feedback (ready for video integration)
+7. **Adaptive Programming** - Auto-adjusting training based on user progress
 
 ## 📁 Files Created
 
-### Core AI Service
+### Core AI Services
 - `utils/ai/aiService.ts` - Main AI service with multi-provider support (OpenAI, Claude, Gemini)
+  - ✨ NEW: `generatePeriodizedProgram()` - Full program generation
+  - ✨ NEW: `getWorkoutAdjustments()` - Dynamic coaching
+- `utils/coachingService.ts` ✨ NEW - Coaching utilities and feedback analysis
 
 ### Screens & Components
 - `screens/AIChatScreen.tsx` - Full AI chat interface
 - `components/AIWorkoutAssistant.tsx` - Smart workout recommendation modal
 - `components/AIMealPlanner.tsx` - AI-powered meal suggestions
+- `components/Modals/PeriodizedProgramModal.tsx` ✨ NEW - Program generator UI
+- `components/Modals/CoachingAdviceModal.tsx` ✨ NEW - Dynamic coaching display
+- `components/Modals/WorkoutFeedbackModal.tsx` - Post-workout feedback capture
 
 ## 🔑 Setup Required
 

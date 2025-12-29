@@ -79,7 +79,7 @@ export function useDashboardState(bump: number, programExists: boolean) {
           return;
         }
 
-        // Get active program
+        // Get active program (prewritten first)
         const programDoc = await getDoc(doc(db, 'users', uid, 'program', 'active'));
 
         // Check again after async operation
@@ -88,13 +88,36 @@ export function useDashboardState(bump: number, programExists: boolean) {
           return;
         }
 
-        if (!programDoc.exists()) {
+        let programData = programDoc.exists() ? programDoc.data() : null;
+        let daysPerWeek = 4;
+        let isAIProgram = false;
+
+        // If no prewritten program, check for AI program
+        if (!programData) {
+          const { collection: firestoreCollection, query: firestoreQuery, where: firestoreWhere, getDocs: firestoreGetDocs } = await import('firebase/firestore');
+          const aiProgramsRef = firestoreCollection(db, 'users', uid, 'aiPrograms');
+          const aiProgramsSnap = await firestoreGetDocs(firestoreQuery(aiProgramsRef, firestoreWhere('isActive', '==', true), firestoreWhere('isArchived', '==', false)));
+          
+          if (!aiProgramsSnap.empty) {
+            const aiProgram = aiProgramsSnap.docs[0].data();
+            isAIProgram = true;
+            // Create mock structure for AI program
+            programData = {
+              template: {
+                daysPerWeek: aiProgram.weeks?.[0]?.days?.length || 4,
+                days: aiProgram.weeks?.[0]?.days || [],
+              }
+            };
+            daysPerWeek = programData.template.daysPerWeek;
+          }
+        } else {
+          daysPerWeek = programData.template?.daysPerWeek || 4;
+        }
+
+        if (!programData) {
           setProgramInfo(null);
           return;
         }
-
-        const programData = programDoc.data();
-        const daysPerWeek = programData.template?.daysPerWeek || 4;
 
         // Get user profile to check schedule
         const profileDoc = await getDoc(doc(db, 'users', uid));
@@ -116,7 +139,7 @@ export function useDashboardState(bump: number, programExists: boolean) {
         };
         const todayKey = dayMap[today as keyof typeof dayMap] || today;
 
-        let currentDayName = 'No current workout';
+        let currentDayName = isAIProgram ? 'AI Program Active' : 'No current workout';
         let isRestDay = true;
         let todayEnvironment = 'off'; // Default to off
 
@@ -125,28 +148,32 @@ export function useDashboardState(bump: number, programExists: boolean) {
           isRestDay = todayEnvironment === 'off';
 
           if (!isRestDay) {
-            // Count how many workout days have passed this week to determine program day
-            const weekStart = new Date();
-            weekStart.setDate(weekStart.getDate() - weekStart.getDay()); // Sunday
+            if (isAIProgram) {
+              currentDayName = 'AI Workout';
+            } else {
+              // Count how many workout days have passed this week to determine program day
+              const weekStart = new Date();
+              weekStart.setDate(weekStart.getDate() - weekStart.getDay()); // Sunday
 
-            const workoutDaysThisWeek = [];
-            for (let i = 0; i < 7; i++) {
-              const checkDate = new Date(weekStart);
-              checkDate.setDate(weekStart.getDate() + i);
-              const checkDay = checkDate.toLocaleDateString('en-US', { weekday: 'short' });
-              const checkDayKey = dayMap[checkDay as keyof typeof dayMap] || checkDay;
+              const workoutDaysThisWeek = [];
+              for (let i = 0; i < 7; i++) {
+                const checkDate = new Date(weekStart);
+                checkDate.setDate(weekStart.getDate() + i);
+                const checkDay = checkDate.toLocaleDateString('en-US', { weekday: 'short' });
+                const checkDayKey = dayMap[checkDay as keyof typeof dayMap] || checkDay;
 
-              if (profile.schedule.environmentMap[checkDayKey] !== 'off') {
-                workoutDaysThisWeek.push(checkDayKey);
+                if (profile.schedule.environmentMap[checkDayKey] !== 'off') {
+                  workoutDaysThisWeek.push(checkDayKey);
+                }
               }
-            }
 
-            // Find which workout day of the week today is
-            const todayIndex = workoutDaysThisWeek.indexOf(todayKey);
-            if (todayIndex >= 0) {
-              const programDayIndex = todayIndex % daysPerWeek;
-              const programDay = programData.template?.days?.[programDayIndex];
-              currentDayName = programDay?.title || `Day ${programDayIndex + 1}`;
+              // Find which workout day of the week today is
+              const todayIndex = workoutDaysThisWeek.indexOf(todayKey);
+              if (todayIndex >= 0) {
+                const programDayIndex = todayIndex % daysPerWeek;
+                const programDay = programData.template?.days?.[programDayIndex];
+                currentDayName = programDay?.title || `Day ${programDayIndex + 1}`;
+              }
             }
           }
         }
@@ -183,7 +210,7 @@ export function useDashboardState(bump: number, programExists: boolean) {
           return;
         }
 
-        // Get the active program
+        // Get the active program (prewritten first)
         const progSnap = await getDoc(doc(db, 'users', uid, 'program', 'active'));
 
         // Check again after async operation
@@ -192,21 +219,88 @@ export function useDashboardState(bump: number, programExists: boolean) {
           return;
         }
 
-        if (!progSnap.exists()) {
-          setTomorrowInfo(null);
-          return;
+        let nextWorkoutDay: any = null;
+        let isAIProgram = false;
+
+        if (progSnap.exists()) {
+          // Prewritten program
+          const prog: any = progSnap.data();
+          const days: any[] = prog.days || [];
+          const curDay = prog.metadata?.currentDay ?? 1;
+
+          // Get next day (tomorrow's workout)
+          const nextDayIndex = curDay; // curDay is 1-based, so curDay gives us next day's 0-based index
+
+          // Handle cycling through program
+          const actualIndex = nextDayIndex % days.length;
+          nextWorkoutDay = days[actualIndex];
+        } else {
+          // Check for AI program
+          try {
+            const { collection: firestoreCollection, query: firestoreQuery, where: firestoreWhere, getDocs: firestoreGetDocs } = await import('firebase/firestore');
+            const aiProgramsRef = firestoreCollection(db, 'users', uid, 'aiPrograms');
+            const aiProgramsSnap = await firestoreGetDocs(firestoreQuery(aiProgramsRef, firestoreWhere('isActive', '==', true)));
+            
+            if (!aiProgramsSnap.empty) {
+              const activePrograms = aiProgramsSnap.docs.filter(doc => !doc.data().isArchived);
+              
+              if (activePrograms.length > 0) {
+                const aiProgram = activePrograms[0].data() as any;
+                isAIProgram = true;
+                
+                // Get current position in program
+                const currentWeek = aiProgram.currentWeek || 1;
+                const currentDay = aiProgram.currentDay || 1;
+                
+                // Find tomorrow's day (next day in sequence)
+                const currentWeekData = aiProgram.weeks?.find((w: any) => w.weekNumber === currentWeek);
+                const daysInWeek = currentWeekData?.days?.length || 0;
+                
+                let nextWeek = currentWeek;
+                let nextDay = currentDay + 1;
+                
+                // If next day exceeds days in current week, move to next week
+                if (nextDay > daysInWeek && daysInWeek > 0) {
+                  nextDay = 1;
+                  nextWeek = currentWeek + 1;
+                }
+                
+                // Check if next week exists
+                const nextWeekData = aiProgram.weeks?.find((w: any) => w.weekNumber === nextWeek);
+                const nextDayData = nextWeekData?.days?.find((d: any) => d.dayNumber === nextDay);
+                
+                if (nextDayData) {
+                  // Convert to expected format
+                  const nameToId = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+                  
+                  nextWorkoutDay = {
+                    title: `${nextDayData.dayName} - Week ${nextWeek}`,
+                    warmup: nextDayData.warmup?.map((w: string) => ({ 
+                      exerciseId: nameToId(w), 
+                      repsOrDuration: '5-10 reps' 
+                    })) || [],
+                    exercises: nextDayData.exercises?.map((ex: any) => ({
+                      exerciseId: ex.id || nameToId(ex.name),
+                      sets: ex.sets,
+                      repsOrDuration: ex.reps,
+                      restSeconds: ex.restSeconds,
+                      notes: ex.notes || '',
+                    })) || [],
+                    cooldown: nextDayData.cooldown?.map((c: string) => ({ 
+                      exerciseId: nameToId(c), 
+                      repsOrDuration: '30-60 sec' 
+                    })) || [],
+                    week: nextWeek,
+                    day: nextDay,
+                  };
+                }
+              }
+            }
+          } catch (aiError) {
+            console.error('Error loading AI program for tomorrow:', aiError);
+            // Continue - nextWorkoutDay will be null
+          }
         }
-
-        const prog: any = progSnap.data();
-        const days: any[] = prog.days || [];
-        const curDay = prog.metadata?.currentDay ?? 1;
-
-        // Get next day (tomorrow's workout)
-        const nextDayIndex = curDay; // curDay is 1-based, so curDay gives us next day's 0-based index
-
-        // Handle cycling through program
-        const actualIndex = nextDayIndex % days.length;
-        const nextWorkoutDay = days[actualIndex];
 
         if (!nextWorkoutDay) {
           setTomorrowInfo(null);

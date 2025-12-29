@@ -29,6 +29,12 @@ const AIWorkoutAssistant: React.FC<Props> = ({ visible, onClose, onApplyRecommen
   const [loading, setLoading] = useState(false);
   const [recommendation, setRecommendation] = useState<WorkoutRecommendation | null>(null);
   const [userContext, setUserContext] = useState<any>(null);
+  
+  // Workout preferences
+  const [duration, setDuration] = useState(30);
+  const [focus, setFocus] = useState<string[]>(['Full Body']);
+  const [trainingStyle, setTrainingStyle] = useState<string[]>(['Strength']);
+  const [intensity, setIntensity] = useState(5);
 
   useEffect(() => {
     if (visible) {
@@ -117,6 +123,10 @@ const AIWorkoutAssistant: React.FC<Props> = ({ visible, onClose, onApplyRecommen
       const rec = await getWorkoutRecommendation({
         ...userContext,
         availableExercises,
+        duration,
+        focus: focus[0] || 'Full Body',
+        trainingStyle: trainingStyle[0] || 'Strength',
+        intensity,
       });
       setRecommendation(rec);
     } catch (error) {
@@ -154,7 +164,7 @@ const AIWorkoutAssistant: React.FC<Props> = ({ visible, onClose, onApplyRecommen
         <View style={styles.modalContent}>
           {/* Header */}
           <View style={styles.header}>
-            <Text style={styles.headerTitle}>🤖 AI Workout Assistant</Text>
+            <Text style={styles.headerTitle}>⚡ Quick Workout</Text>
             <Pressable onPress={onClose} style={styles.closeButton}>
               <Ionicons name="close" size={24} color="#fff" />
             </Pressable>
@@ -164,37 +174,102 @@ const AIWorkoutAssistant: React.FC<Props> = ({ visible, onClose, onApplyRecommen
             {!recommendation && (
               <View style={styles.introSection}>
                 <Text style={styles.introIcon}>💪</Text>
-                <Text style={styles.introTitle}>Get a Smart Workout</Text>
+                <Text style={styles.introTitle}>Get a Quick Workout</Text>
                 <Text style={styles.introText}>
-                  Based on your goals, recent workouts, and available equipment,
-                  I'll create the perfect workout for you today.
+                  Customize your workout session based on your current needs and available time.
                 </Text>
 
-                {userContext && (
-                  <View style={styles.contextCard}>
-                    <Text style={styles.contextTitle}>Your Profile:</Text>
-                    <Text style={styles.contextItem}>🎯 Goal: {userContext.goal}</Text>
-                    <Text style={styles.contextItem}>📊 Level: {userContext.experience}</Text>
-                    <Text style={styles.contextItem}>
-                      🏋️ Equipment: {userContext.equipment.join(', ')}
-                    </Text>
-                    {userContext.recentWorkouts.length > 0 && (
-                      <Text style={styles.contextItem}>
-                        📅 Recent: {userContext.recentWorkouts[0]}
-                      </Text>
-                    )}
+                {/* DURATION SLIDER */}
+                <View style={styles.preferenceSection}>
+                  <Text style={styles.preferenceLabel}>Duration: {duration} minutes</Text>
+                  <View style={styles.durationOptions}>
+                    {[15, 20, 30, 45, 60].map(min => (
+                      <Pressable
+                        key={min}
+                        style={[styles.durationChip, duration === min && styles.durationChipActive]}
+                        onPress={() => setDuration(min)}
+                      >
+                        <Text style={[styles.durationChipText, duration === min && styles.durationChipTextActive]}>
+                          {min}min
+                        </Text>
+                      </Pressable>
+                    ))}
                   </View>
-                )}
+                </View>
+
+                {/* FOCUS AREA */}
+                <View style={styles.preferenceSection}>
+                  <Text style={styles.preferenceLabel}>Focus Area</Text>
+                  <View style={styles.chipContainer}>
+                    {['Upper Body', 'Lower Body', 'Full Body', 'Core', 'Cardio'].map(area => (
+                      <Pressable
+                        key={area}
+                        style={[styles.chip, focus.includes(area) && styles.chipActive]}
+                        onPress={() => {
+                          if (focus.includes(area)) {
+                            setFocus(focus.filter(f => f !== area));
+                          } else {
+                            setFocus([area]); // Single selection
+                          }
+                        }}
+                      >
+                        <Text style={[styles.chipText, focus.includes(area) && styles.chipTextActive]}>
+                          {area}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+
+                {/* TRAINING STYLE */}
+                <View style={styles.preferenceSection}>
+                  <Text style={styles.preferenceLabel}>Training Style</Text>
+                  <View style={styles.chipContainer}>
+                    {['Strength', 'Hypertrophy', 'HIIT', 'Conditioning', 'Endurance'].map(style => (
+                      <Pressable
+                        key={style}
+                        style={[styles.chip, trainingStyle.includes(style) && styles.chipActive]}
+                        onPress={() => {
+                          if (trainingStyle.includes(style)) {
+                            setTrainingStyle(trainingStyle.filter(s => s !== style));
+                          } else {
+                            setTrainingStyle([style]); // Single selection
+                          }
+                        }}
+                      >
+                        <Text style={[styles.chipText, trainingStyle.includes(style) && styles.chipTextActive]}>
+                          {style}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+
+                {/* INTENSITY SLIDER */}
+                <View style={styles.preferenceSection}>
+                  <Text style={styles.preferenceLabel}>
+                    Intensity: {['Chill', 'Light', 'Moderate', 'Hard', 'Beast Mode'][Math.floor((intensity - 1) / 2)]}
+                  </Text>
+                  <View style={styles.intensitySlider}>
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(level => (
+                      <Pressable
+                        key={level}
+                        style={[styles.intensityDot, intensity >= level && styles.intensityDotActive]}
+                        onPress={() => setIntensity(level)}
+                      />
+                    ))}
+                  </View>
+                </View>
 
                 <Pressable
                   style={styles.generateButton}
                   onPress={handleGetRecommendation}
-                  disabled={loading}
+                  disabled={loading || focus.length === 0 || trainingStyle.length === 0}
                 >
                   {loading ? (
                     <ActivityIndicator color="#fff" />
                   ) : (
-                    <Text style={styles.generateButtonText}>✨ Generate Workout</Text>
+                    <Text style={styles.generateButtonText}>⚡ Generate Workout</Text>
                   )}
                 </Pressable>
               </View>
@@ -382,6 +457,85 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  // Preference styles
+  preferenceSection: {
+    marginBottom: 24,
+    width: '100%',
+  },
+  preferenceLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+    marginBottom: 12,
+  },
+  durationOptions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  durationChip: {
+    backgroundColor: '#222',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#444',
+  },
+  durationChipActive: {
+    backgroundColor: '#2196F3',
+    borderColor: '#2196F3',
+  },
+  durationChipText: {
+    color: '#aaa',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  durationChipTextActive: {
+    color: '#fff',
+  },
+  chipContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  chip: {
+    backgroundColor: '#222',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#444',
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  chipActive: {
+    backgroundColor: '#FF3C38',
+    borderColor: '#FF3C38',
+  },
+  chipText: {
+    color: '#aaa',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  chipTextActive: {
+    color: '#fff',
+  },
+  intensitySlider: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  intensityDot: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#222',
+    borderWidth: 2,
+    borderColor: '#444',
+  },
+  intensityDotActive: {
+    backgroundColor: '#FF3C38',
+    borderColor: '#FF3C38',
   },
   recommendationSection: {
     paddingBottom: 20,

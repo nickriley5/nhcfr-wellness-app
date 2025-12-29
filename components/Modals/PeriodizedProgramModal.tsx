@@ -40,16 +40,36 @@ const PeriodizedProgramModal: React.FC<Props> = ({
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState<'setup' | 'generating' | 'preview'>('setup');
   const [generatedProgram, setGeneratedProgram] = useState<PeriodizedProgram | null>(null);
+  const [progressPhase, setProgressPhase] = useState('');
+  const [progressPercent, setProgressPercent] = useState(0);
 
   // Form state
   const [goal, setGoal] = useState(userProfile?.goals?.[0] || 'Build Strength');
+  const [fitnessLevel, setFitnessLevel] = useState<'beginner' | 'intermediate' | 'advanced'>(
+    (userProfile?.experience?.toLowerCase() as 'beginner' | 'intermediate' | 'advanced') || 'intermediate'
+  );
+  const [selectedEquipment, setSelectedEquipment] = useState<string[]>(
+    userProfile?.equipment || ['dumbbells', 'bodyweight']
+  );
   const [totalWeeks, setTotalWeeks] = useState('12');
   const [daysPerWeek, setDaysPerWeek] = useState('4');
+  const [includeCardio, setIncludeCardio] = useState(false);
+  const [allowTwoADays, setAllowTwoADays] = useState(false);
   const [periodizationModel, setPeriodizationModel] = useState<'linear' | 'undulating' | 'block'>(
     'linear'
   );
 
   const handleGenerate = async () => {
+    // Validation: Ensure at least one equipment is selected
+    if (selectedEquipment.length === 0) {
+      Toast.show({
+        type: 'error',
+        text1: 'Equipment Required',
+        text2: 'Please select at least one equipment option',
+      });
+      return;
+    }
+
     setLoading(true);
     setStep('generating');
 
@@ -57,47 +77,101 @@ const PeriodizedProgramModal: React.FC<Props> = ({
       // Import exercise library
       const { exercises } = await import('../../data/exercises');
 
-      // Filter exercises based on available equipment
-      const userEquipment = (userProfile?.equipment || ['dumbbells', 'bodyweight']).map(e =>
-        e.toLowerCase()
-      );
+      // Map goal to exercise goal tags
+      const goalTagMap: Record<string, string[]> = {
+        'Build Strength': ['strength', 'power'],
+        'Improve VO2 Max': ['conditioning', 'endurance', 'cardio'],
+        'Build Muscle': ['hypertrophy', 'strength'],
+        'Fat Loss': ['conditioning', 'metabolic', 'cardio'],
+      };
+      const relevantGoalTags = goalTagMap[goal] || ['strength'];
+
+      // Filter exercises dynamically based on equipment, fitness level, goal, and video availability
+      const userEquipment = selectedEquipment.map(e => e.toLowerCase());
       const availableExercises = exercises
         .filter(ex => {
+          // 1. Equipment check
           const exerciseEquipment = (ex.equipment || '').toLowerCase();
           const hasEquipment =
             exerciseEquipment === 'bodyweight' ||
             exerciseEquipment === '' ||
             userEquipment.some((eq: string) => exerciseEquipment.includes(eq.toLowerCase()));
+
+          // 2. Fitness level check
+          const exerciseLevel = (ex.level || 'all').toLowerCase();
+          const levelMatch =
+            exerciseLevel === 'all' ||
+            exerciseLevel === fitnessLevel ||
+            (fitnessLevel === 'advanced' && exerciseLevel === 'intermediate') ||
+            (fitnessLevel === 'intermediate' && exerciseLevel === 'beginner');
+
+          // 3. Goal alignment check
+          const exerciseGoalTags = (ex.goalTags || []).map(t => t.toLowerCase());
+          const goalMatch =
+            exerciseGoalTags.length === 0 || // Include exercises with no goal tags
+            exerciseGoalTags.some(tag => relevantGoalTags.includes(tag));
+
+          // 4. Video availability (critical for user experience)
           const hasVideo = ex.videoUrl && ex.videoUrl.trim() !== '';
-          return hasEquipment && hasVideo;
+
+          return hasEquipment && levelMatch && goalMatch && hasVideo;
         })
         .map(ex => ({
           id: ex.id,
           name: ex.name,
           equipment: ex.equipment || '',
           focusArea: ex.focusArea || '',
+          level: ex.level || 'all',
+          goalTags: ex.goalTags || [],
         }));
 
-      console.log(`📚 Using ${availableExercises.length} exercises for program generation`);
+      // console.log(
+      //   `📚 Dynamic filtering: ${availableExercises.length} exercises (Goal: ${goal}, Level: ${fitnessLevel}, Equipment: ${selectedEquipment.join(', ')})`
+      // );
 
-      const program = await generatePeriodizedProgram({
-        goal,
-        experience: userProfile?.experience || 'intermediate',
-        equipment: userProfile?.equipment || ['dumbbells', 'bodyweight'],
-        totalWeeks: parseInt(totalWeeks),
-        daysPerWeek: parseInt(daysPerWeek),
-        periodizationModel,
-        availableExercises,
-      });
+      console.log('🏃 Include Cardio:', includeCardio);
+
+      const program = await generatePeriodizedProgram(
+        {
+          goal,
+          experience: fitnessLevel,
+          equipment: selectedEquipment,
+          totalWeeks: parseInt(totalWeeks),
+          daysPerWeek: parseInt(daysPerWeek),
+          periodizationModel,
+          availableExercises,
+          includeCardio,
+          allowTwoADays: fitnessLevel === 'advanced' ? allowTwoADays : false,
+        },
+        (phase, percent) => {
+          setProgressPhase(phase);
+          setProgressPercent(percent);
+        }
+      );
 
       setGeneratedProgram(program);
       setStep('preview');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error generating program:', error);
+      
+      // Extract user-friendly error message
+      let errorMsg = 'Unknown error occurred';
+      
+      if (error?.message) {
+        errorMsg = error.message;
+      } else if (error?.response?.data?.error?.message) {
+        errorMsg = error.response.data.error.message;
+      } else if (error?.response?.status === 503) {
+        errorMsg = '🚫 AI service temporarily unavailable. Please try again in a few minutes.';
+      } else if (error?.response?.status === 429) {
+        errorMsg = '⏱️ Too many requests. Please wait a moment and try again.';
+      }
+      
       Toast.show({
         type: 'error',
         text1: 'Generation Failed',
-        text2: 'Please try again with different settings',
+        text2: errorMsg.substring(0, 150),
+        visibilityTime: 5000,
       });
       setStep('setup');
     } finally {
@@ -121,6 +195,7 @@ const PeriodizedProgramModal: React.FC<Props> = ({
         ...generatedProgram,
         createdAt: new Date().toISOString(),
         isActive: false, // User can activate it later
+        isArchived: false, // Not archived initially
       });
 
       Toast.show({
@@ -132,7 +207,7 @@ const PeriodizedProgramModal: React.FC<Props> = ({
       onProgramGenerated?.(programRef.id);
       onClose();
     } catch (error) {
-      console.error('Error saving program:', error);
+      // console.error('Error saving program:', error);
       Toast.show({
         type: 'error',
         text1: 'Save Failed',
@@ -191,6 +266,126 @@ const PeriodizedProgramModal: React.FC<Props> = ({
                   </View>
                 </View>
 
+                {/* Fitness Level */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Fitness Level</Text>
+                  <View style={styles.fitnessLevelButtons}>
+                    <Pressable
+                      style={[
+                        styles.fitnessLevelButton,
+                        fitnessLevel === 'beginner' && styles.fitnessLevelButtonActive,
+                      ]}
+                      onPress={() => setFitnessLevel('beginner')}
+                    >
+                      <Text
+                        style={[
+                          styles.fitnessLevelButtonText,
+                          fitnessLevel === 'beginner' && styles.fitnessLevelButtonTextActive,
+                        ]}
+                      >
+                        Beginner
+                      </Text>
+                      <Text
+                        style={[
+                          styles.fitnessLevelSubtext,
+                          fitnessLevel === 'beginner' && styles.fitnessLevelSubtextActive,
+                        ]}
+                      >
+                        {'< 6 months'}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      style={[
+                        styles.fitnessLevelButton,
+                        fitnessLevel === 'intermediate' && styles.fitnessLevelButtonActive,
+                      ]}
+                      onPress={() => setFitnessLevel('intermediate')}
+                    >
+                      <Text
+                        style={[
+                          styles.fitnessLevelButtonText,
+                          fitnessLevel === 'intermediate' && styles.fitnessLevelButtonTextActive,
+                        ]}
+                      >
+                        Intermediate
+                      </Text>
+                      <Text
+                        style={[
+                          styles.fitnessLevelSubtext,
+                          fitnessLevel === 'intermediate' && styles.fitnessLevelSubtextActive,
+                        ]}
+                      >
+                        6 mo - 2 yrs
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      style={[
+                        styles.fitnessLevelButton,
+                        fitnessLevel === 'advanced' && styles.fitnessLevelButtonActive,
+                      ]}
+                      onPress={() => setFitnessLevel('advanced')}
+                    >
+                      <Text
+                        style={[
+                          styles.fitnessLevelButtonText,
+                          fitnessLevel === 'advanced' && styles.fitnessLevelButtonTextActive,
+                        ]}
+                      >
+                        Advanced
+                      </Text>
+                      <Text
+                        style={[
+                          styles.fitnessLevelSubtext,
+                          fitnessLevel === 'advanced' && styles.fitnessLevelSubtextActive,
+                        ]}
+                      >
+                        2+ years
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
+
+                {/* Equipment Selection */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Available Equipment</Text>
+                  <Text style={styles.helperText}>Select all that apply</Text>
+                  <View style={styles.equipmentButtons}>
+                    {[
+                      { id: 'bodyweight', label: 'Bodyweight', icon: '💪' },
+                      { id: 'dumbbells', label: 'Dumbbells', icon: '🏋️' },
+                      { id: 'kettlebells', label: 'Kettlebells', icon: '⚫' },
+                      { id: 'barbell', label: 'Barbell', icon: '━' },
+                      { id: 'pullup bar', label: 'Pull-up Bar', icon: '🎯' },
+                      { id: 'full gym', label: 'Full Gym', icon: '🏢' },
+                    ].map(eq => (
+                      <Pressable
+                        key={eq.id}
+                        style={[
+                          styles.equipmentButton,
+                          selectedEquipment.includes(eq.id) && styles.equipmentButtonActive,
+                        ]}
+                        onPress={() => {
+                          if (selectedEquipment.includes(eq.id)) {
+                            setSelectedEquipment(selectedEquipment.filter(e => e !== eq.id));
+                          } else {
+                            setSelectedEquipment([...selectedEquipment, eq.id]);
+                          }
+                        }}
+                      >
+                        <Text style={styles.equipmentIcon}>{eq.icon}</Text>
+                        <Text
+                          style={[
+                            styles.equipmentButtonText,
+                            selectedEquipment.includes(eq.id) && styles.equipmentButtonTextActive,
+                          ]}
+                        >
+                          {eq.label}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+
                 {/* Duration */}
                 <View style={styles.inputGroup}>
                   <Text style={styles.label}>Program Duration (weeks)</Text>
@@ -237,9 +432,68 @@ const PeriodizedProgramModal: React.FC<Props> = ({
                   </View>
                 </View>
 
+                {/* Cardio Days Toggle */}
+                <View style={styles.inputGroup}>
+                  <Pressable
+                    style={styles.toggleRow}
+                    onPress={() => setIncludeCardio(!includeCardio)}
+                  >
+                    <View style={styles.toggleLeft}>
+                      <Text style={styles.toggleLabel}>Include Cardio Days</Text>
+                      <Text style={styles.toggleSubtext}>
+                        Add dedicated cardio/conditioning sessions
+                      </Text>
+                    </View>
+                    <View
+                      style={[
+                        styles.toggleSwitch,
+                        includeCardio && styles.toggleSwitchActive,
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.toggleCircle,
+                          includeCardio && styles.toggleCircleActive,
+                        ]}
+                      />
+                    </View>
+                  </Pressable>
+                </View>
+
+                {/* Two-a-Days Toggle (Advanced only) */}
+                {fitnessLevel === 'advanced' && (
+                  <View style={styles.inputGroup}>
+                    <Pressable
+                      style={styles.toggleRow}
+                      onPress={() => setAllowTwoADays(!allowTwoADays)}
+                    >
+                      <View style={styles.toggleLeft}>
+                        <Text style={styles.toggleLabel}>Allow Two-a-Days</Text>
+                        <Text style={styles.toggleSubtext}>
+                          Multiple training sessions per day (advanced)
+                        </Text>
+                      </View>
+                      <View
+                        style={[
+                          styles.toggleSwitch,
+                          allowTwoADays && styles.toggleSwitchActive,
+                        ]}
+                      >
+                        <View
+                          style={[
+                            styles.toggleCircle,
+                            allowTwoADays && styles.toggleCircleActive,
+                          ]}
+                        />
+                      </View>
+                    </Pressable>
+                  </View>
+                )}
+
                 {/* Periodization Model */}
                 <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Periodization Model</Text>
+                  <Text style={styles.label}>Training Progression Style</Text>
+                  <Text style={styles.helperText}>How your workouts will progress over time</Text>
                   <View style={styles.periodizationButtons}>
                     <Pressable
                       style={[
@@ -254,9 +508,16 @@ const PeriodizedProgramModal: React.FC<Props> = ({
                           periodizationModel === 'linear' && styles.periodizationButtonTextActive,
                         ]}
                       >
-                        📈 Linear
+                        📈 Progressive
                       </Text>
-                      <Text style={styles.periodizationSubtext}>Best for Strength</Text>
+                      <Text
+                        style={[
+                          styles.periodizationSubtext,
+                          periodizationModel === 'linear' && styles.periodizationSubtextActive,
+                        ]}
+                      >
+                        Gradually increase weight/intensity each week. Best for building strength.
+                      </Text>
                     </Pressable>
 
                     <Pressable
@@ -272,9 +533,16 @@ const PeriodizedProgramModal: React.FC<Props> = ({
                           periodizationModel === 'undulating' && styles.periodizationButtonTextActive,
                         ]}
                       >
-                        🔄 Undulating
+                        🔄 Varied
                       </Text>
-                      <Text style={styles.periodizationSubtext}>Best for Muscle</Text>
+                      <Text
+                        style={[
+                          styles.periodizationSubtext,
+                          periodizationModel === 'undulating' && styles.periodizationSubtextActive,
+                        ]}
+                      >
+                        Mix of heavy, moderate, and light days. Best for muscle growth.
+                      </Text>
                     </Pressable>
 
                     <Pressable
@@ -290,9 +558,16 @@ const PeriodizedProgramModal: React.FC<Props> = ({
                           periodizationModel === 'block' && styles.periodizationButtonTextActive,
                         ]}
                       >
-                        🎯 Block
+                        🎯 Focused
                       </Text>
-                      <Text style={styles.periodizationSubtext}>Best for Endurance</Text>
+                      <Text
+                        style={[
+                          styles.periodizationSubtext,
+                          periodizationModel === 'block' && styles.periodizationSubtextActive,
+                        ]}
+                      >
+                        Focus on one quality at a time (endurance → strength → power).
+                      </Text>
                     </Pressable>
                   </View>
                 </View>
@@ -309,6 +584,7 @@ const PeriodizedProgramModal: React.FC<Props> = ({
                   </View>
                 </View>
 
+                {/* Generate Button */}
                 <Pressable style={styles.generateButton} onPress={handleGenerate}>
                   <Ionicons name="flash" size={20} color="#fff" />
                   <Text style={styles.generateButtonText}>Generate Program</Text>
@@ -320,9 +596,18 @@ const PeriodizedProgramModal: React.FC<Props> = ({
             {step === 'generating' && (
               <View style={styles.generatingContainer}>
                 <ActivityIndicator size="large" color="#FF3C38" />
-                <Text style={styles.generatingTitle}>Creating Your Program...</Text>
+                <Text style={styles.generatingTitle}>Creating Your First 4 Weeks...</Text>
+                
+                {/* Progress Bar */}
+                <View style={styles.progressBarContainer}>
+                  <View style={[styles.progressBarFill, { width: `${progressPercent}%` }]} />
+                </View>
+                
+                {/* Progress Phase Text */}
+                <Text style={styles.progressPhaseText}>{progressPhase || 'Initializing...'}</Text>
+                
                 <Text style={styles.generatingSubtext}>
-                  This may take 30-60 seconds as we build your complete {totalWeeks}-week program
+                  We'll generate the next block when you complete these weeks
                 </Text>
               </View>
             )}
@@ -356,8 +641,8 @@ const PeriodizedProgramModal: React.FC<Props> = ({
 
                 {/* Sample Week */}
                 <View style={styles.sampleCard}>
-                  <Text style={styles.cardTitle}>📅 Week 1 Sample</Text>
-                  {generatedProgram.weeks[0]?.days.slice(0, 2).map((day, idx) => (
+                  <Text style={styles.cardTitle}>📅 Week 1 Overview</Text>
+                  {generatedProgram.weeks[0]?.days.map((day, idx) => (
                     <View key={idx} style={styles.dayPreview}>
                       <Text style={styles.dayName}>
                         Day {day.dayNumber}: {day.dayName}
@@ -368,7 +653,6 @@ const PeriodizedProgramModal: React.FC<Props> = ({
                       </Text>
                     </View>
                   ))}
-                  <Text style={styles.moreText}>+ {generatedProgram.weeks[0].days.length - 2} more days</Text>
                 </View>
 
                 {/* Progression Plan */}
@@ -403,6 +687,9 @@ const PeriodizedProgramModal: React.FC<Props> = ({
                     )}
                   </Pressable>
                 </View>
+                
+                {/* Bottom spacing for safe area */}
+                <View style={{ height: 40 }} />
               </View>
             )}
           </ScrollView>
@@ -534,6 +821,127 @@ const styles = StyleSheet.create({
   periodizationSubtext: {
     color: '#666',
     fontSize: 12,
+    lineHeight: 16,
+    marginTop: 4,
+  },
+  periodizationSubtextActive: {
+    color: '#fff',
+  },
+  helperText: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 8,
+    marginTop: -4,
+  },
+  fitnessLevelButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  fitnessLevelButton: {
+    flex: 1,
+    padding: 12,
+    backgroundColor: '#222',
+    borderRadius: 8,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  fitnessLevelButtonActive: {
+    backgroundColor: '#FF3C38',
+    borderColor: '#FF3C38',
+  },
+  fitnessLevelButtonText: {
+    color: '#aaa',
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  fitnessLevelButtonTextActive: {
+    color: '#fff',
+  },
+  fitnessLevelSubtext: {
+    color: '#666',
+    fontSize: 11,
+  },
+  fitnessLevelSubtextActive: {
+    color: '#fff',
+  },
+  equipmentButtons: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  equipmentButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#222',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#333',
+    gap: 6,
+  },
+  equipmentButtonActive: {
+    backgroundColor: '#FF3C38',
+    borderColor: '#FF3C38',
+  },
+  equipmentIcon: {
+    fontSize: 16,
+  },
+  equipmentButtonText: {
+    color: '#aaa',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  equipmentButtonTextActive: {
+    color: '#fff',
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#222',
+    padding: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  toggleLeft: {
+    flex: 1,
+    marginRight: 12,
+  },
+  toggleLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#fff',
+    marginBottom: 4,
+  },
+  toggleSubtext: {
+    fontSize: 12,
+    color: '#666',
+    lineHeight: 16,
+  },
+  toggleSwitch: {
+    width: 50,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#333',
+    padding: 2,
+    justifyContent: 'center',
+  },
+  toggleSwitchActive: {
+    backgroundColor: '#FF3C38',
+  },
+  toggleCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#666',
+  },
+  toggleCircleActive: {
+    backgroundColor: '#fff',
+    alignSelf: 'flex-end',
   },
   infoCard: {
     flexDirection: 'row',
@@ -565,6 +973,8 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderRadius: 12,
     gap: 8,
+    marginTop: 24,
+    marginBottom: 20,
   },
   generateButtonText: {
     color: '#fff',
@@ -587,6 +997,26 @@ const styles = StyleSheet.create({
     color: '#aaa',
     textAlign: 'center',
     paddingHorizontal: 32,
+  },
+  progressBarContainer: {
+    width: '80%',
+    height: 8,
+    backgroundColor: '#222',
+    borderRadius: 4,
+    marginTop: 24,
+    marginBottom: 12,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: '#FF3C38',
+    borderRadius: 4,
+  },
+  progressPhaseText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#FF3C38',
+    marginBottom: 12,
   },
   programHeader: {
     alignItems: 'center',

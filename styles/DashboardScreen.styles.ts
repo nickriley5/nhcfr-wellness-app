@@ -1009,4 +1009,119 @@ export const dashboardStyles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.9)',
     fontWeight: '500',
   },
+
+  // Light Workout Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  lightWorkoutModalContent: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 16,
+    width: '100%',
+    maxWidth: 500,
+    padding: 20,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  modalCloseButton: {
+    fontSize: 28,
+    color: '#888',
+    fontWeight: '300',
+  },
+  lightWorkoutIntensity: {
+    fontSize: 36,
+    fontWeight: '800',
+    color: '#ffa726',
+    textAlign: 'center',
+    marginVertical: 8,
+  },
+  lightWorkoutSubtext: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  lightWorkoutExercises: {
+    gap: 12,
+  },
+  lightWorkoutExercise: {
+    backgroundColor: '#242424',
+    borderRadius: 12,
+    padding: 14,
+    borderLeftWidth: 3,
+    borderLeftColor: '#ffa726',
+  },
+  lightWorkoutExerciseName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+    marginBottom: 6,
+  },
+  lightWorkoutDetails: {
+    gap: 4,
+  },
+  lightWorkoutOriginal: {
+    fontSize: 13,
+    color: '#888',
+    textDecorationLine: 'line-through',
+  },
+  lightWorkoutAdjusted: {
+    fontSize: 14,
+    color: '#ffa726',
+    fontWeight: '600',
+  },
+  lightWorkoutNoData: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    marginVertical: 20,
+  },
+  lightWorkoutNote: {
+    fontSize: 13,
+    color: '#aaa',
+    backgroundColor: '#242424',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 16,
+    fontStyle: 'italic',
+  },
+  lightWorkoutActions: {
+    gap: 10,
+    marginTop: 20,
+  },
+  lightWorkoutButton: {
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  lightWorkoutAcceptButton: {
+    backgroundColor: '#ffa726',
+  },
+  lightWorkoutCancelButton: {
+    backgroundColor: '#333',
+  },
+  lightWorkoutButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#000',
+  },
+  lightWorkoutButtonTextAlt: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
 });

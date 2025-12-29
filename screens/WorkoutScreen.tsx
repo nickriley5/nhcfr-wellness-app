@@ -7,7 +7,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Modal,
-  // Alert,
+  Alert,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -15,12 +15,14 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { auth, db } from '../firebase';
-import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, Timestamp, collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
 import type { ProgramDay } from '../types/Exercise';
 import Toast from 'react-native-toast-message';
 // import { regenerateActiveProgram } from '../utils/programService';
 import { resolveExerciseDetails } from '../utils/exerciseUtils';
 import AIWorkoutAssistant from '../components/AIWorkoutAssistant';
+import PeriodizedProgramModal from '../components/Modals/PeriodizedProgramModal';
+import type { PeriodizedProgram } from '../utils/ai/aiService';
 
 
 interface StoredState {
@@ -83,36 +85,335 @@ const WorkoutScreen: React.FC = () => {
   const [showAIAssistant, setShowAIAssistant] = useState(false);
   const [selectedDayIdx, setSelectedDayIdx] = useState(0);
   const [showFullSchedule, setShowFullSchedule] = useState(false);
+  const [showProgramModal, setShowProgramModal] = useState(false);
+  const [userProfile, setUserProfile] = useState<any>(null);
+  
+  // AI Programs state
+  const [aiPrograms, setAiPrograms] = useState<PeriodizedProgram[]>([]);
+  const [activeAiProgram, setActiveAiProgram] = useState<PeriodizedProgram | null>(null);
+  const [currentWeekNum, setCurrentWeekNum] = useState(1);
+  const [currentDayNum, setCurrentDayNum] = useState(1);
+  
+  // Recent activity state
+  const [recentWorkout, setRecentWorkout] = useState<any>(null);
+  
+  // Program management state
+  const [showArchived, setShowArchived] = useState(false);
+  const [selectedProgramForAction, setSelectedProgramForAction] = useState<PeriodizedProgram | null>(null);
+  const [showProgramActionModal, setShowProgramActionModal] = useState(false);
+  const [showFullProgramModal, setShowFullProgramModal] = useState(false);
 
+  // Load recent workout history
+  const fetchRecentWorkout = async () => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+
+    try {
+      const historyQuery = query(
+        collection(db, 'users', uid, 'workoutHistory'),
+        orderBy('completedAt', 'desc'),
+        limit(1)
+      );
+      const snapshot = await getDocs(historyQuery);
+      
+      console.log('📊 Recent workout query result:', snapshot.size, 'documents');
+      
+      if (!snapshot.empty) {
+        const lastWorkout = snapshot.docs[0].data();
+        console.log('📊 Last workout:', lastWorkout);
+        setRecentWorkout(lastWorkout);
+      } else {
+        console.log('📊 No workout history found');
+      }
+    } catch (error) {
+      console.error('Error loading recent workout:', error);
+    }
+  };
+
+  // Archive a program
+  const handleArchiveProgram = async (program: PeriodizedProgram) => {
+    const uid = auth.currentUser?.uid;
+    if (!uid || !program.id) return;
+
+    try {
+      const { updateDoc, Timestamp } = await import('firebase/firestore');
+      await updateDoc(doc(db, 'users', uid, 'aiPrograms', program.id), {
+        isActive: false,
+        isArchived: true,
+        archivedAt: Timestamp.now(),
+      });
+      
+      Toast.show({
+        type: 'success',
+        text1: 'Program Archived',
+        text2: 'You can resume it anytime',
+      });
+      
+      fetchAiPrograms();
+    } catch (error) {
+      console.error('Error archiving program:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Failed to archive',
+        text2: 'Please try again',
+      });
+    }
+  };
+
+  // Delete a program permanently
+  const handleDeleteProgram = async (program: PeriodizedProgram) => {
+    const uid = auth.currentUser?.uid;
+    if (!uid || !program.id) return;
+
+    try {
+      const { deleteDoc } = await import('firebase/firestore');
+      await deleteDoc(doc(db, 'users', uid, 'aiPrograms', program.id));
+      
+      Toast.show({
+        type: 'success',
+        text1: 'Program Deleted',
+        text2: 'Program removed permanently',
+      });
+      
+      fetchAiPrograms();
+    } catch (error) {
+      console.error('Error deleting program:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Failed to delete',
+        text2: 'Please try again',
+      });
+    }
+  };
+
+  // Resume an archived program
+  const handleResumeProgram = async (program: PeriodizedProgram, startFresh: boolean) => {
+    const uid = auth.currentUser?.uid;
+    if (!uid || !program.id) return;
+
+    try {
+      const { updateDoc, Timestamp } = await import('firebase/firestore');
+      
+      // Deactivate all other programs
+      const allPrograms = await getDocs(collection(db, 'users', uid, 'aiPrograms'));
+      await Promise.all(
+        allPrograms.docs.map(d => updateDoc(d.ref, { isActive: false }))
+      );
+      
+      // Activate this program
+      await updateDoc(doc(db, 'users', uid, 'aiPrograms', program.id), {
+        isActive: true,
+        isArchived: false,
+        archivedAt: null,
+        currentWeek: startFresh ? 1 : (program.currentWeek || 1),
+        currentDay: startFresh ? 1 : (program.currentDay || 1),
+      });
+      
+      Toast.show({
+        type: 'success',
+        text1: 'Program Resumed',
+        text2: startFresh ? 'Starting from week 1' : 'Continuing from where you left off',
+      });
+      
+      fetchAiPrograms();
+    } catch (error) {
+      console.error('Error resuming program:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Failed to resume',
+        text2: 'Please try again',
+      });
+    }
+  };
+
+  // Check if program is completed and prompt for next action
+  const checkProgramCompletion = async () => {
+    if (!activeAiProgram || !activeAiProgram.id) return;
+    
+    const currentWeek = activeAiProgram.currentWeek || currentWeekNum;
+    const totalGeneratedWeeks = activeAiProgram.weeks.length;
+    const totalPlannedWeeks = activeAiProgram.totalWeeks;
+    
+    // Check if user completed all generated weeks
+    if (currentWeek > totalGeneratedWeeks) {
+      const uid = auth.currentUser?.uid;
+      if (!uid) return;
+      
+      // Check if program is fully complete or needs more weeks
+      if (totalGeneratedWeeks >= totalPlannedWeeks) {
+        // Program is complete!
+        Alert.alert(
+          '🎉 Program Completed!',
+          `Congratulations! You've completed ${activeAiProgram.programName}. What would you like to do next?`,
+          [
+            {
+              text: 'Archive & Build New Program',
+              onPress: async () => {
+                const { updateDoc, Timestamp } = await import('firebase/firestore');
+                await updateDoc(doc(db, 'users', uid, 'aiPrograms', activeAiProgram.id!), {
+                  isActive: false,
+                  isArchived: true,
+                  completedAt: Timestamp.now(),
+                  archivedAt: Timestamp.now(),
+                });
+                setShowProgramModal(true);
+                fetchAiPrograms();
+              },
+            },
+            {
+              text: 'Restart This Program',
+              onPress: () => {
+                setCurrentWeekNum(1);
+                setCurrentDayNum(1);
+              },
+            },
+            { text: 'Maybe Later', style: 'cancel' },
+          ]
+        );
+      } else {
+        // Need to generate next block of weeks
+        Alert.alert(
+          '📈 Ready for More?',
+          `You've completed ${totalGeneratedWeeks} weeks. Generate the next block to continue your progress!`,
+          [
+            {
+              text: 'Generate Next 2 Weeks',
+              onPress: () => {
+                Toast.show({
+                  type: 'info',
+                  text1: 'Coming Soon',
+                  text2: 'Next block generation feature in development',
+                });
+                // TODO: Implement next block generation
+              },
+            },
+            { text: 'Not Yet', style: 'cancel' },
+          ]
+        );
+      }
+    }
+  };
+
+  // Check completion on week/day change
+  useEffect(() => {
+    if (activeAiProgram) {
+      checkProgramCompletion();
+    }
+  }, [currentWeekNum, currentDayNum]);
+
+  // Load AI-generated programs
+  const fetchAiPrograms = async () => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    
+    try {
+      const programsRef = collection(db, 'users', uid, 'aiPrograms');
+      const q = query(programsRef, orderBy('createdAt', 'desc'));
+      const snapshot = await getDocs(q);
+      
+      const programs = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as any[];
+      
+      console.log('📋 Loaded programs:', programs.length, 'programs');
+      console.log('📋 Programs data:', JSON.stringify(programs.map(p => ({
+        id: p.id,
+        name: p.programName,
+        isActive: p.isActive,
+        isArchived: p.isArchived
+      })), null, 2));
+      
+      setAiPrograms(programs);
+      
+      // Set active program (first one with isActive=true and isArchived=false)
+      const nonArchivedPrograms = programs.filter(p => !p.isArchived);
+      const active = nonArchivedPrograms.find(p => p.isActive) || nonArchivedPrograms[0];
+      console.log('📋 Active program:', active ? active.programName : 'none');
+      
+      if (active) {
+        // If program exists but isn't marked as active in Firestore, activate it now
+        if (!active.isActive) {
+          console.log('🔄 Auto-activating program:', active.programName);
+          const { updateDoc } = await import('firebase/firestore');
+          
+          // Deactivate all other programs
+          await Promise.all(
+            programs.map(p => updateDoc(doc(db, 'users', uid, 'aiPrograms', p.id), { isActive: false }))
+          );
+          
+          // Activate this one
+          await updateDoc(doc(db, 'users', uid, 'aiPrograms', active.id), {
+            isActive: true,
+            isArchived: false,
+          });
+          
+          // Update local state
+          active.isActive = true;
+        }
+        
+        setActiveAiProgram(active);
+        // Load progress if exists
+        const progressSnap = await getDoc(doc(db, 'users', uid, 'aiPrograms', active.id, 'progress', 'current'));
+        if (progressSnap.exists()) {
+          const progress = progressSnap.data();
+          setCurrentWeekNum(progress.currentWeek || 1);
+          setCurrentDayNum(progress.currentDay || 1);
+        }
+      } else {
+        // No active programs - reset to empty state
+        console.log('📋 No active programs, showing empty state');
+        setActiveAiProgram(null);
+      }
+    } catch (err) {
+      console.error('Error loading AI programs:', err);
+    }
+  };
+
+  // Load legacy program structure (backward compatibility)
   const fetchProgram = async () => {
-  const uid = auth.currentUser?.uid;
-  if (!uid) {return;}
-  try {
-    const snap = await getDoc(doc(db, 'users', uid, 'program', 'active'));
-    if (snap.exists()) {
-      const data = snap.data();
-      setState({ currentDayIndex: data.metadata.currentDay - 1 });
-      setDays(data.days as ProgramDay[]);
-    } else {
-      setDays([]);                // or your array state setter
-      setState({ currentDayIndex: 0 }); // safe default
-      // setProgram(null);           // if you keep a program object in state
-}
-  } catch (err) {
-    console.error('Error loading program:', err);
-  }
-};
+    const uid = auth.currentUser?.uid;
+    if (!uid) {return;}
+    try {
+      const snap = await getDoc(doc(db, 'users', uid, 'program', 'active'));
+      if (snap.exists()) {
+        const data = snap.data();
+        setState({ currentDayIndex: data.metadata.currentDay - 1 });
+        setDays(data.days as ProgramDay[]);
+      } else {
+        setDays([]);
+        setState({ currentDayIndex: 0 });
+      }
+    } catch (err) {
+      console.error('Error loading program:', err);
+    }
+  };
 
-useEffect(() => { fetchProgram(); }, []);
-
-useFocusEffect(
-  React.useCallback(() => {
+  useEffect(() => { 
+    fetchAiPrograms(); 
     fetchProgram();
-    return () => {};
-  }, [])
-);
+    fetchRecentWorkout();
+  }, []);
 
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchAiPrograms();
+      fetchProgram();
+      fetchRecentWorkout();
+      return () => {};
+    }, [])
+  );
 
+  // Load user profile
+  useEffect(() => {
+    const loadProfile = async () => {
+      const uid = auth.currentUser?.uid;
+      if (!uid) return;
+      const snap = await getDoc(doc(db, 'users', uid, 'profile', 'data'));
+      if (snap.exists()) setUserProfile(snap.data());
+    };
+    loadProfile();
+  }, []);
 
   /* ───────── 1. LOAD PROGRAM ───────── */
   useEffect(() => {
@@ -184,6 +485,679 @@ useFocusEffect(
     );
   }
 
+  // Show AI program UI if available
+  if (activeAiProgram) {
+    const currentWeek = activeAiProgram.weeks.find(w => w.weekNumber === currentWeekNum);
+    const currentDay = currentWeek?.days.find(d => d.dayNumber === currentDayNum);
+    
+    return (
+      <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          {/* HEADER */}
+          <View style={styles.header}>
+            <Text style={styles.title}>Your Program</Text>
+            <View style={styles.headerIcons}>
+              <Pressable onPress={() => setShowFullProgramModal(true)} style={styles.iconButton}>
+                <Ionicons name="list" size={24} color="#4CAF50" />
+              </Pressable>
+              <Pressable onPress={() => setShowProgramModal(true)} style={styles.iconButton}>
+                <Ionicons name="rocket" size={24} color="#FF9800" />
+              </Pressable>
+              <Pressable onPress={() => setShowAIAssistant(true)} style={styles.iconButton}>
+                <Ionicons name="sparkles" size={24} color="#6a11cb" />
+              </Pressable>
+              <Pressable onPress={() => navigation.navigate('WorkoutHistory')} style={styles.iconButton}>
+                <Ionicons name="calendar-outline" size={24} color="#d32f2f" />
+              </Pressable>
+              <Pressable onPress={() => navigation.navigate('ExerciseLibrary')} style={styles.iconButton}>
+                <Ionicons name="book-outline" size={24} color="#d32f2f" />
+              </Pressable>
+            </View>
+          </View>
+
+          {/* ACTIVE PROGRAM CARD */}
+          <View style={styles.activeProgramCard}>
+            <View style={styles.programCardHeader}>
+              <View>
+                <Text style={styles.programName}>{activeAiProgram.programName}</Text>
+                <Text style={styles.programMeta}>
+                  {activeAiProgram.periodizationModel} • Week {currentWeekNum}/{activeAiProgram.totalWeeks}
+                </Text>
+              </View>
+              <View style={styles.progressBadge}>
+                <Text style={styles.progressText}>Day {currentDayNum}</Text>
+              </View>
+            </View>
+            
+            {currentDay && (
+              <>
+                <Text style={styles.todayLabel}>Today's Workout</Text>
+                <View style={styles.todayWorkout}>
+                  <Text style={styles.dayTitle}>{currentDay.dayName}</Text>
+                  <Text style={styles.dayFocus}>{currentDay.focus}</Text>
+                  <Text style={styles.workoutStats}>
+                    {currentDay.exercises.length} exercises • {currentDay.estimatedDuration} min
+                  </Text>
+                </View>
+                
+                <Pressable 
+                  style={styles.startWorkoutButton}
+                  onPress={async () => {
+                    if (!currentDay) return;
+                    
+                    try {
+                      const uid = auth.currentUser?.uid;
+                      if (!uid) return;
+                      
+                      // Helper to convert exercise name to ID format (fallback if id not present)
+                      const nameToId = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+                      
+                      // Convert AI program day to ProgramDay format for WorkoutDetail screen
+                      const programDay: ProgramDay = {
+                        title: `${currentDay.dayName} - Week ${currentWeekNum}`,
+                        warmup: currentDay.warmup.map(w => ({ 
+                          exerciseId: nameToId(w), 
+                          repsOrDuration: '5-10 reps' 
+                        })),
+                        exercises: currentDay.exercises.map(ex => ({
+                          exerciseId: ex.id || nameToId(ex.name), // Use id field if available, fallback to name conversion
+                          sets: ex.sets,
+                          repsOrDuration: ex.reps,
+                          restSeconds: ex.restSeconds,
+                          notes: ex.notes || '',
+                        })),
+                        cooldown: currentDay.cooldown.map(c => ({ 
+                          exerciseId: nameToId(c), 
+                          repsOrDuration: '30-60 sec' 
+                        })),
+                      };
+                      
+                      // Navigate to workout detail
+                      navigation.navigate('WorkoutDetail', {
+                        day: programDay,
+                        weekIdx: currentWeekNum - 1,
+                        dayIdx: currentDayNum - 1,
+                      });
+                    } catch (error) {
+                      console.error('Error starting workout:', error);
+                      Toast.show({
+                        type: 'error',
+                        text1: 'Failed to start workout',
+                        text2: 'Please try again'
+                      });
+                    }
+                  }}
+                >
+                  <Ionicons name="play" size={20} color="#fff" />
+                  <Text style={styles.startWorkoutText}>Start Workout</Text>
+                </Pressable>
+              </>
+            )}
+          </View>
+
+          {/* STRENGTH SCHEDULE */}
+          {currentWeek && (
+            <View style={styles.weekOverview}>
+              <Text style={styles.sectionTitle}>This Week's Strength</Text>
+              {currentWeek.days.map((day) => (
+                <Pressable
+                  key={day.dayNumber}
+                  style={[
+                    styles.dayItem,
+                    day.dayNumber === currentDayNum && styles.dayItemActive
+                  ]}
+                  onPress={() => {
+                    // Show day details in expanded view
+                    setCurrentDayNum(day.dayNumber);
+                  }}
+                >
+                  <View style={styles.dayItemLeft}>
+                    <View style={[styles.dayDot, day.dayNumber === currentDayNum && styles.dayDotActive]} />
+                    <View style={{ flex: 1 }}>
+                      <View style={styles.dayItemHeader}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.dayItemName}>{day.dayName}</Text>
+                          <Text style={styles.dayItemFocus}>{day.focus}</Text>
+                        </View>
+                        <Text style={styles.dayItemDuration}>{day.estimatedDuration}min</Text>
+                      </View>
+                      {day.dayNumber === currentDayNum && (
+                        <View style={styles.dayItemExercises}>
+                          {day.exercises && day.exercises.length > 0 ? (
+                            day.exercises.map((ex, idx) => (
+                              <Text key={idx} style={styles.exerciseListItem}>
+                                • {ex.name} - {ex.sets}×{ex.reps}
+                              </Text>
+                            ))
+                          ) : (
+                            <Text style={styles.exerciseListItem}>
+                              • {day.focus || 'Workout scheduled'}
+                            </Text>
+                          )}
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                </Pressable>
+              ))}
+            </View>
+          )}
+
+          {/* CARDIO SCHEDULE */}
+          {activeAiProgram?.cardioSchedule && (
+            <View style={styles.cardioSchedule}>
+              <View style={styles.cardioHeader}>
+                <Ionicons name="fitness" size={24} color="#FF6B35" />
+                <Text style={styles.sectionTitle}>🏃 Cardio Schedule</Text>
+              </View>
+              <Text style={styles.cardioFrequency}>
+                {activeAiProgram.cardioSchedule.frequency} sessions per week
+              </Text>
+              {activeAiProgram.cardioSchedule.weeks
+                .find(w => w.weekNumber === currentWeekNum)
+                ?.sessions.map((session, idx) => (
+                  <Pressable
+                    key={idx}
+                    style={styles.cardioSession}
+                    onPress={() => {
+                      navigation.navigate('CardioWorkout', {
+                        session,
+                        weekNumber: currentWeekNum,
+                      });
+                    }}
+                  >
+                    <View style={styles.cardioSessionLeft}>
+                      <View style={styles.cardioDayBadge}>
+                        <Text style={styles.cardioDayText}>
+                          {session.dayOfWeek.substring(0, 3)}
+                        </Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.cardioType}>{session.type}</Text>
+                        <Text style={styles.cardioDetails}>
+                          {session.duration} min • {session.intensity}
+                        </Text>
+                        {session.notes && (
+                          <Text style={styles.cardioNotes}>{session.notes}</Text>
+                        )}
+                      </View>
+                    </View>
+                    <Ionicons name="play-circle-outline" size={28} color="#FF6B35" />
+                  </Pressable>
+                ))}
+            </View>
+          )}
+
+          {/* PROGRAM LIBRARY */}
+          {aiPrograms.length >= 1 && (
+            <View style={styles.programLibrary}>
+              <View style={styles.programLibraryHeader}>
+                <Text style={styles.sectionTitle}>Your Programs</Text>
+                <Pressable 
+                  style={styles.filterToggle}
+                  onPress={() => {
+                    console.log('📋 Toggle archived. Current state:', showArchived);
+                    setShowArchived(!showArchived);
+                  }}
+                >
+                  <Ionicons 
+                    name={showArchived ? "eye-off-outline" : "archive-outline"} 
+                    size={20} 
+                    color="#FF3C38" 
+                  />
+                  <Text style={styles.filterToggleText}>
+                    {showArchived ? 'Hide Archived' : 'Show Archived'}
+                  </Text>
+                </Pressable>
+              </View>
+              
+              {(() => {
+                const filteredPrograms = aiPrograms.filter((p: any) => showArchived ? p.isArchived : !p.isArchived);
+                console.log('📋 Showing', filteredPrograms.length, 'programs. Filter:', showArchived ? 'archived' : 'active');
+                return filteredPrograms.map((program: any) => (
+                <View key={program.id} style={styles.programItemWrapper}>
+                  <Pressable
+                    style={[
+                      styles.programItem,
+                      program.id === activeAiProgram?.id && styles.programItemActive,
+                      program.isArchived && styles.programItemArchived
+                    ]}
+                    onPress={() => {
+                      if (program.isArchived) {
+                        // Show resume options
+                        setSelectedProgramForAction(program);
+                        setShowProgramActionModal(true);
+                      } else {
+                        // Switch to this program
+                        setActiveAiProgram(program);
+                        setCurrentWeekNum(program.currentWeek || 1);
+                        setCurrentDayNum(program.currentDay || 1);
+                      }
+                    }}
+                    onLongPress={() => {
+                      setSelectedProgramForAction(program);
+                      setShowProgramActionModal(true);
+                    }}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <View style={styles.programItemHeader}>
+                        <Text style={styles.programItemName}>{program.programName}</Text>
+                        {program.isArchived && (
+                          <View style={styles.archivedBadge}>
+                            <Text style={styles.archivedBadgeText}>Archived</Text>
+                          </View>
+                        )}
+                        {program.completedAt && (
+                          <View style={styles.completedBadge}>
+                            <Text style={styles.completedBadgeText}>✓ Completed</Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={styles.programItemMeta}>
+                        {program.weeks?.length || 0} weeks • {program.periodizationModel}
+                        {program.completedWeeks && ` • ${program.completedWeeks}/${program.totalWeeks} weeks done`}
+                      </Text>
+                    </View>
+                    {program.id === activeAiProgram?.id && !program.isArchived && (
+                      <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />
+                    )}
+                    {program.isArchived && (
+                      <Ionicons name="refresh-outline" size={24} color="#2196F3" />
+                    )}
+                  </Pressable>
+                </View>
+              ));
+              })()}
+            </View>
+          )}
+        </ScrollView>
+
+        {/* AI ASSISTANT MODAL */}
+        <AIWorkoutAssistant
+          visible={showAIAssistant}
+          onClose={() => setShowAIAssistant(false)}
+        />
+        
+        {/* PROGRAM GENERATOR MODAL */}
+        <PeriodizedProgramModal
+          visible={showProgramModal}
+          onClose={() => setShowProgramModal(false)}
+          onProgramGenerated={() => {
+            setShowProgramModal(false);
+            fetchAiPrograms();
+          }}
+          userProfile={userProfile}
+        />
+
+        {/* PROGRAM ACTION MODAL */}
+        <Modal
+          visible={showProgramActionModal}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setShowProgramActionModal(false)}
+        >
+          <Pressable 
+            style={styles.modalOverlay}
+            onPress={() => setShowProgramActionModal(false)}
+          >
+            <View style={styles.actionModal}>
+              <Text style={styles.actionModalTitle}>
+                {selectedProgramForAction?.programName}
+              </Text>
+              <Text style={styles.actionModalSubtitle}>
+                {selectedProgramForAction?.isArchived ? 'Archived Program' : 'Manage Program'}
+              </Text>
+
+              {selectedProgramForAction?.isArchived ? (
+                <>
+                  <Pressable
+                    style={styles.actionButton}
+                    onPress={() => {
+                      if (selectedProgramForAction) {
+                        handleResumeProgram(selectedProgramForAction, false);
+                      }
+                      setShowProgramActionModal(false);
+                    }}
+                  >
+                    <Ionicons name="play-outline" size={24} color="#4CAF50" />
+                    <Text style={styles.actionButtonText}>Resume from where I left off</Text>
+                  </Pressable>
+
+                  <Pressable
+                    style={styles.actionButton}
+                    onPress={() => {
+                      if (selectedProgramForAction) {
+                        handleResumeProgram(selectedProgramForAction, true);
+                      }
+                      setShowProgramActionModal(false);
+                    }}
+                  >
+                    <Ionicons name="refresh-outline" size={24} color="#2196F3" />
+                    <Text style={styles.actionButtonText}>Start fresh from Week 1</Text>
+                  </Pressable>
+
+                  <Pressable
+                    style={[styles.actionButton, styles.actionButtonDanger]}
+                    onPress={() => {
+                      if (selectedProgramForAction) {
+                        handleDeleteProgram(selectedProgramForAction);
+                      }
+                      setShowProgramActionModal(false);
+                    }}
+                  >
+                    <Ionicons name="trash-outline" size={24} color="#FF3C38" />
+                    <Text style={[styles.actionButtonText, { color: '#FF3C38' }]}>Delete Permanently</Text>
+                  </Pressable>
+                </>
+              ) : (
+                <>
+                  <Pressable
+                    style={styles.actionButton}
+                    onPress={() => {
+                      if (selectedProgramForAction) {
+                        handleArchiveProgram(selectedProgramForAction);
+                      }
+                      setShowProgramActionModal(false);
+                    }}
+                  >
+                    <Ionicons name="archive-outline" size={24} color="#FF9800" />
+                    <Text style={styles.actionButtonText}>Archive Program</Text>
+                  </Pressable>
+
+                  <Pressable
+                    style={[styles.actionButton, styles.actionButtonDanger]}
+                    onPress={() => {
+                      if (selectedProgramForAction) {
+                        handleDeleteProgram(selectedProgramForAction);
+                      }
+                      setShowProgramActionModal(false);
+                    }}
+                  >
+                    <Ionicons name="trash-outline" size={24} color="#FF3C38" />
+                    <Text style={[styles.actionButtonText, { color: '#FF3C38' }]}>Delete Permanently</Text>
+                  </Pressable>
+                </>
+              )}
+
+              <Pressable
+                style={[styles.actionButton, styles.actionButtonCancel]}
+                onPress={() => setShowProgramActionModal(false)}
+              >
+                <Text style={styles.actionButtonText}>Cancel</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Modal>
+
+        {/* FULL PROGRAM MODAL */}
+        <Modal
+          visible={showFullProgramModal}
+          animationType="slide"
+          onRequestClose={() => setShowFullProgramModal(false)}
+        >
+          <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
+            <View style={styles.fullProgramHeader}>
+              <Pressable onPress={() => setShowFullProgramModal(false)} style={styles.backButton}>
+                <Ionicons name="close" size={28} color="#fff" />
+              </Pressable>
+              <Text style={styles.fullProgramTitle}>{activeAiProgram.programName}</Text>
+              <View style={{ width: 40 }} />
+            </View>
+
+            <ScrollView contentContainerStyle={styles.fullProgramContent}>
+              <View style={styles.programOverview}>
+                <Text style={styles.programOverviewLabel}>Total Duration</Text>
+                <Text style={styles.programOverviewValue}>{activeAiProgram.totalWeeks} weeks</Text>
+                <Text style={styles.programOverviewLabel}>Model</Text>
+                <Text style={styles.programOverviewValue}>{activeAiProgram.periodizationModel}</Text>
+              </View>
+
+              {activeAiProgram.weeks.map((week, weekIdx) => (
+                <View key={weekIdx} style={styles.fullProgramWeek}>
+                  <View style={styles.fullProgramWeekHeader}>
+                    <Text style={styles.fullProgramWeekTitle}>Week {week.weekNumber}</Text>
+                    <Text style={styles.fullProgramWeekPhase}>{week.phase}</Text>
+                    {week.isDeload && (
+                      <View style={styles.deloadBadge}>
+                        <Text style={styles.deloadBadgeText}>Deload</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {week.days.map((day, dayIdx) => (
+                    <View key={dayIdx} style={styles.fullProgramDay}>
+                      <View style={styles.fullProgramDayHeader}>
+                        <View>
+                          <Text style={styles.fullProgramDayName}>Day {day.dayNumber}: {day.dayName}</Text>
+                          <Text style={styles.fullProgramDayFocus}>{day.focus}</Text>
+                        </View>
+                        <Text style={styles.fullProgramDayDuration}>{day.estimatedDuration}min</Text>
+                      </View>
+                      
+                      {day.exercises.map((ex, exIdx) => (
+                        <View key={exIdx} style={styles.fullProgramExercise}>
+                          <Text style={styles.fullProgramExerciseName}>{exIdx + 1}. {ex.name}</Text>
+                          <Text style={styles.fullProgramExerciseDetails}>
+                            {ex.sets} × {ex.reps} • {ex.restSeconds}s rest
+                            {ex.notes && ` • ${ex.notes}`}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  ))}
+                </View>
+              ))}
+
+              {activeAiProgram.cardioSchedule && (
+                <View style={styles.fullProgramCardio}>
+                  <Text style={styles.fullProgramSectionTitle}>🏃 Cardio Schedule</Text>
+                  <Text style={styles.cardioFrequency}>
+                    {activeAiProgram.cardioSchedule.frequency} sessions per week
+                  </Text>
+
+                  {activeAiProgram.cardioSchedule.weeks.map((week, weekIdx) => (
+                    <View key={weekIdx} style={styles.fullProgramCardioWeek}>
+                      <Text style={styles.fullProgramWeekTitle}>Week {week.weekNumber}</Text>
+                      {week.sessions.map((session, sessIdx) => (
+                        <View key={sessIdx} style={styles.fullProgramCardioSession}>
+                          <Text style={styles.fullProgramCardioDay}>{session.dayOfWeek}</Text>
+                          <Text style={styles.fullProgramCardioDetails}>
+                            {session.type} • {session.duration}min • {session.intensity}
+                          </Text>
+                          {session.notes && (
+                            <Text style={styles.fullProgramCardioNotes}>{session.notes}</Text>
+                          )}
+                        </View>
+                      ))}
+                    </View>
+                  ))}
+                </View>
+              )}
+            </ScrollView>
+          </LinearGradient>
+        </Modal>
+      </LinearGradient>
+    );
+  }
+
+  // EMPTY STATE - No active program (show even if there are archived programs)
+  if (!activeAiProgram) {
+    return (
+      <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
+        <ScrollView contentContainerStyle={styles.emptyStateContainer}>
+          {/* HERO SECTION */}
+          <View style={styles.emptyHero}>
+            <Text style={styles.emptyHeroTitle}>🎯 Ready to Train?</Text>
+            <Text style={styles.emptyHeroSubtitle}>Choose how you want to work out</Text>
+          </View>
+
+          {/* CUSTOM TRAINING PROGRAM CARD */}
+          <Pressable 
+            style={styles.emptyCard}
+            onPress={() => setShowProgramModal(true)}
+          >
+            <LinearGradient
+              colors={['rgba(255, 60, 56, 0.15)', 'rgba(255, 107, 53, 0.15)']}
+              style={styles.emptyCardGradient}
+            >
+              <View style={styles.emptyCardIcon}>
+                <Ionicons name="sparkles" size={32} color="#FF3C38" />
+              </View>
+              <Text style={styles.emptyCardTitle}>Custom Training Program</Text>
+              <Text style={styles.emptyCardDescription}>
+                Create a personalized multi-week program tailored to your goals and equipment
+              </Text>
+              <View style={styles.emptyCardButton}>
+                <Text style={styles.emptyCardButtonText}>Generate Program</Text>
+                <Ionicons name="arrow-forward" size={18} color="#fff" />
+              </View>
+            </LinearGradient>
+          </Pressable>
+
+          {/* QUICK WORKOUT CARD */}
+          <Pressable 
+            style={styles.emptyCard}
+            onPress={() => setShowAIAssistant(true)}
+          >
+            <LinearGradient
+              colors={['rgba(33, 150, 243, 0.15)', 'rgba(0, 188, 212, 0.15)']}
+              style={styles.emptyCardGradient}
+            >
+              <View style={styles.emptyCardIcon}>
+                <Ionicons name="flash" size={32} color="#2196F3" />
+              </View>
+              <Text style={styles.emptyCardTitle}>Quick Workout</Text>
+              <Text style={styles.emptyCardDescription}>
+                Get a single badass workout session right now - choose focus, time, and style
+              </Text>
+              <View style={styles.emptyCardButton}>
+                <Text style={styles.emptyCardButtonText}>Get Quick Workout</Text>
+                <Ionicons name="arrow-forward" size={18} color="#fff" />
+              </View>
+            </LinearGradient>
+          </Pressable>
+
+          {/* READY-TO-GO PROGRAMS CARD */}
+          <Pressable 
+            style={styles.emptyCard}
+            onPress={() => navigation.navigate('ProgramList')}
+          >
+            <LinearGradient
+              colors={['rgba(156, 39, 176, 0.15)', 'rgba(233, 30, 99, 0.15)']}
+              style={styles.emptyCardGradient}
+            >
+              <View style={styles.emptyCardIcon}>
+                <Ionicons name="list" size={32} color="#9C27B0" />
+              </View>
+              <Text style={styles.emptyCardTitle}>Ready-to-Go Programs</Text>
+              <Text style={styles.emptyCardDescription}>
+                Choose from professionally designed firefighter training programs
+              </Text>
+              <View style={styles.emptyCardButton}>
+                <Text style={styles.emptyCardButtonText}>Browse Programs</Text>
+                <Ionicons name="arrow-forward" size={18} color="#fff" />
+              </View>
+            </LinearGradient>
+          </Pressable>
+
+          {/* RECENT ACTIVITY CARD */}
+          <Pressable 
+            style={styles.recentActivityCard}
+            onPress={() => navigation.navigate('WorkoutHistory')}
+          >
+            <Text style={styles.recentActivityTitle}>📊 Recent Activity</Text>
+            {recentWorkout ? (
+              <>
+                <Text style={styles.recentWorkoutName}>{recentWorkout.title || 'Recent Workout'}</Text>
+                <Text style={styles.recentWorkoutMeta}>
+                  {recentWorkout.completedAt ? 
+                    new Date(recentWorkout.completedAt.toDate()).toLocaleDateString('en-US', { 
+                      month: 'short', 
+                      day: 'numeric' 
+                    }) : 'Recently completed'}
+                  {recentWorkout.duration ? ` • ${recentWorkout.duration} min` : ''}
+                </Text>
+                <View style={styles.recentWorkoutFooter}>
+                  <Text style={styles.recentWorkoutDetails}>View History</Text>
+                  <Ionicons name="arrow-forward" size={18} color="#FF3C38" />
+                </View>
+              </>
+            ) : (
+              <Text style={styles.recentActivityEmpty}>
+                No workouts yet - let's change that!
+              </Text>
+            )}
+          </Pressable>
+
+          {/* ARCHIVED PROGRAMS SECTION */}
+          {aiPrograms.filter((p: any) => p.isArchived).length > 0 && (
+            <View style={styles.archivedProgramsSection}>
+              <Text style={styles.sectionTitle}>📦 Archived Programs</Text>
+              <Text style={styles.archivedProgramsSubtitle}>
+                Tap any program to resume or view details
+              </Text>
+              {aiPrograms
+                .filter((p: any) => p.isArchived)
+                .map((program: any) => (
+                  <Pressable
+                    key={program.id}
+                    style={styles.archivedProgramCard}
+                    onPress={() => {
+                      setSelectedProgramForAction(program);
+                      setShowProgramActionModal(true);
+                    }}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <View style={styles.programItemHeader}>
+                        <Text style={styles.programItemName}>{program.programName}</Text>
+                        {program.completedAt && (
+                          <View style={styles.completedBadge}>
+                            <Text style={styles.completedBadgeText}>✓ Completed</Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={styles.programItemMeta}>
+                        {program.weeks?.length || 0} weeks • {program.periodizationModel}
+                        {program.completedWeeks && ` • ${program.completedWeeks}/${program.totalWeeks} weeks done`}
+                      </Text>
+                      {program.archivedAt && (
+                        <Text style={styles.archivedDateText}>
+                          Archived {new Date(program.archivedAt.toDate()).toLocaleDateString('en-US', { 
+                            month: 'short', 
+                            day: 'numeric',
+                            year: 'numeric'
+                          })}
+                        </Text>
+                      )}
+                    </View>
+                    <Ionicons name="refresh-outline" size={24} color="#2196F3" />
+                  </Pressable>
+                ))}
+            </View>
+          )}
+        </ScrollView>
+
+        {/* AI ASSISTANT MODAL */}
+        <AIWorkoutAssistant
+          visible={showAIAssistant}
+          onClose={() => setShowAIAssistant(false)}
+        />
+        
+        {/* PROGRAM GENERATOR MODAL */}
+        <PeriodizedProgramModal
+          visible={showProgramModal}
+          onClose={() => setShowProgramModal(false)}
+          onProgramGenerated={() => {
+            setShowProgramModal(false);
+            fetchAiPrograms();
+          }}
+          userProfile={userProfile}
+        />
+      </LinearGradient>
+    );
+  }
+
+  // Fall back to legacy program structure
   if (!state || days.length === 0) {
     return (
       <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
@@ -192,11 +1166,28 @@ useFocusEffect(
           <Text style={styles.subtitle}>No active program.</Text>
           <Pressable
             style={styles.generateButton}
+            onPress={() => setShowProgramModal(true)}
+          >
+            <Ionicons name="rocket" size={20} color="#fff" style={{ marginRight: 8 }} />
+            <Text style={styles.buttonText}>Generate AI Program</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.generateButton, { backgroundColor: '#333', marginTop: 12 }]}
             onPress={() => navigation.navigate('ProgramList')}
           >
-            <Text style={styles.buttonText}>Choose a Program</Text>
+            <Text style={styles.buttonText}>Browse Programs</Text>
           </Pressable>
         </View>
+        
+        <PeriodizedProgramModal
+          visible={showProgramModal}
+          onClose={() => setShowProgramModal(false)}
+          onProgramGenerated={() => {
+            setShowProgramModal(false);
+            fetchAiPrograms();
+          }}
+          userProfile={userProfile}
+        />
       </LinearGradient>
     );
   }
@@ -210,6 +1201,9 @@ useFocusEffect(
       <View style={styles.header}>
         <Text style={styles.title}>Your Program</Text>
         <View style={styles.headerIcons}>
+          <Pressable onPress={() => setShowProgramModal(true)} style={styles.iconButton}>
+            <Ionicons name="rocket" size={24} color="#FF9800" />
+          </Pressable>
           <Pressable onPress={() => setShowAIAssistant(true)} style={styles.iconButton}>
             <Ionicons name="sparkles" size={24} color="#6a11cb" />
           </Pressable>
@@ -492,6 +1486,26 @@ useFocusEffect(
           }
         }}
       />
+
+      {/* PERIODIZED PROGRAM GENERATOR */}
+      <PeriodizedProgramModal
+        visible={showProgramModal}
+        onClose={() => setShowProgramModal(false)}
+        userProfile={{
+          goals: userProfile?.goals || ['Build Strength'],
+          experience: userProfile?.experienceLevel || 'intermediate',
+          equipment: userProfile?.equipment || ['dumbbells', 'bodyweight'],
+        }}
+        onProgramGenerated={(programId) => {
+          console.log('✅ Program generated:', programId);
+          Toast.show({
+            type: 'success',
+            text1: 'Program Created!',
+            text2: 'Check your programs to activate it',
+          });
+          setShowProgramModal(false);
+        }}
+      />
     </LinearGradient>
   );
 };
@@ -500,6 +1514,137 @@ useFocusEffect(
 const styles = StyleSheet.create({
   container: { flex: 1 },
   loader: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+
+  // EMPTY STATE
+  emptyStateContainer: {
+    padding: 20,
+    paddingBottom: 40,
+  },
+  emptyHero: {
+    alignItems: 'center',
+    marginVertical: 40,
+  },
+  emptyHeroTitle: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: '#fff',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  emptyHeroSubtitle: {
+    fontSize: 16,
+    color: '#aaa',
+    textAlign: 'center',
+  },
+  emptyCard: {
+    marginBottom: 20,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  emptyCardGradient: {
+    padding: 24,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  emptyCardIcon: {
+    marginBottom: 16,
+  },
+  emptyCardTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#fff',
+    marginBottom: 8,
+  },
+  emptyCardDescription: {
+    fontSize: 15,
+    color: '#ccc',
+    lineHeight: 22,
+    marginBottom: 20,
+  },
+  emptyCardButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+  },
+  emptyCardButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  recentActivityCard: {
+    backgroundColor: '#2a2a2a',
+    padding: 20,
+    borderRadius: 16,
+    marginTop: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  recentActivityTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#fff',
+    marginBottom: 12,
+  },
+  recentActivityEmpty: {
+    fontSize: 15,
+    color: '#888',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    paddingVertical: 20,
+  },
+  recentWorkoutName: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#fff',
+    marginBottom: 4,
+  },
+  recentWorkoutMeta: {
+    fontSize: 14,
+    color: '#aaa',
+    marginBottom: 12,
+  },
+  recentWorkoutFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  recentWorkoutDetails: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#FF3C38',
+  },
+  archivedProgramsSection: {
+    marginTop: 24,
+  },
+  archivedProgramsSubtitle: {
+    fontSize: 14,
+    color: '#aaa',
+    marginBottom: 16,
+    marginTop: -8,
+  },
+  archivedProgramCard: {
+    backgroundColor: '#2a2a2a',
+    padding: 16,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#444',
+  },
+  archivedDateText: {
+    fontSize: 12,
+    color: '#888',
+    marginTop: 4,
+  },
 
   header: {
     flexDirection: 'row',
@@ -644,11 +1789,510 @@ dayTabText: {
     backgroundColor: '#d32f2f',
     padding: 12,
     borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   regenerateButton: {
     padding: 10,
   },
   buttonText: { color: '#fff', fontWeight: '700' },
+  
+  // New AI Program styles
+  scrollContent: {
+    padding: 16,
+    paddingBottom: 40,
+  },
+  activeProgramCard: {
+    backgroundColor: '#2a2a2a',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 24,
+    borderWidth: 2,
+    borderColor: '#FF3C38',
+  },
+  programCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+  },
+  programName: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#fff',
+    marginBottom: 4,
+  },
+  programMeta: {
+    fontSize: 14,
+    color: '#ccc',
+  },
+  progressBadge: {
+    backgroundColor: '#FF3C38',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  progressText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  todayLabel: {
+    fontSize: 12,
+    color: '#aaa',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 8,
+    fontWeight: '600',
+  },
+  todayWorkout: {
+    backgroundColor: '#2a2a2a',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  dayTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#fff',
+    marginBottom: 4,
+  },
+  dayFocus: {
+    fontSize: 14,
+    color: '#FF9800',
+    marginBottom: 8,
+  },
+  workoutStats: {
+    fontSize: 14,
+    color: '#ccc',
+  },
+  startWorkoutButton: {
+    backgroundColor: '#FF3C38',
+    padding: 16,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  startWorkoutText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  weekOverview: {
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#fff',
+    marginBottom: 16,
+  },
+  dayItem: {
+    backgroundColor: '#2a2a2a',
+    padding: 16,
+    borderRadius: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 10,
+  },
+  dayItemActive: {
+    backgroundColor: '#333',
+    borderWidth: 2,
+    borderColor: '#FF3C38',
+  },
+  dayItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    flex: 1,
+  },
+  dayItemHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 4,
+  },
+  dayDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#444',
+    marginTop: 4,
+  },
+  dayDotActive: {
+    backgroundColor: '#FF3C38',
+  },
+  dayItemName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  dayItemFocus: {
+    fontSize: 14,
+    color: '#ccc',
+  },
+  dayItemExercises: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#444',
+  },
+  exerciseListItem: {
+    fontSize: 14,
+    color: '#e0e0e0',
+    marginVertical: 4,
+    lineHeight: 20,
+  },
+  dayItemDuration: {
+    fontSize: 14,
+    color: '#bbb',
+    fontWeight: '500',
+  },
+  // Cardio Schedule Styles
+  cardioSchedule: {
+    marginBottom: 24,
+    backgroundColor: 'rgba(255, 107, 53, 0.05)',
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 107, 53, 0.2)',
+  },
+  cardioHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+  cardioFrequency: {
+    fontSize: 14,
+    color: '#FF9800',
+    marginBottom: 16,
+    fontWeight: '500',
+  },
+  cardioSession: {
+    backgroundColor: '#2a2a2a',
+    padding: 14,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#444',
+  },
+  cardioSessionLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  cardioDayBadge: {
+    backgroundColor: '#FF6B35',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  cardioDayText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  cardioType: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+    marginBottom: 2,
+  },
+  cardioDetails: {
+    fontSize: 14,
+    color: '#ccc',
+  },
+  cardioNotes: {
+    fontSize: 12,
+    color: '#999',
+    fontStyle: 'italic',
+    marginTop: 4,
+  },
+  programLibrary: {
+    marginBottom: 24,
+  },
+  programLibraryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  filterToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  filterToggleText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FF3C38',
+  },
+  programItemWrapper: {
+    marginBottom: 8,
+  },
+  programItem: {
+    backgroundColor: '#2a2a2a',
+    padding: 16,
+    borderRadius: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  programItemActive: {
+    borderWidth: 2,
+    borderColor: '#4CAF50',
+    backgroundColor: '#2d3a2d',
+  },
+  programItemArchived: {
+    opacity: 0.7,
+    borderWidth: 1,
+    borderColor: '#666',
+  },
+  programItemHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+  programItemName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  programItemMeta: {
+    fontSize: 14,
+    color: '#ccc',
+  },
+  archivedBadge: {
+    backgroundColor: '#FF9800',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  archivedBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  completedBadge: {
+    backgroundColor: '#4CAF50',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  completedBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  actionModal: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 16,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+  },
+  actionModalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#fff',
+    marginBottom: 4,
+  },
+  actionModalSubtitle: {
+    fontSize: 14,
+    color: '#aaa',
+    marginBottom: 24,
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#2a2a2a',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 12,
+    gap: 12,
+  },
+  actionButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+    flex: 1,
+  },
+  actionButtonDanger: {
+    backgroundColor: 'rgba(255, 60, 56, 0.1)',
+  },
+  actionButtonCancel: {
+    backgroundColor: '#333',
+    justifyContent: 'center',
+  },
+  // Full Program Modal Styles
+  fullProgramHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    paddingTop: 50,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+  },
+  fullProgramTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  fullProgramContent: {
+    padding: 16,
+    paddingBottom: 40,
+  },
+  programOverview: {
+    backgroundColor: '#2a2a2a',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 20,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  programOverviewLabel: {
+    fontSize: 12,
+    color: '#999',
+    marginBottom: 4,
+  },
+  programOverviewValue: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  fullProgramWeek: {
+    marginBottom: 24,
+    backgroundColor: '#1a1a1a',
+    borderRadius: 12,
+    padding: 16,
+  },
+  fullProgramWeekHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+  },
+  fullProgramWeekTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FF3C38',
+  },
+  fullProgramWeekPhase: {
+    fontSize: 14,
+    color: '#999',
+  },
+  deloadBadge: {
+    backgroundColor: '#FF9800',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  deloadBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  fullProgramDay: {
+    marginBottom: 16,
+    backgroundColor: '#2a2a2a',
+    padding: 12,
+    borderRadius: 8,
+  },
+  fullProgramDayHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  fullProgramDayName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  fullProgramDayFocus: {
+    fontSize: 14,
+    color: '#ccc',
+    marginTop: 2,
+  },
+  fullProgramDayDuration: {
+    fontSize: 14,
+    color: '#FF9800',
+    fontWeight: '500',
+  },
+  fullProgramExercise: {
+    marginBottom: 8,
+    paddingLeft: 8,
+  },
+  fullProgramExerciseName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#fff',
+    marginBottom: 2,
+  },
+  fullProgramExerciseDetails: {
+    fontSize: 13,
+    color: '#aaa',
+  },
+  fullProgramCardio: {
+    marginTop: 8,
+    backgroundColor: 'rgba(255, 107, 53, 0.1)',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 107, 53, 0.3)',
+  },
+  fullProgramSectionTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#fff',
+    marginBottom: 8,
+  },
+  fullProgramCardioWeek: {
+    marginTop: 16,
+  },
+  fullProgramCardioSession: {
+    backgroundColor: '#2a2a2a',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  fullProgramCardioDay: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FF6B35',
+    marginBottom: 4,
+  },
+  fullProgramCardioDetails: {
+    fontSize: 14,
+    color: '#fff',
+    marginBottom: 2,
+  },
+  fullProgramCardioNotes: {
+    fontSize: 12,
+    color: '#999',
+    fontStyle: 'italic',
+    marginTop: 4,
+  },
 });
 
 

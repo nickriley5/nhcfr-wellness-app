@@ -18,33 +18,101 @@ import { doc, deleteDoc } from 'firebase/firestore';
 const SettingsScreen = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
+  const goToDashboard = () => {
+    navigation.navigate('AppDrawer', {
+      screen: 'MainTabs',
+      params: { screen: 'Dashboard' },
+    });
+  };
+
   const handleContactSupport = () => {
     Linking.openURL('mailto:support@firefighterwellnessapp.com');
   };
 
   const handleResetWorkoutPlan = () => {
-    Alert.alert('Reset Workout Plan', 'This will remove your current workout program. Are you sure?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Yes, Reset',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            const uid = auth.currentUser?.uid;
-            if (!uid) {
-              Alert.alert('Error', 'Please log in again');
-              return;
-            }
+    Alert.alert(
+      'Manage Programs', 
+      'What would you like to do with your workout programs?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Archive Programs',
+          onPress: async () => {
+            try {
+              const uid = auth.currentUser?.uid;
+              if (!uid) {
+                Alert.alert('Error', 'Please log in again');
+                return;
+              }
 
-            await deleteDoc(doc(db, 'users', uid, 'program', 'active'));
-            Alert.alert('Success', 'Workout program has been reset');
-          } catch (error) {
-            console.error('Error resetting workout plan:', error);
-            Alert.alert('Error', 'Failed to reset workout program. Please try again.');
-          }
+              const { collection, getDocs, updateDoc, Timestamp } = await import('firebase/firestore');
+              const aiProgramsRef = collection(db, 'users', uid, 'aiPrograms');
+              const snapshot = await getDocs(aiProgramsRef);
+              
+              const archivePromises = snapshot.docs.map(docSnap => 
+                updateDoc(docSnap.ref, {
+                  isActive: false,
+                  isArchived: true,
+                  archivedAt: Timestamp.now(),
+                })
+              );
+              await Promise.all(archivePromises);
+              
+              Alert.alert('Success', `Archived ${snapshot.size} program(s). You can resume them anytime from the Workout screen.`);
+            } catch (error) {
+              console.error('Error archiving programs:', error);
+              Alert.alert('Error', 'Failed to archive programs. Please try again.');
+            }
+          },
         },
-      },
-    ]);
+        {
+          text: 'Delete Permanently',
+          style: 'destructive',
+          onPress: async () => {
+            Alert.alert(
+              'Confirm Delete',
+              'This will PERMANENTLY delete all programs. This cannot be undone. Continue?',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Delete All',
+                  style: 'destructive',
+                  onPress: async () => {
+                    try {
+                      const uid = auth.currentUser?.uid;
+                      if (!uid) {
+                        Alert.alert('Error', 'Please log in again');
+                        return;
+                      }
+
+                      // Delete legacy active program
+                      try {
+                        await deleteDoc(doc(db, 'users', uid, 'program', 'active'));
+                      } catch (err) {
+                        // Ignore if doesn't exist
+                      }
+                      
+                      // Delete all AI programs
+                      const { collection, getDocs } = await import('firebase/firestore');
+                      const aiProgramsRef = collection(db, 'users', uid, 'aiPrograms');
+                      const snapshot = await getDocs(aiProgramsRef);
+                      
+                      const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
+                      await Promise.all(deletePromises);
+                      
+                      Alert.alert('Success', `Permanently deleted ${snapshot.size} program(s).`);
+                    } catch (error) {
+                      console.error('Error deleting programs:', error);
+                      Alert.alert('Error', 'Failed to delete programs. Please try again.');
+                    }
+                  },
+                },
+              ]
+            );
+          },
+        },
+      ]
+    );
   };
 
   const handleResetMealPlan = () => {
@@ -86,6 +154,11 @@ const SettingsScreen = () => {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
+      <Pressable style={styles.backButton} onPress={goToDashboard}>
+        <Ionicons name="arrow-back" size={22} color="#fff" />
+        <Text style={styles.backText}>Dashboard</Text>
+      </Pressable>
+
       <Text style={styles.title}>⚙️ Settings</Text>
 
       {/* GOALS & PLANS */}
@@ -140,6 +213,17 @@ const styles = StyleSheet.create({
     padding: 24,
     paddingBottom: 250, // Restored proper bottom padding
     backgroundColor: '#121212',
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+    gap: 8,
+  },
+  backText: {
+    fontSize: 16,
+    color: '#fff',
+    fontWeight: '600',
   },
   title: {
     fontSize: 24,

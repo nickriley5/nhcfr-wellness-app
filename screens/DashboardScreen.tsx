@@ -9,6 +9,8 @@ import {
   Pressable,
   Platform,
   PermissionsAndroid,
+  Modal,
+  TouchableOpacity,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -27,12 +29,16 @@ import {
   ImageLibraryOptions,
 } from 'react-native-image-picker';
 import Toast from 'react-native-toast-message';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { TabParamList, RootStackParamList } from '../App';
 import ProfileCompletionBanner from '../components/Profile/ProfileCompletionBanner';
 import { WeightTrackingTile } from '../components/Dashboard/WeightTrackingTile';
 // import TodaysReadinessCard from '../components/Dashboard/TodaysReadinessCard'; // COMMENTED OUT FOR PHASE 2
 import TodaysWorkoutCard from '../components/Dashboard/TodaysWorkoutCard';
+import { CoachRecommendationBanner } from '../components/Dashboard/CoachRecommendationBanner';
+import { WeeklyProgressionCard } from '../components/Dashboard/WeeklyProgressionCard';
+import { DailyCheckInCard } from '../components/Dashboard/DailyCheckInCard';
 import { DedicationCard } from '../components/Dashboard/DedicationCard';
 import { ComingUpCard } from '../components/Dashboard/ComingUpCard';
 import { TodaysNutritionCard } from '../components/Dashboard/TodaysNutritionCard';
@@ -45,6 +51,10 @@ import HydrationSettingsModal from '../components/Modals/HydrationSettingsModal'
 import { useDashboardData } from '../hooks/useDashboardData';
 import { useDashboardState } from '../hooks/useDashboardState';
 import { dashboardStyles } from '../styles/DashboardScreen.styles';
+import { analyzeTrainingReadiness } from '../utils/ai/aiService';
+import { getAuth } from 'firebase/auth';
+import { getFirestore, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
+import { getApp } from 'firebase/app';
 
 export default function DashboardScreen() {
   const navigation = useNavigation<
@@ -73,6 +83,16 @@ export default function DashboardScreen() {
     aiWorkoutInfo,
     macrosToday,
   } = useDashboardData(view, bump);
+
+  // Debug logging for AI program detection
+  useEffect(() => {
+    console.log('📊 Dashboard Data:', {
+      programExists,
+      hasTodayInfo: !!todayInfo,
+      hasAiWorkoutInfo: !!aiWorkoutInfo,
+      todayInfoTitle: todayInfo?.day?.title,
+    });
+  }, [programExists, todayInfo, aiWorkoutInfo]);
 
   // Start pulsing animation for incomplete profile
   useEffect(() => {
@@ -118,10 +138,43 @@ export default function DashboardScreen() {
   const [showCameraModal, setShowCameraModal] = useState(false);
   const [showEnvironmentCalendar, setShowEnvironmentCalendar] = useState(false);
   const [showHydrationGoalModal, setShowHydrationGoalModal] = useState(false);
+  const [showLightWorkoutModal, setShowLightWorkoutModal] = useState(false);
 
   // ✅ CAMERA & PHOTO STATES
   const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
   const [pendingPhotoUri, setPendingPhotoUri] = useState<string | null>(null);
+
+  // ✅ COACH RECOMMENDATION STATES
+  const [coachRecommendation, setCoachRecommendation] = useState<{
+    shouldTrain: boolean;
+    recommendation: 'train' | 'light' | 'rest';
+    severity: 'none' | 'minor' | 'moderate' | 'severe';
+    coachMessage: string;
+    reasoning: string;
+    adjustedIntensity?: number;
+  } | null>(null);
+  const [showCoachBanner, setShowCoachBanner] = useState(false);
+  const [isAnalyzingReadiness, setIsAnalyzingReadiness] = useState(false);
+  const [hasAnalyzedToday, setHasAnalyzedToday] = useState(false);
+
+  // ✅ WEEKLY PROGRESSION STATES
+  const [weeklyProgression, setWeeklyProgression] = useState<{
+    weekNumber: number;
+    coachMessage: string;
+    summary: string;
+    changes: Array<{
+      exercise: string;
+      dayNumber: number;
+      change: 'increase' | 'maintain' | 'decrease';
+      oldWeight?: number;
+      newWeight?: number;
+      oldReps?: string;
+      newReps?: string;
+      reason: string;
+    }>;
+  } | null>(null);
+  const [showProgressionCard, setShowProgressionCard] = useState(false);
+  const [hasCheckedInToday, setHasCheckedInToday] = useState(false);
 
   // ✅ MEAL CONTEXT STATE
   const [currentMealContext, setCurrentMealContext] = useState<MealContext | null>(null);
@@ -196,6 +249,126 @@ export default function DashboardScreen() {
   };
   */
 
+  // ✅ NEW: AI-Powered Readiness Analysis
+  // Only runs once per day after user checks in
+  useEffect(() => {
+    const checkTodaysReadiness = async () => {
+      const auth = getAuth(getApp());
+      const db = getFirestore(getApp());
+      const uid = auth.currentUser?.uid;
+      if (!uid) return;
+
+      // Check if we've already analyzed today
+      const today = new Date().toDateString();
+      const lastAnalyzed = await AsyncStorage.getItem(`lastAIAnalysis_${uid}`);
+      
+      if (lastAnalyzed === today) {
+        console.log('⏭️ AI analysis already completed today');
+        return;
+      }
+
+      // Don't analyze if currently in progress
+      if (isAnalyzingReadiness) {
+        console.log('⏭️ AI analysis already in progress');
+        return;
+      }
+
+      try {
+        // Mark as analyzing IMMEDIATELY to prevent duplicate calls
+        setIsAnalyzingReadiness(true);
+
+        // Fetch today's check-in (if exists)
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+
+        const checkInsQuery = query(
+          collection(db, 'users', uid, 'checkIns'),
+          where('timestamp', '>=', todayStart),
+          orderBy('timestamp', 'desc'),
+          limit(1)
+        );
+
+        const checkInSnapshot = await getDocs(checkInsQuery);
+        if (checkInSnapshot.empty) {
+          // No check-in today, don't analyze
+          setHasCheckedInToday(false);
+          setIsAnalyzingReadiness(false);
+          return;
+        }
+
+        // User has checked in today
+        setHasCheckedInToday(true);
+
+        const checkInData = checkInSnapshot.docs[0].data();
+        
+        // Only trigger analysis if there are concerning flags
+        const shouldAnalyze = 
+          checkInData.energy <= 2 ||
+          checkInData.sleepHours < 6 ||
+          checkInData.soreness >= 4 ||
+          checkInData.readiness <= 2 ||
+          checkInData.stress >= 4 ||
+          (checkInData.onShift && checkInData.callVolume >= 4);
+
+        if (!shouldAnalyze) {
+          // User is in good condition, no need for AI analysis
+          console.log('✅ Check-in looks good - skipping AI analysis');
+          setIsAnalyzingReadiness(false);
+          await AsyncStorage.setItem(`lastAIAnalysis_${uid}`, today); // Mark as done
+          return;
+        }
+
+        console.log('🔍 Running AI readiness analysis...');
+
+        // Fetch recent workout history (last 7 days)
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+        const workoutsQuery = query(
+          collection(db, 'users', uid, 'workoutHistory'),
+          where('completedAt', '>=', sevenDaysAgo),
+          orderBy('completedAt', 'desc')
+        );
+
+        const workoutsSnapshot = await getDocs(workoutsQuery);
+        const recentWorkouts = workoutsSnapshot.docs.map(doc => ({
+          date: doc.data().completedAt,
+          exercises: doc.data().exercises || [],
+          feeling: doc.data().feeling,
+          completed: doc.data().completed || true,
+        }));
+
+        // Get program context if available
+        const programContext = programInfo ? {
+          currentWeek: programInfo.currentWeek || 1,
+          totalWeeks: programInfo.totalWeeks || 12,
+          phase: programInfo.phase || 'Training',
+          isDeloadWeek: programInfo.isDeloadWeek || false,
+        } : undefined;
+
+        // Run AI analysis
+        const analysis = await analyzeTrainingReadiness(
+          checkInData,
+          recentWorkouts,
+          programContext
+        );
+
+        setCoachRecommendation(analysis);
+        setShowCoachBanner(true);
+        await AsyncStorage.setItem(`lastAIAnalysis_${uid}`, today); // Mark as done
+
+        console.log('🤖 AI Readiness Analysis:', analysis);
+      } catch (error) {
+        console.error('❌ Error analyzing readiness:', error);
+        // Don't mark as done on error so it can retry next time
+      } finally {
+        setIsAnalyzingReadiness(false);
+      }
+    };
+
+    checkTodaysReadiness();
+  }, [bump]); // Runs on dashboard focus, but AsyncStorage prevents duplicates
+
   // Environment helper functions
   const getEnvironmentIcon = (environment: string) => {
     const iconSize = 20;
@@ -265,6 +438,46 @@ export default function DashboardScreen() {
       });
       return false;
     }
+  };
+
+  // ✅ Coach Recommendation Banner Handlers
+  const handleTakeRestDay = () => {
+    setShowCoachBanner(false);
+    Alert.alert(
+      '🛏️ Rest Day Confirmed',
+      'Smart choice! Your body will thank you. Focus on recovery today.',
+      [{ text: 'Got it', style: 'default' }]
+    );
+  };
+
+  const handleTrainAnyway = () => {
+    if (coachRecommendation?.recommendation === 'light') {
+      // Show light workout preview modal
+      setShowLightWorkoutModal(true);
+    } else {
+      // For rest recommendations, dismiss and show override message
+      setShowCoachBanner(false);
+      Alert.alert(
+        '💪 Override Accepted',
+        'You know your body best. Stay safe and hydrate well!',
+        [{ text: 'Let\'s go', style: 'default' }]
+      );
+    }
+  };
+
+  const handleDismissBanner = () => {
+    setShowCoachBanner(false);
+  };
+
+  // ✅ Weekly Progression Handlers
+  const handleViewProgressionDetails = () => {
+    setShowProgressionCard(false);
+    // Navigate to workout screen to see updated program
+    navigation.navigate('Workout');
+  };
+
+  const handleDismissProgression = () => {
+    setShowProgressionCard(false);
   };
 
   // ✅ Photo picking handlers
@@ -376,6 +589,12 @@ export default function DashboardScreen() {
           onPress={() => navigation.navigate('Profile')}
         />
 
+        {/* ✅ Daily Check-In Card */}
+        <DailyCheckInCard 
+          hasCheckedInToday={hasCheckedInToday}
+          onPress={() => navigation.navigate('CheckIn')}
+        />
+
         {/* AI Coach Section */}
         <Pressable
           style={dashboardStyles.aiCoachCard}
@@ -399,6 +618,30 @@ export default function DashboardScreen() {
             </View>
           </LinearGradient>
         </Pressable>
+
+        {/* ✅ AI Coach Recommendation Banner */}
+        {showCoachBanner && coachRecommendation && (
+          <CoachRecommendationBanner
+            recommendation={coachRecommendation.recommendation}
+            severity={coachRecommendation.severity}
+            coachMessage={coachRecommendation.coachMessage}
+            onTakeRestDay={handleTakeRestDay}
+            onTrainAnyway={handleTrainAnyway}
+            onDismiss={handleDismissBanner}
+          />
+        )}
+
+        {/* ✅ Weekly Progression Card */}
+        {showProgressionCard && weeklyProgression && (
+          <WeeklyProgressionCard
+            weekNumber={weeklyProgression.weekNumber}
+            coachMessage={weeklyProgression.coachMessage}
+            summary={weeklyProgression.summary}
+            changes={weeklyProgression.changes}
+            onViewDetails={handleViewProgressionDetails}
+            onDismiss={handleDismissProgression}
+          />
+        )}
 
         {/* SECTION 1: Wellness & Readiness - COMMENTED OUT FOR PHASE 2 WEARABLE INTEGRATION */}
         {/*
@@ -568,6 +811,89 @@ export default function DashboardScreen() {
           updateContainerSize={updateContainerSize}
         />
       )}
+
+      {/* Light Workout Preview Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={showLightWorkoutModal}
+        onRequestClose={() => setShowLightWorkoutModal(false)}
+      >
+        <View style={dashboardStyles.modalOverlay}>
+          <View style={dashboardStyles.lightWorkoutModalContent}>
+            <View style={dashboardStyles.modalHeader}>
+              <Text style={dashboardStyles.modalTitle}>⚡ Light Workout</Text>
+              <TouchableOpacity onPress={() => setShowLightWorkoutModal(false)}>
+                <Text style={dashboardStyles.modalCloseButton}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ maxHeight: 500 }}>
+              <Text style={dashboardStyles.lightWorkoutIntensity}>
+                {coachRecommendation?.adjustedIntensity || 70}% Intensity
+              </Text>
+              <Text style={dashboardStyles.lightWorkoutSubtext}>
+                Reduced volume to match your recovery state. Listen to your body.
+              </Text>
+
+              {todayInfo?.day.exercises && todayInfo.day.exercises.length > 0 ? (
+                <View style={dashboardStyles.lightWorkoutExercises}>
+                  {todayInfo.day.exercises.map((ex: any, idx: number) => {
+                    const intensity = coachRecommendation?.adjustedIntensity || 70;
+                    const originalSets = ex.sets || 3;
+                    const adjustedSets = Math.max(1, Math.round(originalSets * (intensity / 100)));
+                    
+                    return (
+                      <View key={idx} style={dashboardStyles.lightWorkoutExercise}>
+                        <Text style={dashboardStyles.lightWorkoutExerciseName}>
+                          {idx + 1}. {ex.exerciseId?.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}
+                        </Text>
+                        <View style={dashboardStyles.lightWorkoutDetails}>
+                          <Text style={dashboardStyles.lightWorkoutOriginal}>
+                            Original: {originalSets} × {ex.repsOrDuration}
+                          </Text>
+                          <Text style={dashboardStyles.lightWorkoutAdjusted}>
+                            → Adjusted: {adjustedSets} × {ex.repsOrDuration}
+                          </Text>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              ) : (
+                <Text style={dashboardStyles.lightWorkoutNoData}>No workout data available</Text>
+              )}
+
+              <Text style={dashboardStyles.lightWorkoutNote}>
+                💡 {coachRecommendation?.coachMessage || 'Take it easy today and focus on recovery.'}
+              </Text>
+            </ScrollView>
+
+            <View style={dashboardStyles.lightWorkoutActions}>
+              <TouchableOpacity
+                style={[dashboardStyles.lightWorkoutButton, dashboardStyles.lightWorkoutAcceptButton]}
+                onPress={() => {
+                  setShowLightWorkoutModal(false);
+                  setShowCoachBanner(false);
+                  Alert.alert(
+                    '⚠️ Training with Caution',
+                    'Listen to your body and stop if needed.',
+                    [{ text: 'Understood' }]
+                  );
+                }}
+              >
+                <Text style={dashboardStyles.lightWorkoutButtonText}>Start Light Workout</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[dashboardStyles.lightWorkoutButton, dashboardStyles.lightWorkoutCancelButton]}
+                onPress={() => setShowLightWorkoutModal(false)}
+              >
+                <Text style={dashboardStyles.lightWorkoutButtonTextAlt}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </LinearGradient>
   );
 }
