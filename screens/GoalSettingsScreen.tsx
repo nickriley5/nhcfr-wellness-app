@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
+  TextInput,
   StyleSheet,
   ScrollView,
   KeyboardAvoidingView,
@@ -45,6 +46,8 @@ const GoalSettingsScreen: React.FC<GoalSettingsProps> = ({
   // ✅ State for all fields
   const [weight, setWeight] = useState(0);
   const [targetWeight, setTargetWeight] = useState(0);
+  const [height, setHeight] = useState(0); // inches
+  const [age, setAge] = useState(0);
   const [rate, setRate] = useState(1.0);
   const [goalType, setGoalType] = useState<
     'fat_loss' | 'maintain' | 'muscle_gain'
@@ -67,9 +70,9 @@ const GoalSettingsScreen: React.FC<GoalSettingsProps> = ({
   const [dietaryPreference, setDietaryPreference] = useState<
     'none' | 'carnivore' | 'paleo' | 'vegetarian' | 'vegan'
   >('none');
-  const [dietaryRestriction, setDietaryRestriction] = useState<
-    'none' | 'gluten_free' | 'dairy_free' | 'low_fodmap'
-  >('none');
+  const [dietaryRestrictions, setDietaryRestrictions] = useState<
+    Array<'gluten_free' | 'dairy_free' | 'low_fodmap'>
+  >([]);
 
   // ✅ Load existing user profile if present
   useEffect(() => {
@@ -81,11 +84,18 @@ const GoalSettingsScreen: React.FC<GoalSettingsProps> = ({
         const d = snap.data();
         if (d.weight) {setWeight(d.weight);}
         if (d.targetWeight) {setTargetWeight(d.targetWeight);}
+        if (d.height) {setHeight(d.height);}
+        if (d.age) {setAge(d.age);}
         if (d.goalType) {setGoalType(d.goalType);}
         if (d.activityLevel) {setActivityLevel(d.activityLevel);}
         if (d.name) {setUserProfile({ name: d.name });}
         if (d.dietaryPreference) {setDietaryPreference(d.dietaryPreference);}
-        if (d.dietaryRestriction) {setDietaryRestriction(d.dietaryRestriction);}
+        if (d.dietaryRestrictions && Array.isArray(d.dietaryRestrictions)) {
+          setDietaryRestrictions(d.dietaryRestrictions);
+        } else if (d.dietaryRestriction && d.dietaryRestriction !== 'none') {
+          // Migrate old single restriction to array format
+          setDietaryRestrictions([d.dietaryRestriction]);
+        }
       }
     };
     fetch();
@@ -93,22 +103,40 @@ const GoalSettingsScreen: React.FC<GoalSettingsProps> = ({
 
   // ✅ Calculate macros dynamically when inputs change (Standard only)
   useEffect(() => {
-    const multiplierMap = {
-      sedentary: 12,
-      light: 13,
-      moderate: 14,
-      very_active: 15,
+    // Skip if missing required data
+    if (!weight || !height || !age) {
+      return;
+    }
+
+    // Calculate BMR using Mifflin-St Jeor equation (most accurate for athletes)
+    // Using male formula as baseline for firefighters (adjust if needed)
+    const heightCm = height * 2.54; // inches to cm
+    const weightKg = weight * 0.453592; // lbs to kg
+    const bmr = 10 * weightKg + 6.25 * heightCm - 5 * age + 5;
+
+    // TDEE activity multipliers (more accurate than simple cal/lb)
+    const activityMultiplierMap = {
+      sedentary: 1.2,      // Little to no exercise
+      light: 1.375,        // Light exercise 1-3 days/week
+      moderate: 1.55,      // Moderate exercise 3-5 days/week
+      very_active: 1.725,  // Hard exercise 6-7 days/week
     } as const;
 
-    const multiplier = multiplierMap[activityLevel] || 12;
-    const baseCalories = multiplier * weight;
+    const tdee = bmr * (activityMultiplierMap[activityLevel] || 1.55);
 
+    // Calculate daily calorie adjustment based on rate of change
     const adjustment =
       rate *
       500 *
       (goalType === 'fat_loss' ? -1 : goalType === 'muscle_gain' ? 1 : 0);
 
-    const cals = Math.round(baseCalories + adjustment);
+    let cals = Math.round(tdee + adjustment);
+
+    // Safety floor: never go below minimum safe calories
+    const minCalories = 1500; // Safe minimum for active firefighters
+    if (cals < minCalories && goalType === 'fat_loss') {
+      cals = minCalories;
+    }
 
     // 🏋️ IMPROVED PROTEIN CALCULATION
     // More intelligent protein recommendations based on activity level, weight, and goals
@@ -149,15 +177,41 @@ const GoalSettingsScreen: React.FC<GoalSettingsProps> = ({
       return Math.round(protein);
     };
 
-    const protein = calculateProteinTarget(weight, activityLevel, goalType);
-    const fat = Math.round((cals * 0.25) / 9);
-    const carbs = Math.round((cals - (protein * 4 + fat * 9)) / 4);
+    let protein = calculateProteinTarget(weight, activityLevel, goalType);
+    let fat = Math.round((cals * 0.25) / 9);
+    let carbs = Math.round((cals - (protein * 4 + fat * 9)) / 4);
+
+    // ✅ MACRO VALIDATION
+    // Ensure protein doesn't exceed safe maximum
+    if (protein > 250) {
+      console.warn('⚠️ Protein capped at 250g for safety');
+      protein = 250;
+    }
+
+    // Ensure carbs don't go below minimum for performance
+    const minCarbs = 100; // Minimum for firefighter performance
+    if (carbs < minCarbs) {
+      console.warn('⚠️ Carbs below minimum, adjusting macros');
+      // Recalculate: prioritize protein, then carbs, then fat
+      carbs = minCarbs;
+      const remainingCals = cals - (protein * 4 + carbs * 4);
+      fat = Math.max(Math.round(remainingCals / 9), 40); // Min 40g fat
+    }
+
+    // Ensure fat doesn't go below minimum for hormones
+    const minFat = 40;
+    if (fat < minFat) {
+      console.warn('⚠️ Fat below minimum, adjusting to 40g');
+      fat = minFat;
+      // Recalculate carbs with reduced fat
+      carbs = Math.round((cals - (protein * 4 + fat * 9)) / 4);
+    }
 
     setCalorieTarget(cals);
     setProteinGrams(protein);
     setFatGrams(fat);
     setCarbGrams(carbs);
-  }, [weight, goalType, rate, activityLevel]);
+  }, [weight, height, age, goalType, rate, activityLevel]);
 
   // ✅ Save field instantly when changed
   const saveField = async (field: string, value: any) => {
@@ -199,7 +253,7 @@ const GoalSettingsScreen: React.FC<GoalSettingsProps> = ({
         goalType: convertedGoalType,
         name: userProfile?.name || 'Firefighter',
         dietaryPreference,
-        dietaryRestriction,
+        dietaryRestrictions,
       };
 
       console.log('🔥 Meal Plan Data to save:', mealPlanData);
@@ -214,6 +268,8 @@ const GoalSettingsScreen: React.FC<GoalSettingsProps> = ({
       const profileUpdates = {
         weight,
         targetWeight,
+        height,
+        age,
         weeklyRate: rate,
         calorieTarget,
         proteinGrams,
@@ -221,7 +277,7 @@ const GoalSettingsScreen: React.FC<GoalSettingsProps> = ({
         carbGrams,
         goalType: convertedGoalType,
         dietaryPreference,
-        dietaryRestriction,
+        dietaryRestrictions,
         dietMethod, // keep for compatibility
         activityLevel,
       };
@@ -276,6 +332,43 @@ const GoalSettingsScreen: React.FC<GoalSettingsProps> = ({
               onSaveTargetWeight={() => saveField('targetWeight', targetWeight)}
             />
 
+            {/* Height & Age Section */}
+            <View style={styles.card}>
+              <Text style={styles.label}>Height (inches)</Text>
+              <View style={styles.inputRow}>
+                <TextInput
+                  style={styles.input}
+                  keyboardType="numeric"
+                  value={height ? height.toString() : ''}
+                  onChangeText={(val) => setHeight(parseFloat(val) || 0)}
+                  onBlur={() => saveField('height', height)}
+                  placeholder="72"
+                  placeholderTextColor="#666"
+                />
+                <Text style={styles.inputHint}>{"Example: 5'10\" = 70 inches"}</Text>
+              </View>
+              
+              <Text style={[styles.label, { marginTop: 16 }]}>Age (years)</Text>
+              <View style={styles.inputRow}>
+                <TextInput
+                  style={styles.input}
+                  keyboardType="numeric"
+                  value={age ? age.toString() : ''}
+                  onChangeText={(val) => setAge(parseFloat(val) || 0)}
+                  onBlur={() => saveField('age', age)}
+                  placeholder="30"
+                  placeholderTextColor="#666"
+                />
+                <Text style={styles.inputHint}>Used for accurate calorie calculation</Text>
+              </View>
+              
+              {(!height || !age) && (
+                <Text style={styles.warning}>
+                  ⚠️ Height and age are required for accurate nutrition calculations
+                </Text>
+              )}
+            </View>
+
             <ActivityLevelSelector
               activityLevel={activityLevel}
               onChange={(a) => {
@@ -300,9 +393,19 @@ const GoalSettingsScreen: React.FC<GoalSettingsProps> = ({
                 minimumTrackTintColor="#ff3c3c"
               />
               <Text style={styles.value}>{rate} lbs/week</Text>
-              {rate > 1.5 && (
+              {rate > 1.5 && rate <= 2.0 && (
                 <Text style={styles.warning}>
-                  ⚠️ Rapid weight change can impact performance and recovery.
+                  ⚠️ Rapid weight change can impact performance and recovery. Consider 1.0-1.5 lbs/week for sustainable results.
+                </Text>
+              )}
+              {rate > 2.0 && (
+                <Text style={[styles.warning, { color: '#ff3b30', fontWeight: '700' }]}>
+                  🚨 EXTREME RATE: This is not recommended and may harm your health, performance, and metabolism. Maximum safe rate is 2 lbs/week.
+                </Text>
+              )}
+              {rate < 0.5 && goalType !== 'maintain' && (
+                <Text style={styles.summary}>
+                  💡 Very slow rate - excellent for maintaining strength and minimizing muscle loss during fat loss.
                 </Text>
               )}
               <Text style={styles.value}>
@@ -319,14 +422,17 @@ const GoalSettingsScreen: React.FC<GoalSettingsProps> = ({
 
             <PreferencesSection
               dietaryPreference={dietaryPreference}
-              dietaryRestriction={dietaryRestriction}
+              dietaryRestrictions={dietaryRestrictions}
               onChangePreference={(p) => {
                 setDietaryPreference(p);
                 saveField('dietaryPreference', p);
               }}
-              onChangeRestriction={(r) => {
-                setDietaryRestriction(r);
-                saveField('dietaryRestriction', r);
+              onToggleRestriction={(r) => {
+                const newRestrictions = dietaryRestrictions.includes(r)
+                  ? dietaryRestrictions.filter(item => item !== r)
+                  : [...dietaryRestrictions, r];
+                setDietaryRestrictions(newRestrictions);
+                saveField('dietaryRestrictions', newRestrictions);
               }}
             />
 
@@ -339,12 +445,42 @@ const GoalSettingsScreen: React.FC<GoalSettingsProps> = ({
               </Text>
             </View>
 
+            {/* Macro Preview Card */}
+            {weight && height && age && (
+              <View style={styles.card}>
+                <Text style={styles.label}>Your Nutrition Targets</Text>
+                <View style={styles.macroPreview}>
+                  <View style={styles.macroItem}>
+                    <Text style={styles.macroValue}>{calorieTarget}</Text>
+                    <Text style={styles.macroLabel}>Calories</Text>
+                  </View>
+                  <View style={styles.macroItem}>
+                    <Text style={styles.macroValue}>{proteinGrams}g</Text>
+                    <Text style={styles.macroLabel}>Protein</Text>
+                  </View>
+                  <View style={styles.macroItem}>
+                    <Text style={styles.macroValue}>{carbGrams}g</Text>
+                    <Text style={styles.macroLabel}>Carbs</Text>
+                  </View>
+                  <View style={styles.macroItem}>
+                    <Text style={styles.macroValue}>{fatGrams}g</Text>
+                    <Text style={styles.macroLabel}>Fat</Text>
+                  </View>
+                </View>
+                {calorieTarget === 1500 && goalType === 'fat_loss' && (
+                  <Text style={styles.warning}>
+                    ⚠️ At minimum safe calorie level. Consider slower rate of change.
+                  </Text>
+                )}
+              </View>
+            )}
+
             {/* Final Generate Button */}
             <AppButton
               title="Generate My Plan"
               onPress={handleGenerateMealPlan}
               variant="redSolid"
-              disabled={!weight || !targetWeight || !rate}
+              disabled={!weight || !targetWeight || !height || !age || !rate}
             />
           </ScrollView>
         </KeyboardAvoidingView>
@@ -376,8 +512,38 @@ const styles = StyleSheet.create({
   },
   label: { color: '#fff', fontSize: 16, marginBottom: 8 },
   value: { color: '#fff', marginTop: 8 },
-  warning: { color: '#ff6b6b', marginTop: 8 },
+  warning: { color: '#ff6b6b', marginTop: 8, fontSize: 13 },
   summary: { color: '#aaa', marginTop: 8, fontSize: 13 },
+  inputRow: { marginBottom: 8 },
+  input: {
+    backgroundColor: '#2a2a2a',
+    color: '#fff',
+    padding: 12,
+    borderRadius: 8,
+    fontSize: 16,
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  inputHint: { color: '#999', fontSize: 12, marginTop: 4 },
+  macroPreview: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#333',
+  },
+  macroItem: { alignItems: 'center' },
+  macroValue: {
+    color: '#4fc3f7',
+    fontSize: 24,
+    fontWeight: '700',
+  },
+  macroLabel: {
+    color: '#999',
+    fontSize: 12,
+    marginTop: 4,
+  },
 });
 
 export default GoalSettingsScreen;

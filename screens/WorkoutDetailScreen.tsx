@@ -1,1642 +1,826 @@
-// screens/WorkoutDetailScreen.tsx
-import React, { useState, useEffect, useRef, useMemo, useLayoutEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
-  ActivityIndicator,
   Pressable,
+  ScrollView,
   TextInput,
   Modal,
-  KeyboardAvoidingView,
-  Platform,
-  StatusBar,
+  ActivityIndicator,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
-import Ionicons from 'react-native-vector-icons/Ionicons';
-import Toast from '../components/Toast';
-import WorkoutFeedbackModal, { WorkoutFeedback } from '../components/Modals/WorkoutFeedbackModal';
-import CoachingAdviceModal from '../components/Modals/CoachingAdviceModal';
-import PRCelebration from '../components/PRCelebration';
-import { useNavigation, useRoute, RouteProp, StackActions } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import { auth, db } from '../firebase';
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  increment,
-  limit,
-  orderBy,
-  query,
-  setDoc,
-  Timestamp,
-  writeBatch,
-} from 'firebase/firestore';
-import { checkAndAdjustRestDays } from '../utils/performanceMonitor';
-import type { ExerciseBlock } from '../utils/types';
-import EnhancedTimerBar from '../components/EnhancedTimerBar';
-import VideoToggle from '../components/VideoToggle';
-import { generateCoachingAdvice } from '../utils/coachingService';
-import { resolveExerciseDetails } from '../utils/exerciseUtils';
-import { exercises as exerciseLibrary } from '../data/exercises';
+import { doc, setDoc, Timestamp, collection, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
+import Toast from 'react-native-toast-message';
+import Video from 'react-native-video';
+import YoutubePlayer from 'react-native-youtube-iframe';
+import { resolveExercise } from '../utils/exerciseMatching';
 import { exercises } from '../data/exercises';
+import type { Exercise } from '../types/Exercise';
 
-type WorkoutSet = { reps: string; weight: string };
-
-/* ───────── helpers ───────── */
-const pretty = (id: string) => {
-  // Try to look up the actual exercise name from the database first
-  const exercise = resolveExerciseDetails(id);
-  if (exercise && exercise.name) {
-    return exercise.name;
-  }
-
-  // Fallback to formatting the ID if not found in database
-  return id.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-};
-
-const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
-const fmtTime = (sec: number) => `${pad(Math.floor(sec / 60))}:${pad(sec % 60)}`;
-const numFromStr = (s?: string) =>
-  s ? parseInt(s.match(/\d+/)?.[0] ?? '', 10) : undefined;
-
-/* ───────── util types ───────── */
-type IntervalId = ReturnType<typeof setInterval>;
 type WorkoutDetailRoute = RouteProp<RootStackParamList, 'WorkoutDetail'>;
 
-/* ───────── types ───────── */
-interface FirestoreExercise {
-  name?: string;
-  videoUrl?: string;
-  sets?: number;
-  reps?: number;
-  repsOrTime?: number;
-  type?: 'reps' | 'time';
-}
-
-interface EnrichedExercise {
+interface ExerciseData {
   id: string;
   name: string;
-  videoUri: string;
-  setsCount: number;
-  repsCount: number; // seconds if type === 'time'
-  rpe: number;
-  type: 'reps' | 'time' | 'amrap' | 'max_effort' | 'competition' | 'special';
+  sets: number;
+  reps: string;
+  weight?: string;
+  videoUrl?: string;
+  swapOptions?: string[];
+  equipment?: string;
 }
 
-interface TimedStatus {
-  running: boolean;
-  seconds: number;
-  done: boolean;
-  mode: 'stopwatch' | 'countdown';
-  intervalId?: IntervalId;
+interface SetData {
+  weight: string;
+  reps: string;
+  completed: boolean;
 }
 
-/* ───────── child component ───────── */
-interface MainExercisesSectionProps {
-  title: string;
-  list: EnrichedExercise[];
-  progress: WorkoutSet[][];
-  lastSession: Record<string, { reps: string; weight: string }[]>;
-  timedRef: React.MutableRefObject<Record<string, TimedStatus[]>>;
-  manuallyCompleted: Set<string>;
-  setManuallyCompleted: React.Dispatch<React.SetStateAction<Set<string>>>;
-  formatDesc: (ex: EnrichedExercise) => string;
-  startTimedSet: (exId: string, setIdx: number, targetSec: number) => void;
-  resetTimedSet: (exId: string, setIdx: number, targetSec: number) => void;
-  updateInput: (
-    exIdx: number,
-    setIdx: number,
-    field: 'reps' | 'weight',
-    val: string
-  ) => void;
-  onPressChart: (exerciseId: string) => void;
-}
-
-const MainExercisesSection: React.FC<MainExercisesSectionProps> = ({
-  title,
-  list,
-  progress,
-  lastSession,
-  timedRef,
-  manuallyCompleted,
-  setManuallyCompleted,
-  formatDesc,
-  startTimedSet,
-  resetTimedSet,
-  updateInput,
-  onPressChart,
-}) => {
-  return (
-    <>
-      <Text style={styles.sectionHeader}>{title}</Text>
-
-      {list.map((ex, exIdx) => {
-        const isComplete = manuallyCompleted.has(ex.id);
-        const last = lastSession[ex.id] ?? [];
-
-        return (
-          <View key={ex.id} style={[styles.card, isComplete && styles.cardDone]}>
-            {/* header */}
-            <View style={styles.cardHeader}>
-              <Text style={[styles.cardTitle, isComplete && styles.cardTitleDone]}>
-                {ex.name}
-              </Text>
-
-              <Pressable onPress={() => onPressChart(ex.id)}>
-                <Ionicons name="stats-chart" size={20} color="#4fc3f7" />
-              </Pressable>
-
-              {/* ○ / ✔︎ toggle - Manual completion */}
-              <Pressable
-                onPress={() => {
-                  setManuallyCompleted(prev => {
-                    const next = new Set(prev);
-                    if (next.has(ex.id)) {
-                      next.delete(ex.id);
-                    } else {
-                      next.add(ex.id);
-                    }
-                    return next;
-                  });
-                }}
-              >
-                <Ionicons
-                  name={isComplete ? 'checkmark-circle' : 'ellipse-outline'}
-                  size={28}
-                  color={isComplete ? '#66bb6a' : '#bbb'}
-                />
-              </Pressable>
-            </View>
-
-            <Text style={styles.recommend}>
-              {formatDesc(ex)} • RPE {ex.rpe}
-            </Text>
-
-            {/* video */}
-            {!!ex.videoUri && <VideoToggle uri={ex.videoUri} />}
-
-            {/* sets */}
-            {Array.from({ length: ex.setsCount }).map((_, si) => {
-              if (ex.type === 'time') {
-                const t = timedRef.current[ex.id][si];
-                return (
-                  <View key={si} style={styles.setBlock}>
-                    <View style={styles.setRow}>
-                      <Text style={styles.setLabel}>Set {si + 1}</Text>
-                      <Text style={styles.timerDigits}>
-                        {fmtTime(t.mode === 'countdown' ? Math.max(0, t.seconds) : t.seconds)}
-                      </Text>
-                      <Pressable onPress={() => startTimedSet(ex.id, si, ex.repsCount)}>
-                        <Ionicons
-                          name={t.running ? 'pause-circle' : 'play-circle'}
-                          size={28}
-                          color="#4caf50"
-                        />
-                      </Pressable>
-                      <Pressable onPress={() => resetTimedSet(ex.id, si, ex.repsCount)} style={styles.ml6}>
-                        <Ionicons name="refresh" size={20} color="#ff9800" />
-                      </Pressable>
-                    </View>
-                    {t.done && <Text style={styles.lastTxt}>Done ✔</Text>}
-                  </View>
-                );
-              }
-
-              if (ex.type === 'amrap') {
-                const t = timedRef.current[ex.id][si];
-                const set = progress[exIdx][si];
-                return (
-                  <View key={si} style={styles.setBlock}>
-                    <View style={styles.setRow}>
-                      <Text style={styles.setLabel}>AMRAP {ex.repsCount / 60} min</Text>
-                      <Text style={styles.timerDigits}>
-                        {fmtTime(t.mode === 'countdown' ? Math.max(0, t.seconds) : t.seconds)}
-                      </Text>
-                      <Pressable onPress={() => startTimedSet(ex.id, si, ex.repsCount)}>
-                        <Ionicons
-                          name={t.running ? 'pause-circle' : 'play-circle'}
-                          size={28}
-                          color="#4caf50"
-                        />
-                      </Pressable>
-                      <Pressable onPress={() => resetTimedSet(ex.id, si, ex.repsCount)} style={styles.ml6}>
-                        <Ionicons name="refresh" size={20} color="#ff9800" />
-                      </Pressable>
-                    </View>
-                    <View style={styles.setRow}>
-                      <Text style={styles.setLabel}>Rounds</Text>
-                      <TextInput
-                        style={styles.input}
-                        placeholder="rounds"
-                        placeholderTextColor="#777"
-                        keyboardType="number-pad"
-                        editable={!isComplete}
-                        value={String(set.reps ?? '')}
-                        onChangeText={(text) => updateInput(exIdx, si, 'reps', text)}
-                      />
-                    </View>
-                    {t.done && <Text style={styles.lastTxt}>AMRAP Complete ✔</Text>}
-                  </View>
-                );
-              }
-
-              if (ex.type === 'max_effort' || ex.type === 'competition' || ex.type === 'special') {
-                const set = progress[exIdx][si];
-                return (
-                  <View key={si} style={styles.setBlock}>
-                    <View style={styles.setRow}>
-                      <Text style={styles.setLabel}>Performance</Text>
-                      <TextInput
-                        style={styles.input}
-                        placeholder="result"
-                        placeholderTextColor="#777"
-                        keyboardType="decimal-pad"
-                        editable={!isComplete}
-                        value={String(set.reps ?? '')}
-                        onChangeText={(text) => updateInput(exIdx, si, 'reps', text)}
-                      />
-                      <TextInput
-                        style={styles.input}
-                        placeholder="time/weight"
-                        placeholderTextColor="#777"
-                        keyboardType="decimal-pad"
-                        editable={!isComplete}
-                        value={String(set.weight ?? '')}
-                        onChangeText={(text) => updateInput(exIdx, si, 'weight', text)}
-                      />
-                    </View>
-                    {last[si] && (
-                      <Text style={styles.lastTxt}>
-                        Last: {last[si].reps} @ {last[si].weight}
-                      </Text>
-                    )}
-                  </View>
-                );
-              }
-
-              // regular reps / weight
-              const set = progress[exIdx][si];
-              return (
-                <View key={si} style={styles.setBlock}>
-                  <View style={styles.setRow}>
-                    <Text style={styles.setLabel}>Set {si + 1}</Text>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="reps"
-                      placeholderTextColor="#777"
-                      keyboardType="number-pad"
-                      editable={!isComplete}
-                      value={String(set.reps ?? '')}
-                      onChangeText={(text) => updateInput(exIdx, si, 'reps', text)}
-                    />
-
-                    <TextInput
-                      style={styles.input}
-                      placeholder="lbs"
-                      placeholderTextColor="#777"
-                      keyboardType="decimal-pad"
-                      editable={!isComplete}
-                      value={String(set.weight ?? '')}
-                      onChangeText={(text) => updateInput(exIdx, si, 'weight', text)}
-                    />
-                  </View>
-                  {last[si] && (
-                    <Text style={styles.lastTxt}>
-                      Last: {last[si].reps} reps @ {last[si].weight} lbs
-                    </Text>
-                  )}
-                </View>
-              );
-            })}
-          </View>
-        );
-      })}
-    </>
-  );
-};
-
-/* ───────── component ───────── */
 const WorkoutDetailScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { params } = useRoute<WorkoutDetailRoute>();
-  const { day, weekIdx, dayIdx } = params;
-
-  /* -------- loading -------- */
-  const [loading, setLoading] = useState(true);
-
-  /* -------- data -------- */
-  const [warmup, setWarmup] = useState<EnrichedExercise[]>([]);
-  const [main, setMain] = useState<EnrichedExercise[]>([]);
-  const [cooldown, setCooldown] = useState<EnrichedExercise[]>([]);
-
-  function navigateToWorkoutRoot() {
-  // hop to the Workout tab if you use tabs
-  navigation.getParent?.()?.navigate?.('Workout');
-  // then clear this stack back to its root so Adapt/Detail aren’t left behind
-  navigation.dispatch(StackActions.popToTop());
-}
-
-  /* -------- inputs -------- */
-  const [manuallyCompleted, setManuallyCompleted] = useState<Set<string>>(new Set());
+  const route = useRoute<WorkoutDetailRoute>();
   
-  const [progress, setProgress] = useState<WorkoutSet[][]>(() =>
-    day.exercises.map((blk: ExerciseBlock) =>
-      Array.from({ length: blk.sets ?? 1 }).map(() => ({ reps: '', weight: '' } as WorkoutSet))
-    )
-  );
+  const { day, weekIdx, dayIdx } = route.params || {};
+  
+  const [exerciseList, setExerciseList] = useState<ExerciseData[]>([]);
+  const [workoutSets, setWorkoutSets] = useState<Record<string, SetData[]>>({});
+  const [expandedExercises, setExpandedExercises] = useState<Set<string>>(new Set());
+  const [showSwapModal, setShowSwapModal] = useState(false);
+  const [swapModalExercise, setSwapModalExercise] = useState<ExerciseData | null>(null);
+  const [restTimer, setRestTimer] = useState(0);
+  const [restTargetExercise, setRestTargetExercise] = useState<string | null>(null);
+  const [isResting, setIsResting] = useState(false);
+  const [workoutStartTime] = useState(Date.now());
+  const [notes, setNotes] = useState('');
+  const [feeling, setFeeling] = useState<'easy' | 'moderate' | 'hard' | 'crushed' | null>(null);
+  
+  const restIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  const [lastSession, setLastSession] = useState<
-    Record<string, { reps: string; weight: string }[]>
-  >({});
-
-  /* -------- timers -------- */
-  const [elapsedSec, setElapsedSec] = useState(0);
-  const [workState, setWorkState] = useState<'idle' | 'running' | 'paused' | 'stopped'>('idle');
-  const globalTimer = useRef<IntervalId | null>(null);
-
-  // per-exercise timers  ➜  { exerciseId: TimedStatus[] }
-  const timedRef = useRef<Record<string, TimedStatus[]>>({});
-
-  /* -------- toasts & pop-ups -------- */
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [nextUp, setNextUp] = useState<string | null>(null);
-  const [summaryVisible, setSummaryVisible] = useState(false);
-  const [prMsgs, setPrMsgs] = useState<string[]>([]);
-  const [showPR, setShowPR] = useState(false);
-  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
-  const [workoutFeedback, setWorkoutFeedback] = useState<WorkoutFeedback | null>(null);
-
-  /* -------- coaching advice -------- */
-  const [showCoachingModal, setShowCoachingModal] = useState(false);
-  const [coachingData, setCoachingData] = useState<any>(null);
-  const [coachingChecked, setCoachingChecked] = useState(false);
-
-  /* -------- large countdown display -------- */
-  const [activeTimer, setActiveTimer] = useState<{
-    exerciseId: string;
-    setIndex: number;
-    exerciseName: string;
-    totalTime: number;
-  } | null>(null);
-
-  /* ---- header: Removed Adapt button ---- */
-
-  /* ── enrichment ── */
-  const enrich = async (blk: ExerciseBlock): Promise<EnrichedExercise> => {
-    console.log(`🔍 Enriching exercise ID: ${blk.id}`);
-    
-    // Safety check for undefined or empty ID
-    if (!blk.id) {
-      console.error('❌ Exercise block has no ID:', blk);
-      return {
-        id: 'unknown',
-        name: 'Unknown Exercise',
-        videoUri: '',
-        setsCount: 3,
-        repsCount: 10,
-        rpe: 7,
-        type: 'reps' as const,
-      };
-    }
-    
-    // Map human-readable IDs to actual hexadecimal IDs in database
-    const exerciseIdMap: Record<string, string> = {
-      'banded_face_pull': '609e6c422c9349a885fa69c2dd2141f7', // Banded Face Pulls
-      'glute_bridge': 'd68572790c034f40afbd39433926bc96', // Glute Bridge
-      'worlds_greatest_stretch': '39292bf9cd8d403e9279d4c9bb8497c9', // World's Greatest Stretch
-      // Add more mappings as needed - we'll get the video URLs from Firebase now!
-    };
-
-    // Use mapped ID if available, otherwise use the original ID
-    const actualId = exerciseIdMap[blk.id] || blk.id;
-
-    const snap = await getDoc(doc(db, 'exercises', actualId));
-    const meta: FirestoreExercise = snap.exists() ? (snap.data() as any) : {};
-    
-    if (snap.exists()) {
-      const isYouTube = meta.videoUrl?.includes('youtube.com') || meta.videoUrl?.includes('youtu.be');
-      console.log(`📦 Found in Firebase: ${meta.name}, Video: ${meta.videoUrl ? (isYouTube ? 'YouTube' : 'Direct') : 'NO'}`);
-      if (meta.videoUrl) {
-        console.log(`   URL: ${meta.videoUrl.substring(0, 60)}...`);
-      }
-    }
-
-    // If Firebase doesn't have the exercise, try to find it in local exercises.ts by name
-    if (!snap.exists() || !meta.videoUrl) {
-      console.log(`🔄 Not in Firebase or no video, checking local exercises.ts...`);
-      
-      // First try direct ID lookup in local exercises
-      const localExercise = resolveExerciseDetails(actualId);
-      if (localExercise) {
-        const isYouTube = localExercise.videoUrl?.includes('youtube.com') || localExercise.videoUrl?.includes('youtu.be');
-        console.log(`📚 Local exercise lookup by ID (${actualId}): Found: ${localExercise.name}`);
-        console.log(`   Video type: ${isYouTube ? 'YouTube' : 'Direct MP4'}`);
-        console.log(`   URL: ${localExercise.videoUrl?.substring(0, 60)}...`);
-      } else {
-        console.log(`📚 Local exercise lookup by ID (${actualId}): Not found`);
-      }
-
-      if (localExercise && localExercise.videoUrl) {
-        Object.assign(meta, {
-          name: localExercise.name,
-          videoUrl: localExercise.videoUrl,
-          sets: localExercise.sets || 1,
-          reps: localExercise.reps || 8,
-        });
-      } else {
-        // If direct ID lookup fails, try name-based lookup with fuzzy matching
-        // Convert the human-readable ID to a display name for searching
-        const searchName = pretty(blk.id);
-
-        // Helper function to normalize names for better matching
-        const normalizeForSearch = (name: string) => {
-          return name.toLowerCase()
-            .replace(/[^a-z0-9\s]/g, '') // Remove special characters
-            .replace(/\s+/g, ' ') // Normalize spaces
-            .trim();
-        };
-
-        // Helper function to create search variations
-        const createSearchVariations = (name: string) => {
-          const normalized = normalizeForSearch(name);
-          const variations = [
-            normalized,
-            normalized.replace(/s$/, ''), // Remove trailing 's' (singular/plural)
-            normalized + 's', // Add trailing 's'
-            normalized.replace(/\b(\w+)\b/g, '$1s'), // Make all words plural
-            normalized.replace(/\bs\b/g, ''), // Remove standalone 's'
-          ];
-          return [...new Set(variations)]; // Remove duplicates
-        };
-
-        const searchVariations = createSearchVariations(searchName);
-        const normalizedSearchName = normalizeForSearch(searchName);
-
-        // Search exercises array with multiple strategies
-        let foundByName = exercises.find((ex: any) => {
-          const normalizedExName = normalizeForSearch(ex.name);
-
-          // Strategy 1: Exact normalized match
-          if (normalizedExName === normalizedSearchName) {
-            return true;
-          }
-
-          // Strategy 2: Check if search variations match exercise name
-          if (searchVariations.some(variation => normalizedExName.includes(variation))) {
-            return true;
-          }
-
-          // Strategy 3: Check if exercise name variations match search name
-          const exVariations = createSearchVariations(ex.name);
-          if (exVariations.some(variation => normalizedSearchName.includes(normalizeForSearch(variation)))) {
-            return true;
-          }
-
-          // Strategy 4: Original bidirectional partial matching (fallback)
-          return ex.name.toLowerCase().includes(searchName.toLowerCase()) ||
-                 searchName.toLowerCase().includes(ex.name.toLowerCase());
-        });        if (foundByName && foundByName.videoUrl) {
-          Object.assign(meta, {
-            name: foundByName.name,
-            videoUrl: foundByName.videoUrl,
-            sets: foundByName.sets || 1,
-            reps: foundByName.reps || 8,
-          });
-        }
-      }
-    }
-
-    // Check for special workout types
-    const repsText = blk.repsOrDuration.toLowerCase();
-    const isAMRAP = repsText.includes('amrap');
-    const isMaxEffort = repsText.includes('max') && (repsText.includes('distance') || repsText.includes('reps') || repsText.includes('flips') || repsText.includes('flights'));
-    const isCompetition = repsText.includes('competition') || repsText.includes('test') || repsText.includes('challenge');
-
-    // Fallback video URL - try to provide exercise-specific videos
-    let fallbackVideoUrl = 'https://www.w3schools.com/html/mov_bbb.mp4'; // default fallback
-
-    // Map common warm-up/cool-down exercises to appropriate videos
-    const exerciseVideoMap: Record<string, string> = {
-      'banded_face_pull': 'https://www.youtube.com/watch?v=HSoHeSjvIdY', // Face Pull demonstration
-      'wall_slide': 'https://www.youtube.com/watch?v=d6V2Exzb324', // Wall Slide mobility
-      'arm_circle_pvc_pass': 'https://www.youtube.com/watch?v=qvqLMgOhFFE', // Arm circles
-      'glute_bridge': 'https://firebasestorage.googleapis.com/v0/b/firefighter-wellness-app.firebasestorage.app/o/glute-bridge.mp4?alt=media', // Use existing if available
-      'scap_pushup': 'https://www.youtube.com/watch?v=akgQbxhrhOc', // Scapular push-ups
-      'worlds_greatest_stretch': 'https://www.youtube.com/watch?v=EKckKcZEK1E', // World's greatest stretch
-      'hip_flexor_stretch': 'https://www.youtube.com/watch?v=UGEpQ1BRx-4', // Hip flexor stretch
-      'hamstring_stretch_floor': 'https://www.youtube.com/watch?v=5f7bJg98TgI', // Hamstring stretch
-      'box_breathing': 'https://www.youtube.com/watch?v=tEmt1Znux58', // Box breathing
-      'band_shoulder_stretch': 'https://www.youtube.com/watch?v=HSoHeSjvIdY', // Band shoulder stretch
-      'wall_pec_stretch': 'https://www.youtube.com/watch?v=dOJy_qGNqWg', // Wall pec stretch
-      'incline_walk': 'https://www.youtube.com/watch?v=mrpzaCJGMQs', // Incline walking
-    };
-
-    if (exerciseVideoMap[blk.id]) {
-      fallbackVideoUrl = exerciseVideoMap[blk.id];
-    }
-
-    // For special workouts, use custom logic
-    if (isAMRAP || isMaxEffort || isCompetition) {
-      return {
-        id: blk.id,
-        name: meta.name ?? pretty(blk.id),
-        videoUri:
-          meta.videoUrl && meta.videoUrl.trim()
-            ? meta.videoUrl
-            : fallbackVideoUrl,
-        setsCount: 1, // Special workouts are typically single efforts
-        repsCount: isAMRAP ? (numFromStr(blk.repsOrDuration) ?? 1) * 60 : 1, // AMRAP time in seconds, others just 1
-        rpe: blk.rpe,
-        type: isAMRAP ? 'amrap' : isMaxEffort ? 'max_effort' : isCompetition ? 'competition' : 'special',
-      };
-    }
-
-    // Original logic for normal exercises
-    const videoUri = meta.videoUrl && meta.videoUrl.trim()
-      ? meta.videoUrl
-      : fallbackVideoUrl;
-    
-    console.log(`🎬 Final video URI for "${meta.name ?? pretty(blk.id)}": ${videoUri}`);
-    
-    return {
-      id: blk.id,
-      name: meta.name ?? pretty(blk.id),
-      videoUri,
-      setsCount: meta.sets ?? blk.sets ?? 3,
-      repsCount:
-        meta.reps ??
-        (blk.repsOrDuration.toLowerCase().includes('min')
-          ? (numFromStr(blk.repsOrDuration) ?? 1) * 60
-          : numFromStr(blk.repsOrDuration) ?? 8),
-      rpe: blk.rpe,
-      type:
-        meta.type ??
-        (blk.repsOrDuration.toLowerCase().includes('sec') ||
-        blk.repsOrDuration.toLowerCase().includes('min')
-          ? 'time'
-          : 'reps'),
-    };
-  };
-
-  /* ── fetch / initialise ── */
   useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const [w, m, c] = await Promise.all([
-          Promise.all(day.warmup.map(enrich)),
-          Promise.all(day.exercises.map(enrich)),
-          Promise.all(day.cooldown.map(enrich)),
-        ]);
-
-        /* progress */
-        const progInit = m.map((ex) =>
-          Array.from({ length: ex.setsCount }).map(() => ({
-            reps: '',
-            weight: '',
-          }))
-        );
-
-        /* timer state */
-        const timerInit: Record<string, TimedStatus[]> = {};
-        [...w, ...m, ...c].forEach((ex) => {
-          if (ex.type === 'time' || ex.type === 'amrap') {
-            timerInit[ex.id] = Array.from({ length: ex.setsCount }).map(() => ({
-              running: false,
-              seconds: 0,
-              done: false,
-              mode: ex.type === 'amrap' ? 'countdown' : 'countdown', // Default to countdown for both
-            }));
-          }
-        });
-        timedRef.current = timerInit;
-
-        /* last-session lookup */
-        const uid = auth.currentUser?.uid;
-        const last: Record<string, { reps: string; weight: string }[]> = {};
-        if (uid) {
-          console.log('📋 Loading last session data for', m.length, 'exercises');
-          
-          // Create a lookup map: readable name -> exercise ID
-          const nameToIdMap: Record<string, string> = {};
-          exerciseLibrary.forEach((exercise) => {
-            if (exercise.name) {
-              nameToIdMap[exercise.name] = exercise.name; // Will be replaced with actual ID when we find it
-            }
-          });
-          
-          for (const ex of m) {
-            console.log('📋 Looking for last session of:', ex.id);
-            const exerciseDetails = resolveExerciseDetails(ex.id);
-            const readableName = exerciseDetails?.name;
-            console.log('📋 Readable name:', readableName);
-            
-            const q = await getDocs(
-              query(
-                collection(db, 'users', uid, 'workoutLogs'),
-                orderBy('completedAt', 'desc'),
-                limit(5)
-              )
-            );
-            console.log('📋 Found', q.docs.length, 'recent workout logs');
-            for (const d of q.docs) {
-              const data: any = d.data();
-              console.log('📋 Checking workout log, exercises:', data.exercises?.map((e: any) => e.name));
-              // Try to match by ID first, then by readable name
-              const hit = data.exercises.find((e: any) => 
-                e.name === ex.id || 
-                (readableName && e.name === readableName)
-              );
-              if (hit) {
-                console.log('📋 Found match! Sets:', hit.sets);
-                last[ex.id] = hit.sets;
-                break;
-              }
-            }
-            if (!last[ex.id]) {
-              console.log('📋 No previous session found for', ex.id, 'or', readableName);
-            }
-          }
-          console.log('📋 Final lastSession object:', Object.keys(last));
-        }
-
-        if (alive) {
-          setWarmup(w);
-          setMain(m);
-          setCooldown(c);
-          setProgress(progInit);
-          setLastSession(last);
-          setLoading(false);
-        }
-      } catch (err) {
-        console.error(err);
-        if (alive) {setLoading(false);}
-      }
-    })();
-    return () => {
-      alive = false;
-
-      // Clear global timer
-      if (globalTimer.current) {
-        clearInterval(globalTimer.current);
-      }
-
-      // Clear all individual exercise timers
-      Object.values(timedRef.current).forEach(exerciseTimers => {
-        exerciseTimers.forEach(timer => {
-          if (timer.intervalId) {
-            clearInterval(timer.intervalId);
-          }
-        });
-      });
-    };
+    if (!day) return;
+    
+    // Parse exercises from day data
+    const parsedExercises: ExerciseData[] = (day.exercises || []).map((ex: any) => {
+      // Resolve exercise from library
+      const resolved = resolveExercise(ex.id || ex.name);
+      
+      return {
+        id: resolved?.id || ex.id || ex.name,
+        name: resolved?.name || ex.name || 'Unknown Exercise',
+        sets: ex.sets || 3,
+        reps: ex.reps || ex.repsOrDuration || '10',
+        weight: ex.weight,
+        videoUrl: resolved?.videoUrl,
+        swapOptions: resolved?.swapOptions,
+        equipment: resolved?.equipment,
+      };
+    });
+    
+    setExerciseList(parsedExercises);
+    
+    // Initialize workout sets
+    const initialSets: Record<string, SetData[]> = {};
+    parsedExercises.forEach(ex => {
+      initialSets[ex.id] = Array.from({ length: ex.sets }, () => ({
+        weight: ex.weight || '',
+        reps: '',
+        completed: false,
+      }));
+    });
+    setWorkoutSets(initialSets);
   }, [day]);
 
-  /* ── COACHING ADVICE - REMOVED (Now triggered from Dashboard based on check-ins) ── */
-  // Automatic coaching removed - AI now analyzes check-in data and provides recommendations on Dashboard
-
-  /* ── GLOBAL TIMER EFFECT ── */
   useEffect(() => {
-    if (workState === 'running') {
-      globalTimer.current = setInterval(() => setElapsedSec((prev) => prev + 1), 1000);
-    } else if (globalTimer.current) {
-      clearInterval(globalTimer.current);
-      globalTimer.current = null;
-    }
-  }, [workState]);
-
-  /* ── helpers ── */
-  const formatDesc = (ex: EnrichedExercise) => {
-    if (ex.type === 'amrap') {
-      return `${ex.repsCount / 60} min AMRAP`;
-    } else if (ex.type === 'max_effort') {
-      return 'Max Effort Challenge';
-    } else if (ex.type === 'competition') {
-      return 'Competition Test';
-    } else if (ex.type === 'special') {
-      return 'Special Challenge';
-    } else if (ex.type === 'time') {
-      return `${ex.setsCount}×${
-        ex.repsCount % 60 === 0 ? `${ex.repsCount / 60} min` : `${ex.repsCount} sec`
-      }`;
-    } else {
-      return `${ex.setsCount}×${ex.repsCount} reps`;
-    }
-  };
-
-  const updateInput = (
-    exIdx: number,
-    setIdx: number,
-    field: 'reps' | 'weight',
-    val: string
-  ) => {
-    setProgress((prev) =>
-      prev.map((exerciseSets, i) =>
-        i === exIdx
-          ? exerciseSets.map((set, j) => (j === setIdx ? { ...set, [field]: val } : set))
-          : exerciseSets
-      )
-    );
-  };
-
-  /* ── PER-SET TIMER HANDLERS ── */
-  const startTimedSet = (exId: string, setIdx: number, targetSec: number) => {
-    const status = timedRef.current[exId]?.[setIdx];
-    if (!status) {return;}
-
-    // Find the exercise name
-    const exercise = [...warmup, ...main, ...cooldown].find(ex => ex.id === exId);
-    const exerciseName = exercise?.name || pretty(exId);
-
-    // If already done, reset the timer
-    if (status.done) {
-      status.done = false;
-      status.seconds = status.mode === 'countdown' ? targetSec : 0;
-    }
-
-    // Toggle running state (play/pause functionality)
-    if (status.running) {
-      // Pause the timer
-      status.running = false;
-      if (status.intervalId) {
-        clearInterval(status.intervalId);
-        status.intervalId = undefined;
+    return () => {
+      if (restIntervalRef.current) {
+        clearInterval(restIntervalRef.current);
       }
-      // Clear the active timer display when pausing
-      setActiveTimer(null);
-      setElapsedSec((_prev) => _prev); // force re-render
-      return;
-    }
+    };
+  }, []);
 
-    // Start the timer
-    status.running = true;
-
-    // Initialize seconds if not set or if starting fresh
-    if (status.seconds === 0 && status.mode === 'countdown') {
-      status.seconds = targetSec;
-    } else if (status.seconds === 0 && status.mode === 'stopwatch') {
-      status.seconds = 0;
-    }
-
-    // Set the active timer for large countdown display
-    setActiveTimer({
-      exerciseId: exId,
-      setIndex: setIdx,
-      exerciseName,
-      totalTime: targetSec,
+  const toggleVideoExpand = (exerciseId: string) => {
+    setExpandedExercises(prev => {
+      const next = new Set(prev);
+      if (next.has(exerciseId)) {
+        next.delete(exerciseId);
+      } else {
+        next.add(exerciseId);
+      }
+      return next;
     });
+  };
 
-    const id = setInterval(() => {
-      if (!status.running) {
-        clearInterval(id);
+  const startRestTimer = (exerciseId: string, seconds: number = 90) => {
+    if (restIntervalRef.current) {
+      clearInterval(restIntervalRef.current);
+    }
+    
+    setRestTimer(seconds);
+    setRestTargetExercise(exerciseId);
+    setIsResting(true);
+    
+    restIntervalRef.current = setInterval(() => {
+      setRestTimer(prev => {
+        if (prev <= 1) {
+          if (restIntervalRef.current) {
+            clearInterval(restIntervalRef.current);
+          }
+          setIsResting(false);
+          setRestTargetExercise(null);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  const stopRestTimer = () => {
+    if (restIntervalRef.current) {
+      clearInterval(restIntervalRef.current);
+    }
+    setIsResting(false);
+    setRestTimer(0);
+    setRestTargetExercise(null);
+  };
+
+  const formatRestTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const getYoutubeVideoId = (url: string): string | null => {
+    if (!url) return null;
+    
+    // Handle youtube.com/watch?v=VIDEO_ID
+    const match1 = url.match(/youtube\.com\/watch\?v=([^&]+)/);
+    if (match1) return match1[1];
+    
+    // Handle youtu.be/VIDEO_ID
+    const match2 = url.match(/youtu\.be\/([^?]+)/);
+    if (match2) return match2[1];
+    
+    // Handle youtube.com/embed/VIDEO_ID
+    const match3 = url.match(/youtube\.com\/embed\/([^?]+)/);
+    if (match3) return match3[1];
+    
+    return null;
+  };
+
+  const updateSet = (exerciseId: string, setIndex: number, field: 'weight' | 'reps', value: string) => {
+    setWorkoutSets(prev => ({
+      ...prev,
+      [exerciseId]: prev[exerciseId].map((set, idx) => 
+        idx === setIndex ? { ...set, [field]: value } : set
+      ),
+    }));
+  };
+
+  const toggleSetComplete = (exerciseId: string, setIndex: number) => {
+    setWorkoutSets(prev => {
+      const updated = {
+        ...prev,
+        [exerciseId]: prev[exerciseId].map((set, idx) => 
+          idx === setIndex ? { ...set, completed: !set.completed } : set
+        ),
+      };
+      
+      // Auto-start rest timer after completing a set
+      if (!prev[exerciseId][setIndex].completed) {
+        startRestTimer(exerciseId, 90);
+      }
+      
+      return updated;
+    });
+  };
+
+  const handleSwapExercise = (exercise: ExerciseData) => {
+    setSwapModalExercise(exercise);
+    setShowSwapModal(true);
+  };
+
+  const confirmSwap = (newExerciseName: string) => {
+    if (!swapModalExercise) return;
+    
+    // Resolve new exercise from library
+    const resolved = resolveExercise(newExerciseName);
+    if (!resolved) return;
+    
+    setExerciseList(prev => prev.map(ex => 
+      ex.id === swapModalExercise.id 
+        ? {
+            ...ex,
+            id: resolved.id,
+            name: resolved.name,
+            videoUrl: resolved.videoUrl,
+            swapOptions: resolved.swapOptions,
+            equipment: resolved.equipment,
+          }
+        : ex
+    ));
+    
+    // Preserve set data structure
+    setWorkoutSets(prev => {
+      const oldSets = prev[swapModalExercise.id];
+      const newSets = { ...prev };
+      delete newSets[swapModalExercise.id];
+      newSets[resolved.id] = oldSets;
+      return newSets;
+    });
+    
+    setShowSwapModal(false);
+    setSwapModalExercise(null);
+    
+    Toast.show({
+      type: 'success',
+      text1: 'Exercise Swapped',
+      text2: `${swapModalExercise.name} → ${resolved.name}`,
+    });
+  };
+
+  const handleCompleteWorkout = async () => {
+    try {
+      const uid = auth.currentUser?.uid;
+      if (!uid) {
+        Toast.show({
+          type: 'error',
+          text1: 'Not logged in',
+          text2: 'Please sign in to save workout',
+        });
         return;
       }
 
-      status.seconds = status.mode === 'countdown' ? status.seconds - 1 : status.seconds + 1;
+      // Calculate workout duration
+      const duration = Math.floor((Date.now() - workoutStartTime) / 1000 / 60);
 
-      // kick a re-render
-      setElapsedSec((_prev) => _prev);
-
-      if (status.mode === 'countdown' && status.seconds <= 0) {
-        clearInterval(id);
-        status.running = false;
-        status.done = true;
-        status.intervalId = undefined;
-        // Clear the active timer display when completed
-        setActiveTimer(null);
-        markTimedSetComplete(exId, setIdx);
-      }
-    }, 1000) as IntervalId;
-
-    status.intervalId = id;
-  };
-
-  const resetTimedSet = (exId: string, setIdx: number, targetSec: number) => {
-    const status = timedRef.current[exId]?.[setIdx];
-    if (!status) {return;}
-
-    // Stop the timer if running
-    if (status.running && status.intervalId) {
-      clearInterval(status.intervalId);
-      status.intervalId = undefined;
-    }
-
-    // Clear the active timer display
-    setActiveTimer(null);
-
-    // Reset all values
-    status.running = false;
-    status.done = false;
-    status.seconds = status.mode === 'countdown' ? targetSec : 0;
-    setElapsedSec((_prev) => _prev); // force re-render
-  };
-
-  const markTimedSetComplete = (exId: string, setIdx: number) => {
-    const exIndex = main.findIndex((e) => e.id === exId);
-    if (exIndex === -1) {return;}
-    setProgress((p) => {
-      const next = [...p];
-      next[exIndex][setIdx] = { reps: '✓', weight: '✓' };
-      return next;
-    });
-
-    // Toast next-up
-    const flat = [...warmup, ...main, ...cooldown];
-    const curIdx = flat.findIndex((e) => e.id === exId);
-    if (curIdx !== -1 && curIdx + 1 < flat.length) {
-      setNextUp(flat[curIdx + 1].name);
-      setTimeout(() => setNextUp(null), 3500);
-    }
-  };
-
-  /* ── SAVE ── */
-  const [savedLogId, setSavedLogId] = useState<string | null>(null);
-  
-  const saveWorkout = async () => {
-    const uid = auth.currentUser?.uid;
-    if (!uid) {return;}
-
-    const logId = Date.now().toString();
-    setSavedLogId(logId);
-
-    // Pre-calculate PR information for each exercise
-    const exercisePRInfo: Record<string, { currentMax: number; previousMax: number; isPR: boolean }> = {};
-    main.forEach((ex, i) => {
-      const currentMaxWeight = Math.max(
-        ...progress[i]
-          .map(s => Number(s.weight))
-          .filter(w => !isNaN(w) && w > 0)
-      );
-
-      let previousMaxWeight = 0;
-      if (currentMaxWeight > 0) {
-        const lastSessionData = lastSession[ex.id];
-        if (lastSessionData && lastSessionData.length > 0) {
-          previousMaxWeight = Math.max(
-            ...lastSessionData
-              .map(s => Number(s.weight))
-              .filter(w => !isNaN(w) && w > 0)
-          );
-        }
-      }
-
-      exercisePRInfo[ex.id] = {
-        currentMax: currentMaxWeight,
-        previousMax: previousMaxWeight,
-        isPR: currentMaxWeight > 0 && currentMaxWeight > previousMaxWeight,
+      // Prepare workout data
+      const workoutData = {
+        dayTitle: day.title || 'Workout',
+        weekIdx,
+        dayIdx,
+        exercises: exerciseList.map(ex => ({
+          name: ex.name,
+          id: ex.id,
+          sets: workoutSets[ex.id].map(set => ({
+            weight: set.weight || '0',
+            reps: set.reps || '0',
+            completed: set.completed,
+          })),
+        })),
+        duration,
+        feeling,
+        notes,
+        completedAt: Timestamp.now(),
+        workoutType: 'strength',
       };
-    });
 
-    const payload = main.map((ex, i) => ({
-      name: pretty(ex.id), // Use pretty name instead of ID
-      sets: progress[i].map((s) => {
-        const weight = parseFloat(s.weight === '✓' ? '0' : s.weight);
-        const prInfo = exercisePRInfo[ex.id];
-        const isPR = prInfo.isPR && weight === prInfo.currentMax;
+      // Save to workout logs (matches WorkoutHistoryScreen collection name)
+      const historyRef = doc(collection(db, 'users', uid, 'workoutLogs'));
+      await setDoc(historyRef, workoutData);
+      
+      console.log('✅ Workout saved to workoutLogs collection:', workoutData.dayTitle);
 
-        return {
-          reps: s.reps === '✓' ? ex.repsCount.toString() : s.reps,
-          weight: s.weight === '✓' ? '0' : s.weight,
-          isPR: isPR,
-        };
-      }),
-    }));
-
-    const log = {
-      dayTitle: day.title,
-      weekIdx,
-      dayIdx,
-      completedAt: Timestamp.now(),
-      elapsedSec,
-      exercises: payload,
-    };
-
-    try {
-      const batch = writeBatch(db);
-      batch.set(doc(db, 'users', uid, 'workoutLogs', logId), log);
-      batch.update(doc(db, 'users', uid, 'program', 'active'), { 'metadata.currentDay': increment(1) });
-      await batch.commit();
-      await checkAndAdjustRestDays(uid);
-
-      // PR detection - compare against previous session data
-      console.log('🏆 PR Detection - Starting...');
-      const truePRs: string[] = [];
-      main.forEach((ex, i) => {
-        const currentMaxWeight = Math.max(
-          ...progress[i]
-            .map(s => Number(s.weight))
-            .filter(w => !isNaN(w) && w > 0)
-        );
-
-        console.log(`🏆 ${pretty(ex.id)} - Current max: ${currentMaxWeight}`);
-
-        // Only process if we have a valid weight for this exercise
-        if (currentMaxWeight > 0) {
-          const lastSessionData = lastSession[ex.id];
-          let previousMaxWeight = 0;
-
-          if (lastSessionData && lastSessionData.length > 0) {
-            previousMaxWeight = Math.max(
-              ...lastSessionData
-                .map(s => Number(s.weight))
-                .filter(w => !isNaN(w) && w > 0)
-            );
-          }
-
-          console.log(`🏆 ${pretty(ex.id)} - Previous max: ${previousMaxWeight}`);
-
-          // It's a PR if current weight is higher than previous max
-          if (currentMaxWeight > previousMaxWeight) {
-            const prMsg = `${pretty(ex.id)}: ${currentMaxWeight} lbs`;
-            console.log(`🎉 PR DETECTED: ${prMsg}`);
-            truePRs.push(prMsg);
-          }
-        }
+      Toast.show({
+        type: 'success',
+        text1: '🎉 Workout Complete!',
+        text2: `${duration} minutes • ${exerciseList.length} exercises`,
+        visibilityTime: 3000,
       });
 
-      console.log(`🏆 Total PRs detected: ${truePRs.length}`, truePRs);
-      setToastMessage('Workout saved!');
-      if (truePRs.length > 0) {
-        console.log('🎉 Showing PR celebration!');
-        console.log('🎉 Setting prMsgs to:', truePRs);
-        setPrMsgs(truePRs);
-        console.log('🎉 Setting showPR to true');
-        setShowPR(true);
-        console.log('🎉 PR celebration state updated');
-        // Show feedback modal after PR celebration
-        setTimeout(() => {
-          setShowPR(false);
-          setShowFeedbackModal(true);
-        }, 3500);
-      } else {
-        console.log('⚠️ No PRs detected, going straight to feedback');
-        setShowFeedbackModal(true);
-      }
-    } catch (e) {
-      console.error(e);
-      setToastMessage('Could not save workout.');
+      navigation.goBack();
+    } catch (error) {
+      console.error('Error saving workout:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Failed to save',
+        text2: 'Please try again',
+      });
     }
   };
 
-  /* ── SUMMARY CALCS ── */
-  const setsPlanned = useMemo(
-    () => main.reduce((sum, ex) => sum + ex.setsCount, 0),
-    [main]
-  );
-  const setsCompleted = useMemo(
-    () => progress.flat().filter((s) => s.reps || s.weight).length,
-    [progress]
-  );
-
-  /* -------- render -------- */
-  if (loading) {
+  if (!day) {
     return (
       <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
-        <ActivityIndicator size="large" color="#d32f2f" />
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>No workout data</Text>
+        </View>
       </LinearGradient>
     );
   }
 
+  const feelingOptions = [
+    { value: 'easy', label: 'Easy', icon: 'happy-outline', color: '#4CAF50' },
+    { value: 'moderate', label: 'Good', icon: 'thumbs-up-outline', color: '#2196F3' },
+    { value: 'hard', label: 'Hard', icon: 'flame-outline', color: '#FF9800' },
+    { value: 'crushed', label: 'Crushed It', icon: 'trophy-outline', color: '#9C27B0' },
+  ];
+
   return (
     <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
+      {/* HEADER */}
+      <View style={styles.header}>
+        <Pressable onPress={() => navigation.goBack()} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={24} color="#fff" />
+        </Pressable>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.headerTitle}>{day.title || 'Workout'}</Text>
+          <Text style={styles.headerSubtitle}>Week {weekIdx + 1} • Day {dayIdx + 1}</Text>
+        </View>
+        <View style={{ width: 40 }} />
+      </View>
+
+      {/* REST TIMER BANNER */}
+      {isResting && (
+        <View style={styles.restBanner}>
+          <Ionicons name="time-outline" size={24} color="#FF9800" />
+          <Text style={styles.restText}>Rest: {formatRestTime(restTimer)}</Text>
+          <Pressable onPress={stopRestTimer}>
+            <Ionicons name="close-circle" size={24} color="#fff" />
+          </Pressable>
+        </View>
+      )}
+
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.title}>{day.title}</Text>
+        {/* EXERCISES */}
+        {exerciseList.map((exercise, exIdx) => {
+          const isExpanded = expandedExercises.has(exercise.id);
+          const sets = workoutSets[exercise.id] || [];
+          const completedSets = sets.filter(s => s.completed).length;
+          
+          return (
+            <View key={exercise.id} style={styles.exerciseCard}>
+              {/* EXERCISE HEADER */}
+              <Pressable 
+                style={styles.exerciseHeader}
+                onPress={() => toggleVideoExpand(exercise.id)}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.exerciseName}>{exercise.name}</Text>
+                  <Text style={styles.exerciseInfo}>
+                    {exercise.sets} sets × {exercise.reps} • {completedSets}/{exercise.sets} complete
+                  </Text>
+                </View>
+                <Pressable 
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    handleSwapExercise(exercise);
+                  }}
+                  style={styles.swapButton}
+                >
+                  <Ionicons name="swap-horizontal" size={20} color="#4fc3f7" />
+                </Pressable>
+                <Ionicons 
+                  name={isExpanded ? 'chevron-up' : 'chevron-down'} 
+                  size={24} 
+                  color="#999" 
+                />
+              </Pressable>
 
-        {/* Adapt CTA */}
-        <Pressable
-          style={styles.adaptBtn}
-          onPress={() => navigation.navigate('AdaptWorkout')}
-          disabled={workState === 'running'}
-        >
-          <Ionicons name="swap-horizontal" size={20} color="#fff" style={styles.iconRight} />
-          <Text style={styles.btnTxt}>Adapt Today's Workout</Text>
-        </Pressable>
+              {/* COLLAPSIBLE VIDEO */}
+              {isExpanded && exercise.videoUrl && (
+                <View style={styles.videoContainer}>
+                  {(() => {
+                    const youtubeId = getYoutubeVideoId(exercise.videoUrl);
+                    if (youtubeId) {
+                      return (
+                        <YoutubePlayer
+                          height={220}
+                          videoId={youtubeId}
+                          play={false}
+                        />
+                      );
+                    } else {
+                      return (
+                        <Video
+                          source={{ uri: exercise.videoUrl }}
+                          style={styles.video}
+                          controls
+                          resizeMode="contain"
+                          paused
+                        />
+                      );
+                    }
+                  })()}
+                </View>
+              )}
 
-        {/* WARM-UP */}
-        {warmup.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Warm-up</Text>
-            <View style={styles.motivationalCard}>
-              <View style={styles.motivationalHeader}>
-                <Ionicons name="flame" size={24} color="#ff6b35" />
-                <Text style={styles.motivationalTitle}>Prepare Your Body</Text>
-              </View>
-              <Text style={styles.motivationalText}>
-                Take 5-10 minutes to properly warm up your body. Focus on dynamic movements that increase your heart rate, mobilize your joints, and activate the muscle groups you'll be training today.
-              </Text>
-              <View style={styles.motivationalPoints}>
-                <View style={styles.motivationalPoint}>
-                  <Ionicons name="heart" size={16} color="#ff6b35" />
-                  <Text style={styles.motivationalPointText}>Get your blood flowing</Text>
+              {/* SETS */}
+              {sets.map((set, setIdx) => (
+                <View 
+                  key={`${exercise.id}-set-${setIdx}`} 
+                  style={[styles.setRow, set.completed && styles.setRowCompleted]}
+                >
+                  <View style={styles.setNumber}>
+                    <Text style={styles.setNumberText}>{setIdx + 1}</Text>
+                  </View>
+                  
+                  <View style={styles.setInputs}>
+                    <View style={styles.inputGroup}>
+                      <Text style={styles.inputLabel}>Weight</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder={exercise.weight || '0'}
+                        placeholderTextColor="#666"
+                        keyboardType="numeric"
+                        value={set.weight}
+                        onChangeText={(val) => updateSet(exercise.id, setIdx, 'weight', val)}
+                        editable={!set.completed}
+                      />
+                    </View>
+                    
+                    <View style={styles.inputGroup}>
+                      <Text style={styles.inputLabel}>Reps</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder={exercise.reps}
+                        placeholderTextColor="#666"
+                        keyboardType="numeric"
+                        value={set.reps}
+                        onChangeText={(val) => updateSet(exercise.id, setIdx, 'reps', val)}
+                        editable={!set.completed}
+                      />
+                    </View>
+                  </View>
+                  
+                  <Pressable onPress={() => toggleSetComplete(exercise.id, setIdx)}>
+                    <Ionicons
+                      name={set.completed ? 'checkmark-circle' : 'ellipse-outline'}
+                      size={32}
+                      color={set.completed ? '#4CAF50' : '#666'}
+                    />
+                  </Pressable>
                 </View>
-                <View style={styles.motivationalPoint}>
-                  <Ionicons name="refresh" size={16} color="#ff6b35" />
-                  <Text style={styles.motivationalPointText}>Mobilize your joints</Text>
-                </View>
-                <View style={styles.motivationalPoint}>
-                  <Ionicons name="fitness" size={16} color="#ff6b35" />
-                  <Text style={styles.motivationalPointText}>Prime your muscles</Text>
-                </View>
-              </View>
+              ))}
             </View>
-            
-            {/* Warm-up exercises */}
-            {warmup.map((ex, idx) => (
-              <View key={ex.id} style={styles.card}>
-                <Text style={styles.cardTitle}>{ex.name}</Text>
-                <Text style={styles.recommend}>{formatDesc(ex)}</Text>
-                {ex.videoUri && (
-                  <VideoToggle uri={ex.videoUri} />
-                )}
-              </View>
+          );
+        })}
+
+        {/* FEELING */}
+        <View style={styles.feelingCard}>
+          <Text style={styles.sectionTitle}>How did it feel?</Text>
+          <View style={styles.feelingOptions}>
+            {feelingOptions.map((option) => (
+              <Pressable
+                key={option.value}
+                style={[
+                  styles.feelingOption,
+                  feeling === option.value && { backgroundColor: option.color, borderColor: option.color }
+                ]}
+                onPress={() => setFeeling(option.value as any)}
+              >
+                <Ionicons 
+                  name={option.icon as any} 
+                  size={28} 
+                  color={feeling === option.value ? '#fff' : option.color} 
+                />
+                <Text style={[
+                  styles.feelingLabel,
+                  feeling === option.value && { color: '#fff' }
+                ]}>
+                  {option.label}
+                </Text>
+              </Pressable>
             ))}
           </View>
-        )}
+        </View>
 
-        {/* MAIN WORK */}
-        <MainExercisesSection
-          title="Exercises"
-          list={main}
-          progress={progress}
-          lastSession={lastSession}
-          timedRef={timedRef}
-          manuallyCompleted={manuallyCompleted}
-          setManuallyCompleted={setManuallyCompleted}
-          formatDesc={formatDesc}
-          startTimedSet={startTimedSet}
-          resetTimedSet={resetTimedSet}
-          updateInput={updateInput}
-          onPressChart={(exerciseId) =>
-            navigation.navigate('ProgressChart', { exerciseName: exerciseId })
-          }
-        />
+        {/* NOTES */}
+        <View style={styles.notesCard}>
+          <Text style={styles.sectionTitle}>Notes</Text>
+          <TextInput
+            style={styles.notesInput}
+            placeholder="How did the workout go? Any PRs or issues?"
+            placeholderTextColor="#666"
+            multiline
+            numberOfLines={4}
+            value={notes}
+            onChangeText={setNotes}
+          />
+        </View>
 
-        {/* COOL-DOWN */}
-        {cooldown.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Cool-down</Text>
-            <View style={styles.motivationalCard}>
-              <View style={styles.motivationalHeader}>
-                <Ionicons name="leaf" size={24} color="#4caf50" />
-                <Text style={styles.motivationalTitle}>Recovery & Restoration</Text>
-              </View>
-              <Text style={styles.motivationalText}>
-                Excellent work! Now take 5-10 minutes to properly cool down. Focus on gentle stretching, deep breathing, and allowing your heart rate to gradually return to normal.
-              </Text>
-              <View style={styles.motivationalPoints}>
-                <View style={styles.motivationalPoint}>
-                  <Ionicons name="heart-outline" size={16} color="#4caf50" />
-                  <Text style={styles.motivationalPointText}>Lower your heart rate</Text>
-                </View>
-                <View style={styles.motivationalPoint}>
-                  <Ionicons name="body" size={16} color="#4caf50" />
-                  <Text style={styles.motivationalPointText}>Stretch your muscles</Text>
-                </View>
-                <View style={styles.motivationalPoint}>
-                  <Ionicons name="medical" size={16} color="#4caf50" />
-                  <Text style={styles.motivationalPointText}>Promote recovery</Text>
-                </View>
-              </View>
-            </View>
-            
-            {/* Cool-down exercises */}
-            {cooldown.map((ex, idx) => (
-              <View key={ex.id} style={styles.card}>
-                <Text style={styles.cardTitle}>{ex.name}</Text>
-                <Text style={styles.recommend}>{formatDesc(ex)}</Text>
-                {ex.videoUri && (
-                  <VideoToggle uri={ex.videoUri} />
-                )}
-              </View>
-            ))}
-          </View>
-        )}
-
-        <Pressable
-          style={styles.saveBtn}
-          onPress={saveWorkout}
-          disabled={workState === 'running'}
-        >
-          <Ionicons name="save" size={20} color="#fff" style={styles.iconRight} />
-          <Text style={styles.btnTxt}>Save Workout</Text>
-        </Pressable>
-
-        <Pressable
-          style={[styles.saveBtn, styles.backBtn]}
-          onPress={() => navigation.goBack()}
-          disabled={workState === 'running'}
-        >
-          <Ionicons name="arrow-back" size={20} color="#fff" style={styles.iconRight} />
-          <Text style={styles.btnTxt}>Back</Text>
+        {/* COMPLETE BUTTON */}
+        <Pressable style={styles.completeButton} onPress={handleCompleteWorkout}>
+          <Ionicons name="checkmark-circle" size={24} color="#fff" />
+          <Text style={styles.completeButtonText}>Complete Workout</Text>
         </Pressable>
       </ScrollView>
 
-      <EnhancedTimerBar
-        seconds={elapsedSec}
-        state={workState}
-        onStart={() => setWorkState('running')}
-        onPause={() => setWorkState('paused')}
-        onStop={() => setWorkState('stopped')}
-      />
-
-      {/* SUMMARY MODAL */}
-      <Modal visible={summaryVisible} transparent animationType="fade">
-        <View style={styles.modalBackdrop}>
-          <View style={styles.summaryBox}>
-            <Text style={styles.summaryTitle}>Session Complete</Text>
-            <Text style={styles.summaryText}>Total time: {fmtTime(elapsedSec)}</Text>
-            <Text style={styles.summaryText}>Sets: {setsCompleted}/{setsPlanned}</Text>
-            {prMsgs.length > 0 && (
-              <>
-                <Text style={[styles.summaryText, styles.summarySubheading]}>🔥 New PRs:</Text>
-                {prMsgs.map((m) => (
-                  <Text key={m} style={styles.summaryText}>
-                    • {m}
-                  </Text>
-                ))}
-              </>
-            )}
-            <Pressable style={[styles.saveBtn, styles.mt16]}
-            onPress={() => {
-    setSummaryVisible(false);
-    navigateToWorkoutRoot(); // Navigate when summary is closed
-  }}
->
-              <Text style={styles.btnTxt}>Close</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
-
-      {/* LARGE COUNTDOWN TIMER MODAL */}
+      {/* SWAP MODAL */}
       <Modal
-        visible={activeTimer !== null}
+        visible={showSwapModal}
         transparent
-        animationType="fade"
-        onRequestClose={() => setActiveTimer(null)}
+        animationType="slide"
+        onRequestClose={() => setShowSwapModal(false)}
       >
-        <View style={styles.countdownModalBackdrop}>
-          <View style={styles.countdownModalContainer}>
-            {activeTimer && (
-              <>
-                <Text style={styles.countdownExerciseName}>
-                  {activeTimer.exerciseName}
-                </Text>
-                <Text style={styles.countdownSetLabel}>
-                  Set {activeTimer.setIndex + 1}
-                </Text>
-
-                {(() => {
-                  const status = timedRef.current[activeTimer.exerciseId]?.[activeTimer.setIndex];
-                  const currentTime = status ? status.seconds : 0;
-                  const timeToDisplay = status?.mode === 'countdown' ? Math.max(0, currentTime) : currentTime;
-                  const timerProgress = status?.mode === 'countdown'
-                    ? (activeTimer.totalTime > 0 ? (activeTimer.totalTime - timeToDisplay) / activeTimer.totalTime : 0)
-                    : (activeTimer.totalTime > 0 ? Math.min(1, timeToDisplay / activeTimer.totalTime) : 0);
-
-                  // Color based on time remaining (for countdown) or progress (for stopwatch)
-                  const getTimerColor = () => {
-                    if (status?.mode === 'countdown') {
-                      if (timeToDisplay <= 10) {
-                        return '#f44336'; // Red for last 10 seconds
-                      }
-                      if (timeToDisplay <= 30) {
-                        return '#ff9800'; // Orange for last 30 seconds
-                      }
-                      return '#4caf50'; // Green for normal time
-                    } else {
-                      // Stopwatch mode - green throughout
-                      return '#4caf50';
-                    }
-                  };
-
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Swap Exercise</Text>
+              <Pressable onPress={() => setShowSwapModal(false)}>
+                <Ionicons name="close" size={24} color="#fff" />
+              </Pressable>
+            </View>
+            
+            {swapModalExercise?.swapOptions && swapModalExercise.swapOptions.length > 0 ? (
+              <ScrollView style={styles.swapList}>
+                {swapModalExercise.swapOptions.map((swapName, idx) => {
+                  const swapEx = exercises.find(ex => ex.name === swapName);
                   return (
-                    <>
-                      <View style={styles.countdownTimerContainer}>
-                        <Text style={[styles.countdownTimer, { color: getTimerColor() }]}>
-                          {fmtTime(timeToDisplay)}
-                        </Text>
-                      </View>
-
-                      {/* Progress ring/circle */}
-                      <View style={styles.progressContainer}>
-                        <View style={styles.progressBackground}>
-                          <View
-                            style={[
-                              styles.progressFill,
-                              {
-                                transform: [{ rotate: `${timerProgress * 360}deg` }],
-                                borderColor: getTimerColor(),
-                              },
-                            ]}
-                          />
-                        </View>
-                      </View>
-
-                      <Text style={styles.countdownSubtext}>
-                        {status?.mode === 'countdown' ? (
-                          timeToDisplay <= 10 ? '🔥 PUSH THROUGH!' :
-                          timeToDisplay <= 30 ? '💪 ALMOST THERE!' :
-                          '⏱️ STAY FOCUSED'
-                        ) : (
-                          '⏱️ KEEP GOING!'
+                    <Pressable
+                      key={`swap-${swapName}-${idx}`}
+                      style={styles.swapOption}
+                      onPress={() => confirmSwap(swapName)}
+                    >
+                      <View>
+                        <Text style={styles.swapOptionName}>{swapName}</Text>
+                        {swapEx && (
+                          <Text style={styles.swapOptionEquipment}>{swapEx.equipment}</Text>
                         )}
-                      </Text>
-                    </>
+                      </View>
+                      <Ionicons name="chevron-forward" size={20} color="#4fc3f7" />
+                    </Pressable>
                   );
-                })()}
-
-                <View style={styles.countdownControls}>
-                  <Pressable
-                    style={styles.countdownButton}
-                    onPress={() => {
-                      const status = timedRef.current[activeTimer.exerciseId]?.[activeTimer.setIndex];
-                      if (status?.running) {
-                        startTimedSet(activeTimer.exerciseId, activeTimer.setIndex, activeTimer.totalTime);
-                      }
-                    }}
-                  >
-                    <Ionicons
-                      name={
-                        (() => {
-                          const status = timedRef.current[activeTimer.exerciseId]?.[activeTimer.setIndex];
-                          return status?.running ? 'pause-circle' : 'play-circle';
-                        })()
-                      }
-                      size={40}
-                      color="#fff"
-                    />
-                  </Pressable>
-
-                  <Pressable
-                    style={styles.countdownButton}
-                    onPress={() => resetTimedSet(activeTimer.exerciseId, activeTimer.setIndex, activeTimer.totalTime)}
-                  >
-                    <Ionicons name="refresh-circle" size={40} color="#ff9800" />
-                  </Pressable>
-
-                  <Pressable
-                    style={styles.countdownButton}
-                    onPress={() => setActiveTimer(null)}
-                  >
-                    <Ionicons name="close-circle" size={40} color="#f44336" />
-                  </Pressable>
-                </View>
-              </>
+                })}
+              </ScrollView>
+            ) : (
+              <View style={styles.noSwapsContainer}>
+                <Text style={styles.noSwapsText}>No swap options available for this exercise</Text>
+              </View>
             )}
           </View>
         </View>
       </Modal>
-
-      {/* toasts & celebrations */}
-      {toastMessage && <Toast message={toastMessage} onClose={() => setToastMessage(null)} />}
-      {nextUp && <Toast message={`Next: ${nextUp}`} onClose={() => setNextUp(null)} />}
-      {showPR && (
-        <PRCelebration visible={showPR} messages={prMsgs} onClose={() => setShowPR(false)} />
-      )}
-      
-      {/* Workout Feedback Modal */}
-      <WorkoutFeedbackModal
-        visible={showFeedbackModal}
-        onClose={() => {
-          setShowFeedbackModal(false);
-          setSummaryVisible(true);
-        }}
-        onSubmit={async (feedback) => {
-          setWorkoutFeedback(feedback);
-          
-          // Save feedback to the workout log
-          const uid = auth.currentUser?.uid;
-          if (uid && savedLogId) {
-            try {
-              await setDoc(
-                doc(db, 'users', uid, 'workoutLogs', savedLogId),
-                {
-                  feedback: {
-                    feeling: feedback.feeling,
-                    note: feedback.note,
-                    submittedAt: Timestamp.now(),
-                  },
-                },
-                { merge: true }
-              );
-              console.log('✅ Workout feedback saved');
-            } catch (error) {
-              console.error('❌ Failed to save feedback:', error);
-            }
-          }
-          
-          setShowFeedbackModal(false);
-          setSummaryVisible(true);
-        }}
-      />
-
-      {/* Coaching Advice Modal */}
-      <CoachingAdviceModal
-        visible={showCoachingModal}
-        onClose={() => setShowCoachingModal(false)}
-        coachingAdvice={coachingData?.coachingAdvice || ''}
-        shouldAdjust={coachingData?.shouldAdjust || false}
-        adjustedWorkout={coachingData?.adjustedWorkout}
-        onAcceptAdjustments={() => {
-          console.log('🤖 User accepted coaching adjustments');
-          // TODO: Apply the adjusted workout to the current exercises
-          // For now, just close the modal and let them continue
-          setShowCoachingModal(false);
-        }}
-        onUseOriginal={() => {
-          console.log('🤖 User chose to use original workout');
-          setShowCoachingModal(false);
-        }}
-      />
     </LinearGradient>
   );
 };
 
-/* ───────── styles ───────── */
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  content: { 
-    padding: 24, 
-    paddingBottom: 120, 
-    flexGrow: 1 
-  }, // leave space for timer bar, flexGrow ensures content fills screen
-  title: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#d32f2f',
-    marginBottom: 12,
-    textAlign: 'center',
+  container: {
+    flex: 1,
   },
-  sectionHeader: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#d32f2f',
-    marginTop: 18,
-    marginBottom: 8,
-    borderBottomWidth: 2,
-    borderBottomColor: '#d32f2f',
-  },
-  card: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: 10,
-    padding: 16,
-    marginBottom: 16,
-  },
-  cardDone: { opacity: 1, borderColor: '#4caf50', borderWidth: 1, backgroundColor: '#2e7d32' },
-  cardHeader: {
+  header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    padding: 16,
+    paddingTop: 50,
   },
-  cardTitle: { fontSize: 18, fontWeight: '600', color: '#fff' },
-  cardTitleDone: { textDecorationLine: 'line-through', color: '#aaa' },
-  recommend: {
-    color: '#aaa',
-    fontSize: 13,
-    marginBottom: 8,
-    fontStyle: 'italic',
-  },
-  /* sets UI */
-  setBlock: { marginBottom: 6 },
-  setRow: { flexDirection: 'row', alignItems: 'center' },
-  setLabel: { color: '#ccc', width: 60, marginRight: 8 },
-  input: {
-    backgroundColor: '#1e1e1e',
-    color: '#fff',
+  backButton: {
     padding: 8,
-    borderRadius: 6,
-    width: 80,
-    textAlign: 'center',
-    borderWidth: 1,
-    borderColor: '#333',
-    marginRight: 6,
   },
-  lastTxt: {
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    color: '#FF9800',
+    marginTop: 2,
+  },
+  restBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    backgroundColor: 'rgba(255, 152, 0, 0.2)',
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#FF9800',
+  },
+  restText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FF9800',
+  },
+  content: {
+    padding: 16,
+    paddingBottom: 40,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorText: {
+    fontSize: 16,
     color: '#999',
-    fontSize: 12,
-    fontStyle: 'italic',
-    marginLeft: 60,
+  },
+  exerciseCard: {
+    backgroundColor: '#2a2a2a',
+    borderRadius: 16,
+    marginBottom: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 107, 53, 0.3)',
+  },
+  exerciseHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    gap: 12,
+  },
+  exerciseName: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  exerciseInfo: {
+    fontSize: 14,
+    color: '#999',
+    marginTop: 4,
+  },
+  swapButton: {
+    padding: 8,
+  },
+  videoContainer: {
+    backgroundColor: '#1a1a1a',
+    padding: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#444',
+  },
+  video: {
+    width: '100%',
+    height: 200,
+    borderRadius: 8,
+  },
+  videoPlaceholder: {
+    fontSize: 14,
+    color: '#4fc3f7',
+    textAlign: 'center',
+    padding: 20,
+  },
+  setRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    paddingHorizontal: 16,
+    gap: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#444',
+  },
+  setRowCompleted: {
+    backgroundColor: 'rgba(76, 175, 80, 0.1)',
+  },
+  setNumber: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#1a1a1a',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  setNumberText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  setInputs: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: 12,
+  },
+  inputGroup: {
+    flex: 1,
+  },
+  inputLabel: {
+    fontSize: 11,
+    color: '#999',
     marginBottom: 4,
   },
-  timerDigits: {
+  input: {
+    backgroundColor: '#1a1a1a',
     color: '#fff',
-    fontVariant: ['tabular-nums'],
-    marginRight: 8,
-    width: 60,
+    padding: 10,
+    borderRadius: 8,
+    fontSize: 16,
+    borderWidth: 1,
+    borderColor: '#444',
     textAlign: 'center',
   },
-  /* buttons */
-  adaptBtn: {
+  feelingCard: {
     backgroundColor: '#2a2a2a',
-    borderWidth: 1.5,
-    borderColor: '#4fc3f7',
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 10,
-    marginBottom: 12,
-    justifyContent: 'center',
-  },
-  saveBtn: {
-    backgroundColor: '#2a2a2a',
-    borderWidth: 1.5,
-    borderColor: '#d32f2f',
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 10,
-    marginTop: 24,
-    justifyContent: 'center',
-  },
-  backBtn: { marginTop: 12, borderColor: '#888' },
-  btnTxt: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  /* summary */
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  summaryBox: {
-    backgroundColor: '#1e1e1e',
-    padding: 24,
-    borderRadius: 12,
-    width: '80%',
-  },
-  summaryTitle: {
-    fontSize: 20,
-    color: '#d32f2f',
-    fontWeight: '700',
-    marginBottom: 12,
-    textAlign: 'center',
-  },
-  summaryText: { color: '#fff', textAlign: 'center', marginVertical: 2 },
-
-  /* sections */
-  section: {
-    marginTop: 20,
-    paddingHorizontal: 16,
+    padding: 20,
+    borderRadius: 16,
+    marginBottom: 16,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '600',
     color: '#fff',
-    marginBottom: 10,
-  },
-
-  /* extracted replacements for inline styles */
-  ml6: { marginLeft: 6 },
-  flex1: { flex: 1 },
-  iconRight: { marginRight: 8 },
-  summarySubheading: { marginTop: 8, fontWeight: '700' },
-  mt16: { marginTop: 16 },
-
-  /* countdown modal styles */
-  countdownModalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.9)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  countdownModalContainer: {
-    backgroundColor: '#1a1a1a',
-    borderRadius: 20,
-    padding: 40,
-    alignItems: 'center',
-    width: '90%',
-    maxWidth: 400,
-    borderWidth: 2,
-    borderColor: '#333',
-  },
-  countdownExerciseName: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#fff',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  countdownSetLabel: {
-    fontSize: 18,
-    color: '#aaa',
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  countdownTimerContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '100%',
-    minHeight: 100,
-  },
-  countdownTimer: {
-    fontSize: 72,
-    fontWeight: '900',
-    textAlign: 'center',
-    marginVertical: 20,
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
-    fontVariant: ['tabular-nums'],
-    letterSpacing: 0,
-    width: 240,
-    alignSelf: 'center',
-  },
-  countdownSubtext: {
-    fontSize: 18,
-    color: '#fff',
-    textAlign: 'center',
-    marginTop: 20,
-    marginBottom: 30,
-    fontWeight: '600',
-  },
-  countdownControls: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    width: '100%',
-    marginTop: 20,
-  },
-  countdownButton: {
-    padding: 10,
-    borderRadius: 50,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    marginHorizontal: 10,
-  },
-  progressContainer: {
-    width: 200,
-    height: 200,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginVertical: 20,
-  },
-  progressBackground: {
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    borderWidth: 8,
-    borderColor: '#333',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  progressFill: {
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    borderWidth: 6,
-    borderColor: '#4caf50',
-    position: 'absolute',
-  },
-
-  /* motivational card styles */
-  motivationalCard: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: 12,
-    padding: 20,
     marginBottom: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: '#d32f2f',
   },
-  motivationalHeader: {
+  feelingOptions: {
     flexDirection: 'row',
+    gap: 12,
+  },
+  feelingOption: {
+    flex: 1,
     alignItems: 'center',
-    marginBottom: 12,
+    padding: 16,
+    borderRadius: 12,
+    backgroundColor: '#1a1a1a',
+    borderWidth: 2,
+    borderColor: '#444',
   },
-  motivationalTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#fff',
-    marginLeft: 10,
-  },
-  motivationalText: {
-    fontSize: 15,
-    color: '#e0e0e0',
-    lineHeight: 22,
-    marginBottom: 12,
-  },
-  motivationalSubtext: {
-    fontSize: 13,
-    color: '#bbb',
-    fontStyle: 'italic',
+  feelingLabel: {
+    fontSize: 11,
+    color: '#ccc',
+    marginTop: 8,
     textAlign: 'center',
   },
-  motivationalPoints: {
+  notesCard: {
+    backgroundColor: '#2a2a2a',
+    padding: 20,
+    borderRadius: 16,
+    marginBottom: 16,
+  },
+  notesInput: {
+    backgroundColor: '#1a1a1a',
+    color: '#fff',
+    padding: 12,
+    borderRadius: 8,
+    fontSize: 16,
+    borderWidth: 1,
+    borderColor: '#444',
+    minHeight: 100,
+    textAlignVertical: 'top',
+  },
+  completeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    backgroundColor: '#4CAF50',
+    padding: 18,
+    borderRadius: 12,
     marginTop: 8,
   },
-  motivationalPoint: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 4,
-    paddingLeft: 8,
+  completeButtonText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#fff',
   },
-  motivationalPointText: {
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#2a2a2a',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '70%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#444',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  swapList: {
+    padding: 16,
+  },
+  swapOption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: '#1a1a1a',
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  swapOptionName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  swapOptionEquipment: {
     fontSize: 14,
-    color: '#bbb',
-    marginLeft: 10,
+    color: '#999',
+    marginTop: 4,
+  },
+  noSwapsContainer: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  noSwapsText: {
+    fontSize: 16,
+    color: '#999',
+    textAlign: 'center',
   },
 });
 

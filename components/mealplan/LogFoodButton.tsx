@@ -19,13 +19,10 @@ export default LogFoodButton;
 
 const styles = StyleSheet.create({
   logButton: {
-    position: 'absolute',
-    bottom: 30,
-    left: 20,
-    right: 20,
     backgroundColor: '#F44336',
     borderRadius: 16,
     paddingVertical: 16,
+    paddingHorizontal: 24,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

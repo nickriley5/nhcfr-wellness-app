@@ -93,7 +93,7 @@ The AI must:
 
 ### 1. AI Workout Generation (Working)
 - **Location:** `screens/WorkoutScreen.tsx`, `components/AIWorkoutAssistant.tsx`
-- **API:** Google Gemini 2.5 Flash (`AIzaSyBPEC65Rlz3MeBC8BcKX-CvX5BkPP3hXwY`)
+- **API:** Google Gemini 2.5 Flash (`<YOUR_GEMINI_API_KEY>`)
 - **Features:**
   - Equipment-based filtering (~57 exercises for dumbbells/bodyweight)
   - Generates warm-ups, main exercises, cool-downs
@@ -573,7 +573,7 @@ npx react-native run-android
 
 ## 🔗 Quick References
 
-- **API Key:** `AIzaSyBPEC65Rlz3MeBC8BcKX-CvX5BkPP3hXwY` (hardcoded in AIWorkoutAssistant)
+- **API Key:** `<YOUR_GEMINI_API_KEY>` (hardcoded in AIWorkoutAssistant)
 - **Branch:** `ai-integration`
 - **Repo:** `nickriley5/nhcfr-wellness-app`
 - **Platform:** React Native 0.78.2, Android Pixel 8 API 36

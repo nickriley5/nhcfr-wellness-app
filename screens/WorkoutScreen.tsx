@@ -317,14 +317,76 @@ const WorkoutScreen: React.FC = () => {
       })) as any[];
       
       console.log('📋 Loaded programs:', programs.length, 'programs');
-      console.log('📋 Programs data:', JSON.stringify(programs.map(p => ({
-        id: p.id,
-        name: p.programName,
-        isActive: p.isActive,
-        isArchived: p.isArchived
-      })), null, 2));
       
-      setAiPrograms(programs);
+      // 🔧 MIGRATION: Fix exercise IDs for existing programs
+      const { resolveExercise } = await import('../utils/exerciseMatching');
+      let needsUpdate = false;
+      
+      programs.forEach(program => {
+        if (!program.weeks) return;
+        
+        program.weeks.forEach((week: any) => {
+          if (!week.days) return;
+          
+          week.days.forEach((day: any) => {
+            if (!day.exercises) return;
+            
+            day.exercises.forEach((exercise: any) => {
+              if (!exercise.id || exercise.name === 'Unknown Exercise') {
+                // Try to resolve using fuzzy matching
+                const resolved = resolveExercise(exercise.name || exercise.id);
+                if (resolved) {
+                  console.log(`🔧 Fixed: "${exercise.name}" -> "${resolved.name}" (${resolved.id})`);
+                  exercise.id = resolved.id;
+                  exercise.name = resolved.name;
+                  needsUpdate = true;
+                } else {
+                  console.warn(`⚠️ Could not resolve: "${exercise.name || exercise.id}"`);
+                }
+              }
+            });
+          });
+        });
+      });
+      
+      // If we fixed exercises, save back to Firestore and reload
+      if (needsUpdate) {
+        console.log('💾 Saving fixed exercises to Firestore...');
+        const { updateDoc } = await import('firebase/firestore');
+        await Promise.all(
+          programs.map(p => 
+            updateDoc(doc(db, 'users', uid, 'aiPrograms', p.id), {
+              weeks: p.weeks
+            })
+          )
+        );
+        console.log('✅ Exercise fixes saved! Reloading programs...');
+        
+        // Reload from Firestore to get fresh data
+        const reloadedSnapshot = await getDocs(q);
+        const reloadedPrograms = reloadedSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as any[];
+        
+        setAiPrograms(reloadedPrograms);
+        
+        // Update active program reference
+        const nonArchivedReloaded = reloadedPrograms.filter(p => !p.isArchived);
+        const activeReloaded = nonArchivedReloaded.find(p => p.isActive) || nonArchivedReloaded[0];
+        if (activeReloaded) {
+          setActiveAiProgram(activeReloaded);
+        }
+        
+        console.log('✅ Programs reloaded with fixed exercises!');
+      } else {
+        setAiPrograms(programs);
+      }
+      
+      // Only proceed with activation if we didn't already reload
+      if (needsUpdate) {
+        return; // Exit early since we already set active program above
+      }
       
       // Set active program (first one with isActive=true and isArchived=false)
       const nonArchivedPrograms = programs.filter(p => !p.isArchived);
@@ -518,15 +580,15 @@ const WorkoutScreen: React.FC = () => {
           {/* ACTIVE PROGRAM CARD */}
           <View style={styles.activeProgramCard}>
             <View style={styles.programCardHeader}>
-              <View>
+              <View style={{ flex: 1, paddingRight: 80 }}>
                 <Text style={styles.programName}>{activeAiProgram.programName}</Text>
                 <Text style={styles.programMeta}>
                   {activeAiProgram.periodizationModel} • Week {currentWeekNum}/{activeAiProgram.totalWeeks}
                 </Text>
               </View>
-              <View style={styles.progressBadge}>
-                <Text style={styles.progressText}>Day {currentDayNum}</Text>
-              </View>
+            </View>
+            <View style={styles.progressBadge}>
+              <Text style={styles.progressText}>Day {currentDayNum}</Text>
             </View>
             
             {currentDay && (
@@ -554,21 +616,34 @@ const WorkoutScreen: React.FC = () => {
                       
                       // Convert AI program day to ProgramDay format for WorkoutDetail screen
                       const programDay: ProgramDay = {
+                        week: currentWeekNum,
+                        day: currentDayNum,
                         title: `${currentDay.dayName} - Week ${currentWeekNum}`,
+                        priority: 1,
+                        type: 'training',
+                        phase: 'Strength',
                         warmup: currentDay.warmup.map(w => ({ 
-                          exerciseId: nameToId(w), 
-                          repsOrDuration: '5-10 reps' 
+                          id: nameToId(w),
+                          exerciseId: nameToId(w),
+                          sets: 1,
+                          repsOrDuration: '5-10 reps',
+                          rpe: 5
                         })),
                         exercises: currentDay.exercises.map(ex => ({
+                          id: ex.id || nameToId(ex.name),
                           exerciseId: ex.id || nameToId(ex.name), // Use id field if available, fallback to name conversion
                           sets: ex.sets,
                           repsOrDuration: ex.reps,
+                          rpe: 7,
                           restSeconds: ex.restSeconds,
                           notes: ex.notes || '',
                         })),
                         cooldown: currentDay.cooldown.map(c => ({ 
-                          exerciseId: nameToId(c), 
-                          repsOrDuration: '30-60 sec' 
+                          id: nameToId(c),
+                          exerciseId: nameToId(c),
+                          sets: 1,
+                          repsOrDuration: '30-60 sec',
+                          rpe: 5
                         })),
                       };
                       
@@ -1781,7 +1856,7 @@ dayTabText: {
   },
   weekBlock: { marginBottom: 16 },
   weekHeader: { fontSize: 18, color: '#d32f2f', fontWeight: '600' },
-  dayItem: { color: '#fff', marginLeft: 12, marginVertical: 2 },
+  dayItemLegacy: { color: '#fff', marginLeft: 12, marginVertical: 2 },
 
   generateButton: {
     marginTop: 20,
@@ -1827,10 +1902,15 @@ dayTabText: {
     color: '#ccc',
   },
   progressBadge: {
+    position: 'absolute',
+    top: 20,
+    right: 20,
     backgroundColor: '#FF3C38',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
+    flexShrink: 0, // Prevent badge from shrinking
+    minWidth: 60, // Ensure enough space for "Day X"
   },
   progressText: {
     color: '#fff',

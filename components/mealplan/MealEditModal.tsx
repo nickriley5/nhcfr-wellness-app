@@ -129,14 +129,16 @@ const MealEditModal: React.FC<Props> = ({
   }, [editedMeal.foodItems]);
 
   // What we display in the macro cards
-  const displayTotals = manualTotals
-    ? {
-        calories: editedMeal.calories,
-        protein: editedMeal.protein,
-        carbs: editedMeal.carbs,
-        fat: editedMeal.fat,
-      }
-    : itemTotals;
+  const displayTotals = useMemo(() => {
+    return manualTotals
+      ? {
+          calories: editedMeal.calories,
+          protein: editedMeal.protein,
+          carbs: editedMeal.carbs,
+          fat: editedMeal.fat,
+        }
+      : itemTotals;
+  }, [manualTotals, editedMeal.calories, editedMeal.protein, editedMeal.carbs, editedMeal.fat, itemTotals]);
 
   // ✅ Enhanced accuracy validation
   const accuracyStatus = useMemo(() => {
@@ -218,12 +220,36 @@ const MealEditModal: React.FC<Props> = ({
   /* ---------- meal macro controls ---------- */
   const nudgeMealMacro = (key: 'calories' | 'protein' | 'carbs' | 'fat', delta: number) => {
     if (!manualTotals) {setManualTotals(true);} // auto-flip so buttons work
-    setEditedMeal((p) => ({ ...p, [key]: clamp((p as any)[key] + delta) } as MealData));
+    
+    setEditedMeal((p) => {
+      const updated = { ...p, [key]: clamp((p as any)[key] + delta) } as MealData;
+      
+      // ✅ Auto-calculate calories from macros
+      if (key !== 'calories') {
+        updated.calories = Math.round(
+          updated.protein * 4 + updated.carbs * 4 + updated.fat * 9
+        );
+      }
+      
+      return updated;
+    });
   };
 
   const changeMealMacroText = (key: 'calories' | 'protein' | 'carbs' | 'fat', text: string) => {
     if (!manualTotals) {setManualTotals(true);}
-    setEditedMeal((p) => ({ ...p, [key]: clamp(safeInt(text)) } as MealData));
+    
+    setEditedMeal((p) => {
+      const updated = { ...p, [key]: clamp(safeInt(text)) } as MealData;
+      
+      // ✅ Auto-calculate calories from macros
+      if (key !== 'calories') {
+        updated.calories = Math.round(
+          updated.protein * 4 + updated.carbs * 4 + updated.fat * 9
+        );
+      }
+      
+      return updated;
+    });
   };
 
   /* ---------- persistence ---------- */
@@ -238,15 +264,18 @@ const MealEditModal: React.FC<Props> = ({
       if (uid && editedMeal.id) {
         const mealDocRef = doc(db, `users/${uid}/mealLogs/${dateKey}/meals`, editedMeal.id);
 
-        // If derived mode, persist the item totals; else persist manual
-        const saveTotals = manualTotals ? displayTotals : itemTotals;
+        // Use displayTotals consistently - it already handles manual vs derived mode
+        const finalCalories = clamp(displayTotals.calories);
+        const finalProtein = clamp(displayTotals.protein);
+        const finalCarbs = clamp(displayTotals.carbs);
+        const finalFat = clamp(displayTotals.fat);
 
         await updateDoc(mealDocRef, {
           name: editedMeal.name,
-          calories: clamp(saveTotals.calories),
-          protein: clamp(saveTotals.protein),
-          carbs: clamp(saveTotals.carbs),
-          fat: clamp(saveTotals.fat),
+          calories: finalCalories,
+          protein: finalProtein,
+          carbs: finalCarbs,
+          fat: finalFat,
           photoUri: editedMeal.photoUri || null,
           foodItems: editedMeal.foodItems || [],
           originalDescription: editedMeal.originalDescription || '',
@@ -417,7 +446,11 @@ const MealEditModal: React.FC<Props> = ({
                 ))}
 
                 <Text style={styles.totalsText}>
-                  Totals from items: {itemTotals.calories} kcal • P {itemTotals.protein}g • C {itemTotals.carbs}g • F {itemTotals.fat}g
+                  {manualTotals ? (
+                    <>Current totals: {displayTotals.calories} kcal • P {displayTotals.protein}g • C {displayTotals.carbs}g • F {displayTotals.fat}g</>
+                  ) : (
+                    <>Totals from items: {itemTotals.calories} kcal • P {itemTotals.protein}g • C {itemTotals.carbs}g • F {itemTotals.fat}g</>
+                  )}
                 </Text>
 
                 {/* ✅ Enhanced accuracy indicator */}
@@ -468,16 +501,21 @@ const MealEditModal: React.FC<Props> = ({
   )}
 </View>
 
+            {manualTotals && (
+              <Text style={styles.autoCalcHint}>
+                💡 Calories auto-calculated from macros (P×4 + C×4 + F×9)
+              </Text>
+            )}
 
             {/* Calories */}
             <MacroRow
               label="Calories"
               unit=" kcal"
               value={displayTotals.calories}
-              disabled={!manualTotals}
-              onMinus={() => nudgeMealMacro('calories', -10)}
-              onPlus={() => nudgeMealMacro('calories', +10)}
-              onChange={(t) => changeMealMacroText('calories', t)}
+              disabled={true}
+              onMinus={() => {}}
+              onPlus={() => {}}
+              onChange={() => {}}
             />
 
             {/* Protein */}
@@ -648,6 +686,7 @@ const styles = StyleSheet.create({
   macroInput: { backgroundColor: '#333', color: '#fff', borderRadius: 6, paddingHorizontal: 12, paddingVertical: 8, marginHorizontal: 8, minWidth: 60, textAlign: 'center', fontSize: 16 },
   disabledBtn: { opacity: 0.35 },
   disabledInput: { opacity: 0.55 },
+  autoCalcHint: { color: '#888', fontSize: 11, fontStyle: 'italic', marginTop: 4 },
 
   actionButtons: { flexDirection: 'row', gap: 12, marginTop: 20 },
   deleteButton: { flex: 1, backgroundColor: '#F44336', borderRadius: 12, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },

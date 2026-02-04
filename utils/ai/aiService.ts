@@ -4,15 +4,22 @@
  */
 
 import axios from 'axios';
+import { getEnv } from '../env';
 
 // ============= CONFIGURATION =============
-// IMPORTANT: Replace 'YOUR_NEW_API_KEY_HERE' with your actual key
-// Never commit real API keys to git!
+// Read API keys from environment (react-native-config) with safe fallbacks.
+const env = getEnv();
 const config = {
-  GEMINI_API_KEY: 'AIzaSyBZJQfGhVHtuN-lu-0amgC6ohHPiY-JXYI',
-  OPENAI_API_KEY: '',
-  ANTHROPIC_API_KEY: '',
+  GEMINI_API_KEY: env.GEMINI_API_KEY ?? '',
+  OPENAI_API_KEY: env.OPENAI_API_KEY ?? '',
+  ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY ?? '',
 };
+
+if (config.GEMINI_API_KEY) {
+  console.log('✅ Gemini API key loaded successfully');
+} else {
+  console.warn('⚠️ Gemini API key not configured');
+}
 
 const AI_CONFIG = {
   openai: {
@@ -28,7 +35,7 @@ const AI_CONFIG = {
   gemini: {
     apiKey: config.GEMINI_API_KEY || '',
     baseURL: 'https://generativelanguage.googleapis.com/v1beta',
-    model: 'gemini-2.5-flash',
+    model: 'gemini-flash-latest', // Auto-updates to latest stable flash model
   },
 };
 
@@ -283,6 +290,37 @@ async function sendGeminiMessage(
   config: typeof AI_CONFIG.gemini,
   options?: any
 ): Promise<AIResponse> {
+  // Retry logic for 503 errors (server overload)
+  const maxRetries = 3;
+  const baseDelay = 2000; // 2 seconds
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await sendGeminiMessageAttempt(messages, config, options);
+    } catch (error: any) {
+      const is503 = error.response?.status === 503;
+      const isLastAttempt = attempt === maxRetries;
+      
+      if (is503 && !isLastAttempt) {
+        const delay = baseDelay * Math.pow(2, attempt - 1); // Exponential backoff: 2s, 4s, 8s
+        console.log(`🔄 Retry ${attempt}/${maxRetries} after ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      
+      // If not 503, or if last attempt, throw the error
+      throw error;
+    }
+  }
+  
+  throw new Error('Failed after all retry attempts');
+}
+
+async function sendGeminiMessageAttempt(
+  messages: AIMessage[],
+  config: typeof AI_CONFIG.gemini,
+  options?: any
+): Promise<AIResponse> {
   // Gemini doesn't support system messages - merge system prompt into first user message
   const systemMessage = messages.find(m => m.role === 'system');
   const nonSystemMessages = messages.filter(m => m.role !== 'system');
@@ -354,7 +392,9 @@ async function sendGeminiMessage(
         const errorData = error.response.data;
 
         if (status === 503) {
-          throw new Error('🚫 Gemini API is temporarily unavailable (503). The service might be overloaded or under maintenance. Please try again in a few minutes.');
+          // Don't throw immediately - let retry logic handle it
+          console.warn('⚠️ Gemini API returned 503, will retry...');
+          throw error; // Throw to trigger retry
         } else if (status === 429) {
           throw new Error('⏱️ Rate limit exceeded. You\'ve made too many requests. Please wait a few minutes and try again.');
         } else if (status === 400) {
@@ -484,36 +524,65 @@ export async function getWorkoutRecommendation(userContext: {
   };
   const intensityDesc = intensityMap[intensityLevel] || 'Moderate';
 
-  const prompt = `You are a professional strength and conditioning coach creating a workout for a firefighter.
+  const prompt = `You are designing a single workout for a FIREFIGHTER.
 
 PROFILE:
-Goal: ${userContext.goal}
-Level: ${userContext.experience}
-Equipment: ${userContext.equipment.join(', ')}
-Recent Workouts: ${userContext.recentWorkouts.join(', ') || 'none'}
+Experience: ${userContext.experience}
+Primary Goal: ${userContext.goal}
+Equipment Available: ${userContext.equipment.join(', ')}
+Recent Workouts (avoid repeating): ${userContext.recentWorkouts.join(', ') || 'none'}
+${userContext.injuries ? `Injuries/Limitations: ${userContext.injuries.join(', ')}` : ''}
 
-WORKOUT REQUIREMENTS:
-Duration: ${targetDuration} minutes
-Focus: ${focusArea}
+TODAY'S WORKOUT PARAMETERS:
+Duration Target: ${targetDuration} minutes
+Focus Area: ${focusArea}
 Training Style: ${style}
-Intensity: ${intensityDesc} (${intensityLevel}/10)${exerciseListText}
+Intensity Level: ${intensityDesc} (${intensityLevel}/10 RPE)${exerciseListText}
 
-CREATE A ${style.toUpperCase()} WORKOUT targeting ${focusArea.toUpperCase()}:
-1. Select 2-3 warm-up exercises (mobility/activation)
-2. Select 4-6 main exercises matching the ${style} style and ${focusArea} focus
-3. Select 2-3 cool-down exercises (stretching/mobility)
-4. VARY exercises based on recent workouts - don't repeat the same movements
-5. Adjust sets/reps for ${style}: Strength=3-5 reps, Hypertrophy=8-12 reps, HIIT=30-60sec, Conditioning=high reps/time, Endurance=15+ reps
-6. Match intensity to ${intensityDesc} (${intensityLevel}/10)
-7. Total duration should be approximately ${targetDuration} minutes
-8. Use ONLY exercises from the AVAILABLE EXERCISES list
+🚒 FIREFIGHTER JOB-SPECIFIC FOCUS:
+Design this workout to improve occupational readiness. Consider:
+- Functional strength for victim rescue and equipment manipulation
+- Work capacity for extended duration operations
+- Movement quality under load (50+ lbs of gear)
+- Injury prevention for common firefighter issues (lower back, shoulders)
+- Real-world application to fireground tasks
 
-Respond with ONLY this JSON (no markdown, no extra text):
+WORKOUT STRUCTURE:
+1. Warmup (2-3 exercises, 5-8 min): Dynamic mobility, muscle activation
+2. Main Work (4-6 exercises, ${targetDuration - 15} min): Match ${style} style and ${focusArea} focus
+   - If ${style} = "Strength": 3-5 reps, heavy loads, full recovery
+   - If ${style} = "Hypertrophy": 8-12 reps, moderate loads, 60-90s rest
+   - If ${style} = "Power": 3-5 reps, explosive movement, full recovery
+   - If ${style} = "HIIT": 30-60 sec work intervals, minimal rest
+   - If ${style} = "Conditioning": High reps or timed work, moderate rest
+   - If ${style} = "Endurance": 15+ reps or 2+ min work, short rest
+3. Cooldown (2-3 exercises, 5-7 min): Static stretching, mobility, recovery
+
+EXERCISE SELECTION RULES:
+✅ Use ONLY exercises from the AVAILABLE EXERCISES list
+✅ Copy names EXACTLY as shown (case-sensitive)
+✅ Choose exercises that match ${focusArea} focus
+✅ AVOID repeating: ${userContext.recentWorkouts.join(', ') || 'none'}
+✅ Include firefighter-priority movements when possible:
+   - Carrying (Farmer Carry, Sled work)
+   - Hip hinge (Deadlift variations)
+   - Overhead pressing (ladder/ceiling work simulation)
+   - Pulling (hoseline operations)
+   - Core stability (spine protection)
+${userContext.injuries ? `✅ Modify for: ${userContext.injuries.join(', ')}` : ''}
+
+INTENSITY CALIBRATION FOR ${intensityDesc} (${intensityLevel}/10):
+- RPE Target: ${intensityLevel - 1} to ${intensityLevel}
+- Load: ${intensityLevel < 4 ? 'Light (60-70% max)' : intensityLevel < 7 ? 'Moderate (70-80% max)' : 'Heavy (80-90% max)'}
+- Rest Periods: ${intensityLevel < 4 ? '30-45s' : intensityLevel < 7 ? '60-90s' : '2-3 min'}
+- Volume: ${intensityLevel < 4 ? 'Lower sets/reps' : intensityLevel < 7 ? 'Moderate volume' : 'Higher volume or intensity'}
+
+Return ONLY this JSON (no markdown, no extra text):
 {
-  "warmup": ["Exercise 1", "Exercise 2"],
-  "exercises": ["Exercise 1", "Exercise 2", "Exercise 3", "Exercise 4"],
-  "cooldown": ["Exercise 1", "Exercise 2"],
-  "rationale": "Brief explanation tailored to ${style} and ${focusArea}",
+  "warmup": ["Exercise Name 1", "Exercise Name 2"],
+  "exercises": ["Exercise Name 1", "Exercise Name 2", "Exercise Name 3", "Exercise Name 4"],
+  "cooldown": ["Exercise Name 1", "Exercise Name 2"],
+  "rationale": "Brief 1-2 sentence explanation of how this workout supports firefighter ${focusArea} performance and ${userContext.goal}",
   "estimatedDuration": ${targetDuration},
   "difficultyScore": ${intensityLevel},
   "focusAreas": ["${focusArea}"]
@@ -521,7 +590,10 @@ Respond with ONLY this JSON (no markdown, no extra text):
 
   const response = await sendAIMessage(
     [
-      { role: 'system', content: 'You are a certified strength coach with 10+ years experience designing firefighter training programs. Create varied, professional workouts tailored to specific goals.' },
+      { 
+        role: 'system', 
+        content: 'You are a TSAC-F certified tactical strength coach with 10+ years designing firefighter fitness programs. You understand occupational demands, CPAT testing, injury prevention, and functional fitness for structural firefighting. Create varied, professional workouts with real-world application to fireground operations.' 
+      },
       { role: 'user', content: prompt },
     ],
     'gemini',
@@ -536,6 +608,7 @@ Respond with ONLY this JSON (no markdown, no extra text):
 /**
  * Convert exercise name to ID format (lowercase with underscores)
  * Example: "Bench Press" -> "bench_press"
+ * @deprecated Use exerciseMatching.ts utilities instead
  */
 function nameToId(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '_');
@@ -562,13 +635,52 @@ export async function generatePeriodizedProgram(
   
   onProgress?.('Creating your first 4 weeks...', 20);
   
-  // Build compact exercise list (limit to 30 most relevant)
+  // Build exercise list - use curated list for better AI selection
   let exerciseListText = '';
   if (programContext.availableExercises && programContext.availableExercises.length > 0) {
-    const limitedExercises = programContext.availableExercises.slice(0, 30);
-    const exerciseNames = limitedExercises.map(ex => ex.name).join(', ');
-    exerciseListText = `\n\nEXERCISES: ${exerciseNames}`;
+    // Use all provided exercises (already curated from getCuratedExerciseList)
+    const exerciseNames = programContext.availableExercises.map(ex => ex.name).join('\n- ');
+    exerciseListText = `\n\n⚠️ AVAILABLE EXERCISES - USE EXACT NAMES (CRITICAL):\n- ${exerciseNames}`;
+    console.log(`📋 Providing ${programContext.availableExercises.length} exercises to AI`);
   }
+
+  // Import firefighter-specific guidance
+  const { getFirefighterExerciseGuidance } = await import('../exerciseMatching');
+  const ffGuidance = getFirefighterExerciseGuidance();
+  
+  const firefighterContext = `
+🚒 FIREFIGHTER OCCUPATIONAL FITNESS CONTEXT:
+This program is for a FIREFIGHTER who needs job-specific functional fitness.
+
+CRITICAL JOB DEMANDS:
+- Wearing 50+ lbs of gear and SCBA during operations
+- Stair climbing with equipment (Step-Ups are essential)
+- Victim rescue lifts from ground (Deadlift patterns critical)
+- Equipment/hose carries over distance (Farmer Carries essential)
+- Forcible entry and breaching (Pushing power: bench, overhead press)
+- Hoseline operations (Pulling strength: rows, pull-ups)
+- Extended duration work under cardiovascular stress
+- Rapid transitions from prone to standing (Burpees)
+- Spine protection under asymmetric loads
+
+EXERCISE PRIORITIES (Job-Specific):
+1. CARRYING: ${ffGuidance.movementPatterns.carrying.join(', ')}
+2. LOWER BODY POWER: ${ffGuidance.movementPatterns.squatting.join(', ')} + ${ffGuidance.movementPatterns.hinging.join(', ')}
+3. PUSHING: ${ffGuidance.movementPatterns.pushing.join(', ')}
+4. PULLING: ${ffGuidance.movementPatterns.pulling.join(', ')}
+5. EXPLOSIVE: ${ffGuidance.movementPatterns.explosive.join(', ')}
+6. CORE STABILITY: ${ffGuidance.movementPatterns.core.join(', ')}
+7. WORK CAPACITY: ${ffGuidance.movementPatterns.conditioning.join(', ')}
+
+PROGRAM MUST INCLUDE (Every Week):
+- At least 1 carrying exercise (Farmer Carry, Sled Drag)
+- At least 1 deadlift variation (ground-to-standing lifts)
+- At least 1 overhead press (ladder work, ceiling operations)
+- At least 1 pull exercise (hoseline work)
+- At least 1 explosive movement (emergency response power)
+- Core work in every session (spine protection)
+- Work capacity/conditioning 2-3x per week
+`;
 
   // Determine periodization model
   let defaultPeriodization: 'linear' | 'undulating' | 'block' = 'linear';
@@ -598,67 +710,190 @@ export async function generatePeriodizedProgram(
   console.log('🏃 Cardio in aiService:', programContext.includeCardio);
   console.log('🏃 Cardio prompt:', cardioPrompt || '(none)');
 
-  const prompt = `Generate weeks 1-4 of a ${programContext.totalWeeks}-week firefighter program.
+  const prompt = `Generate weeks 1-4 of a ${programContext.totalWeeks}-week FIREFIGHTER occupational fitness program.
 
-${programContext.experience}, ${programContext.goal}, ${programContext.equipment.join('/')}, ${programContext.daysPerWeek} strength days/week.${cardioPrompt}
+FIREFIGHTER PROFILE:
+Experience: ${programContext.experience}
+Primary Goal: ${programContext.goal}
+Available Equipment: ${programContext.equipment.join(', ')}
+Training Days: ${programContext.daysPerWeek} strength sessions per week
+${programContext.includeCardio ? 'PLUS 2-3 dedicated cardio/conditioning sessions' : ''}
 
-AVAILABLE EXERCISES (MUST USE ONLY THESE EXACT NAMES):
+${firefighterContext}
 ${exerciseListText}
 
-RULES:
-- Generate EXACTLY 4 weeks (weeks 1-4)
-- Each week = ${programContext.daysPerWeek} strength days
-- Each day = 4 exercises
-- CRITICAL: Use ONLY exercise names from the AVAILABLE EXERCISES list above
-- Match exercise names EXACTLY as listed
-- Text: 1-2 words max for notes
-- 1 warmup, 1 cooldown per day
-${programContext.includeCardio ? '- Add cardioSchedule separately with 2-3 sessions/week' : ''}
+PROGRAM DESIGN RULES:
+✅ Generate EXACTLY 4 weeks (weeks 1-4 only)
+✅ Each week has EXACTLY ${programContext.daysPerWeek} strength training days
+✅ Each day has 4-6 main exercises
+✅ CRITICAL: Use ONLY exercises from "AVAILABLE EXERCISES" list above
+✅ CRITICAL: Copy exercise names EXACTLY character-for-character (case-sensitive)
+✅ DO NOT abbreviate, modify, or paraphrase exercise names
+✅ Include 1-2 warmup exercises per day (mobility/activation)
+✅ Include 1-2 cooldown exercises per day (stretching/recovery)
+✅ Keep notes to 1-3 words maximum per exercise
+${programContext.includeCardio ? '✅ Include separate cardioSchedule with 2-3 sessions per week' : ''}
 
-JSON:
+FIREFIGHTER-SPECIFIC REQUIREMENTS:
+🚒 Every week MUST include:
+   - 2-3 carrying exercises (Farmer Carry, Sled Drag, Bear Crawl)
+   - 2-3 deadlift variations (victim rescue simulation)
+   - 2-3 overhead pressing movements (ladder/ceiling work)
+   - 2-3 pulling exercises (hoseline operations)
+   - 1-2 explosive movements (Box Jump, Broad Jump, Clean, Tire Flip)
+   - Step-Ups in at least 2 sessions (stair climbing with gear)
+   - Core work in EVERY session (anti-rotation, anti-extension)
+
+🔥 Set/Rep Schemes Based on Goal:
+   - STRENGTH: 3-5 sets × 3-6 reps @ RPE 8-9
+   - WORK CAPACITY: 3-4 sets × 8-12 reps @ RPE 7-8
+   - POWER: 3-5 sets × 3-5 reps @ RPE 7-8 (explosive)
+   - CONDITIONING: Circuits/AMRAPs, 45-90 sec work periods
+   - CORE: 3 sets × 30-60 sec holds or 10-15 reps
+
+📊 Periodization (Linear Model):
+   - Week 1: Base building (moderate volume, RPE 6-7)
+   - Week 2: Volume increase (+5-10% volume, RPE 7-8)
+   - Week 3: Peak intensity (maintain volume, RPE 8-9)
+   - Week 4: DELOAD (60-70% volume, RPE 5-6, recovery focus)
+
+RETURN FORMAT - Valid JSON Only:
 {
-  "programName": "FF Strength",
+  "programName": "Firefighter [Goal] Program",
   "totalWeeks": ${programContext.totalWeeks},
   "periodizationModel": "${periodization}",
-  "phases": [{"phaseName": "Base", "weekRange": "1-4", "focus": "Build", "description": "Volume"}],
+  "phases": [
+    {
+      "phaseName": "Foundation",
+      "weekRange": "1-4",
+      "focus": "Build work capacity and movement quality",
+      "description": "Establish baseline strength and conditioning for firefighter operations"
+    }
+  ],
   "weeks": [
-    {"weekNumber": 1, "phase": "Base", "isDeload": false, "volumeMultiplier": 1.0, "days": [
-      {"dayNumber": 1, "dayName": "Upper", "focus": "Push", "warmup": ["Mobility"], "exercises": [
-        {"name": "Bench Press", "sets": 4, "reps": "8-10", "restSeconds": 90, "rpe": 7, "notes": "Control"},
-        {"name": "DB Press", "sets": 3, "reps": "10", "restSeconds": 60, "rpe": 7, "notes": "Squeeze"},
-        {"name": "Pushups", "sets": 3, "reps": "15", "restSeconds": 45, "rpe": 6, "notes": "Slow"},
-        {"name": "Dips", "sets": 3, "reps": "10", "restSeconds": 60, "rpe": 7, "notes": "Deep"}
-      ], "cooldown": ["Stretch"], "estimatedDuration": 45}
-    ]},
-    {"weekNumber": 2, "phase": "Base", "isDeload": false, "volumeMultiplier": 1.05, "days": []},
-    {"weekNumber": 3, "phase": "Base", "isDeload": false, "volumeMultiplier": 1.1, "days": []},
-    {"weekNumber": 4, "phase": "Base", "isDeload": true, "volumeMultiplier": 0.7, "days": []}
+    {
+      "weekNumber": 1,
+      "phase": "Foundation",
+      "isDeload": false,
+      "volumeMultiplier": 1.0,
+      "days": [
+        {
+          "dayNumber": 1,
+          "dayName": "Lower Body Power & Carry",
+          "focus": "Squats, Deadlifts, Carries",
+          "warmup": ["Hip Mobility", "Glute Activation"],
+          "exercises": [
+            {
+              "name": "Barbell Back Squat",
+              "sets": 4,
+              "reps": "6-8",
+              "restSeconds": 120,
+              "rpe": 7,
+              "notes": "Controlled tempo"
+            },
+            {
+              "name": "Romanian Deadlift",
+              "sets": 3,
+              "reps": "8-10",
+              "restSeconds": 90,
+              "rpe": 7,
+              "notes": "Hip hinge"
+            },
+            {
+              "name": "Farmer Carry",
+              "sets": 4,
+              "reps": "40 yards",
+              "restSeconds": 90,
+              "rpe": 8,
+              "notes": "Heavy"
+            },
+            {
+              "name": "Step-Ups",
+              "sets": 3,
+              "reps": "10 each leg",
+              "restSeconds": 60,
+              "rpe": 7,
+              "notes": "Knee drive"
+            },
+            {
+              "name": "Plank",
+              "sets": 3,
+              "reps": "45 sec",
+              "restSeconds": 45,
+              "rpe": 6,
+              "notes": "Brace core"
+            }
+          ],
+          "cooldown": ["Hip Flexor Stretch", "Hamstring Stretch"],
+          "estimatedDuration": 50
+        }
+      ]
+    },
+    {
+      "weekNumber": 2,
+      "phase": "Foundation",
+      "isDeload": false,
+      "volumeMultiplier": 1.05,
+      "days": []
+    },
+    {
+      "weekNumber": 3,
+      "phase": "Foundation",
+      "isDeload": false,
+      "volumeMultiplier": 1.1,
+      "days": []
+    },
+    {
+      "weekNumber": 4,
+      "phase": "Foundation",
+      "isDeload": true,
+      "volumeMultiplier": 0.65,
+      "days": []
+    }
   ],
   ${programContext.includeCardio ? `"cardioSchedule": {
     "frequency": 3,
     "weeks": [
-      {"weekNumber": 1, "sessions": [
-        {"dayOfWeek": "Monday", "type": "Run", "duration": 20, "intensity": "Easy", "notes": "Recovery pace"},
-        {"dayOfWeek": "Wednesday", "type": "HIIT", "duration": 15, "intensity": "Intervals", "notes": "8x30s sprint, 90s rest"},
-        {"dayOfWeek": "Friday", "type": "Bike", "duration": 30, "intensity": "Zone 2", "notes": "Steady state"}
-      ]},
+      {
+        "weekNumber": 1,
+        "sessions": [
+          {"dayOfWeek": "Monday", "type": "Run", "duration": 20, "intensity": "Easy", "notes": "Recovery pace"},
+          {"dayOfWeek": "Wednesday", "type": "HIIT", "duration": 15, "intensity": "Intervals", "notes": "8×30s/90s"},
+          {"dayOfWeek": "Friday", "type": "Row", "duration": 25, "intensity": "Zone 2", "notes": "Steady state"}
+        ]
+      },
       {"weekNumber": 2, "sessions": []},
       {"weekNumber": 3, "sessions": []},
       {"weekNumber": 4, "sessions": []}
     ]
   },` : ''}
-  "progressionPlan": "Add weight weekly",
-  "deloadStrategy": "Light week 4"
+  "progressionPlan": "Increase load 2-5% weekly. Add 1 rep when hitting top of rep range. Progress carries by distance or load.",
+  "deloadStrategy": "Week 4: Reduce volume 35%, maintain movement patterns, focus on quality and recovery for adaptation."
 }
 
-Generate ALL ${programContext.daysPerWeek} days for ALL 4 weeks (1-4).${programContext.includeCardio ? ' Include cardioSchedule with ALL 4 weeks of cardio sessions.' : ''}`;
+🚒 Generate complete program with ALL ${programContext.daysPerWeek} days for ALL 4 weeks.
+${programContext.includeCardio ? '🏃 Include cardioSchedule with sessions for ALL 4 weeks.' : ''}
+🔥 Prioritize firefighter job-specific movements. This is for occupational readiness, not bodybuilding.`;
 
   try {
     onProgress?.('Generating workouts...', 50);
     
     const response = await sendAIMessage(
       [
-        { role: 'system', content: 'Expert strength coach. Return ONLY valid JSON. Be extremely concise.' },
+        { 
+          role: 'system', 
+          content: `You are an elite Tactical Strength & Conditioning Coach (TSAC-F certified) with 15+ years specializing in FIREFIGHTER occupational fitness. Your expertise includes:
+- CPAT preparation and firefighter physical ability testing
+- Functional fitness for structural firefighting operations
+- Injury prevention for firefighters (lower back, shoulders, knees)
+- Work capacity development for extended duration calls
+- Periodization for shift work schedules
+- Movement quality under load and fatigue
+
+Your programs are evidence-based, job-specific, and designed to keep firefighters operationally ready while preventing injury. You understand the unique demands of wearing SCBA, carrying equipment, victim rescue, and sustained physical work in hot environments.
+
+Return ONLY valid, parseable JSON. No markdown formatting. Be concise in notes (1-3 words max).`
+        },
         { role: 'user', content: prompt }
       ],
       'gemini',
@@ -687,13 +922,25 @@ Generate ALL ${programContext.daysPerWeek} days for ALL 4 weeks (1-4).${programC
     // Add note that this is first block
     program.progressionPlan = `Complete these 2 weeks, then generate next block.`;
     
-    // Convert all exercise names to IDs for proper lookup
+    // Match exercises using fuzzy matching fallback
+    const { resolveExercise } = await import('../exerciseMatching');
+    
     program.weeks.forEach(week => {
       week.days.forEach(day => {
         day.exercises.forEach(exercise => {
           if (!exercise.id && exercise.name) {
-            exercise.id = nameToId(exercise.name);
-            console.log(`🔄 Converted "${exercise.name}" -> "${exercise.id}"`);
+            // First try: Use exercise name to find match in library
+            const matched = resolveExercise(exercise.name);
+            if (matched) {
+              exercise.id = matched.id;
+              // Update name to match library exactly (in case AI used slight variation)
+              exercise.name = matched.name;
+              console.log(`✅ Matched: "${exercise.name}" -> ID: ${exercise.id}`);
+            } else {
+              // Fallback: Use name-based ID (will show as "Unknown Exercise" in UI)
+              exercise.id = nameToId(exercise.name);
+              console.error(`❌ No match found for: "${exercise.name}", using fallback ID: ${exercise.id}`);
+            }
           }
         });
       });
@@ -870,7 +1117,7 @@ ${nutritionContext.prepTimeLimit ? `Max Prep Time: ${nutritionContext.prepTimeLi
 
 Provide a JSON array of 3 meal suggestions. Each should include:
 - name: meal name
-- ingredients: array of ingredients with quantities
+- ingredients: array of strings with quantities (e.g., ["200g chicken breast", "1 cup rice", "2 tbsp olive oil"])
 - macros: {calories, protein, carbs, fat}
 - prepTime: preparation time in minutes
 - difficulty: "easy", "medium", or "hard"
@@ -889,7 +1136,27 @@ Return ONLY valid JSON array, no additional text.`;
 
   const cleanedResponse = cleanJsonResponse(response.content);
   const parsed = JSON.parse(cleanedResponse);
-  return parsed as MealSuggestion[];
+  
+  // ✅ Normalize ingredients format - handle both string[] and object[] formats
+  const normalizedMeals = parsed.map((meal: any) => {
+    const ingredients = meal.ingredients.map((ing: any) => {
+      // If ingredient is an object like {item: "chicken", quantity: "200g"}, convert to string
+      if (typeof ing === 'object' && ing !== null) {
+        const quantity = ing.quantity || '';
+        const item = ing.item || ing.name || '';
+        return quantity ? `${quantity} ${item}` : item;
+      }
+      // Otherwise it's already a string
+      return String(ing);
+    });
+    
+    return {
+      ...meal,
+      ingredients,
+    };
+  });
+  
+  return normalizedMeals as MealSuggestion[];
 }
 
 /**
@@ -1264,6 +1531,316 @@ Return ONLY valid JSON with updated weights for each exercise:
   return JSON.parse(cleaned);
 }
 
+/**
+ * 🔥 NUTRITION ANALYSIS - Gemini-Powered with Vision Support
+ * Analyzes text descriptions OR images to extract accurate macros
+ */
+
+export interface NutritionAnalysisResult {
+  totalMacros: {
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+  };
+  items: Array<{
+    name: string;
+    quantity: string;
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+  }>;
+  confidence: number; // 0-100
+  source: 'gemini-text' | 'gemini-vision';
+  detectedPortionSizes: string[];
+  warnings?: string[];
+  explanation?: string;
+}
+
+/**
+ * Analyze meal from text description using Gemini
+ */
+export async function analyzeMealFromText(
+  description: string
+): Promise<NutritionAnalysisResult> {
+  console.log('🍽️ Analyzing meal from text:', description);
+
+  const prompt = `You are a professional nutritionist and dietitian specializing in accurate macro calculation for firefighters and athletes.
+
+TASK: Analyze this meal description and provide detailed nutritional information.
+
+MEAL DESCRIPTION: "${description}"
+
+INSTRUCTIONS:
+1. Identify ALL food items mentioned
+2. Estimate reasonable portion sizes based on context (firefighters typically eat 1.2-1.5x normal portions)
+3. Calculate accurate macros for EACH item individually
+4. Use standard USDA/restaurant nutrition data as reference
+5. Be conservative with estimates - slightly underestimate rather than overestimate
+6. If portion size is ambiguous, assume "1 serving" or "medium" size
+7. For restaurant items (McDonald's, Chipotle, etc.), use official nutrition facts
+
+CONFIDENCE SCORING:
+- 90-100: Exact portion specified + brand name (e.g., "McDonald's Big Mac")
+- 75-89: Clear portion specified (e.g., "6oz chicken breast", "2 eggs")
+- 60-74: General description with context (e.g., "grilled chicken sandwich")
+- 40-59: Vague description (e.g., "some chicken")
+- 0-39: Very ambiguous or missing information
+
+VALIDATION RULES:
+- Protein should be 4 cal/g
+- Carbs should be 4 cal/g  
+- Fat should be 9 cal/g
+- Total calories should roughly match sum of macros
+- Warn if values seem unrealistic
+
+RETURN FORMAT - Valid JSON only, no markdown:
+{
+  "totalMacros": {
+    "calories": 650,
+    "protein": 45,
+    "carbs": 60,
+    "fat": 22
+  },
+  "items": [
+    {
+      "name": "Grilled Chicken Breast",
+      "quantity": "6 oz",
+      "calories": 280,
+      "protein": 53,
+      "carbs": 0,
+      "fat": 6
+    },
+    {
+      "name": "Brown Rice",
+      "quantity": "1 cup cooked",
+      "calories": 215,
+      "protein": 5,
+      "carbs": 45,
+      "fat": 2
+    },
+    {
+      "name": "Olive Oil",
+      "quantity": "1 tbsp",
+      "calories": 120,
+      "protein": 0,
+      "carbs": 0,
+      "fat": 14
+    }
+  ],
+  "confidence": 75,
+  "source": "gemini-text",
+  "detectedPortionSizes": ["6 oz", "1 cup", "1 tbsp"],
+  "warnings": [],
+  "explanation": "Based on standard USDA values for cooked chicken breast (165 cal per 100g), brown rice (112 cal per 100g cooked), and olive oil (120 cal per tbsp)"
+}
+
+Return ONLY the JSON object, no additional text.`;
+
+  const response = await sendAIMessage(
+    [
+      { role: 'system', content: 'You are a professional nutritionist with expertise in macro calculation. Return only valid JSON.' },
+      { role: 'user', content: prompt },
+    ],
+    'gemini',
+    { temperature: 0.3, maxTokens: 4000 }
+  );
+
+  const cleaned = cleanJsonResponse(response.content);
+  const result = JSON.parse(cleaned) as NutritionAnalysisResult;
+
+  // Validation
+  const calculatedCals = 
+    result.totalMacros.protein * 4 + 
+    result.totalMacros.carbs * 4 + 
+    result.totalMacros.fat * 9;
+  
+  const calDifference = Math.abs(result.totalMacros.calories - calculatedCals);
+  
+  if (calDifference > result.totalMacros.calories * 0.15) {
+    result.warnings = result.warnings || [];
+    result.warnings.push('Calorie calculation may be approximate - macros adjusted for accuracy');
+    // Auto-correct calories to match macros
+    result.totalMacros.calories = Math.round(calculatedCals);
+  }
+
+  console.log('✅ Meal analysis complete:', {
+    calories: result.totalMacros.calories,
+    items: result.items.length,
+    confidence: result.confidence,
+  });
+
+  return result;
+}
+
+/**
+ * Analyze meal from image using Gemini Vision API
+ */
+export async function analyzeMealFromImage(
+  imageBase64: string,
+  mimeType: string = 'image/jpeg',
+  additionalContext?: string
+): Promise<NutritionAnalysisResult> {
+  console.log('📸 Analyzing meal from image...');
+
+  await enforceRateLimit();
+
+  const prompt = `You are a professional nutritionist analyzing a food photo for accurate macro calculation.
+
+TASK: Identify all foods in this image and calculate their nutritional content.
+
+${additionalContext ? `ADDITIONAL CONTEXT: ${additionalContext}` : ''}
+
+INSTRUCTIONS:
+1. Identify EVERY food item visible in the photo
+2. Estimate portion sizes based on visual cues (plate size, utensil size, food dimensions)
+3. For firefighters, portions are typically 1.2-1.5x standard servings
+4. Calculate accurate macros for each item
+5. Use visual indicators:
+   - Standard dinner plate ≈ 10-11 inches diameter
+   - Protein portion ≈ palm size or deck of cards
+   - Carb portion ≈ fist size
+   - Fat portion ≈ thumb size
+6. Account for cooking method (fried vs grilled affects calories significantly)
+7. Identify any sauces, toppings, or condiments
+
+CONFIDENCE SCORING:
+- 90-100: Clear view of all items, recognizable portions, known foods
+- 75-89: Most items visible, portion sizes estimable
+- 60-74: Some items unclear or portions hard to judge
+- 40-59: Poor lighting, blurry, or unusual foods
+- 0-39: Very unclear image or unidentifiable foods
+
+RETURN FORMAT - Valid JSON only:
+{
+  "totalMacros": {
+    "calories": 720,
+    "protein": 48,
+    "carbs": 65,
+    "fat": 24
+  },
+  "items": [
+    {
+      "name": "Grilled Chicken Breast",
+      "quantity": "~7 oz (visual estimate)",
+      "calories": 320,
+      "protein": 58,
+      "carbs": 0,
+      "fat": 8
+    },
+    {
+      "name": "White Rice",
+      "quantity": "~1.5 cups (visual estimate)",
+      "calories": 310,
+      "protein": 6,
+      "carbs": 68,
+      "fat": 1
+    },
+    {
+      "name": "Butter/Oil on rice",
+      "quantity": "~1 tbsp (visual estimate)",
+      "calories": 90,
+      "protein": 0,
+      "carbs": 0,
+      "fat": 10
+    }
+  ],
+  "confidence": 80,
+  "source": "gemini-vision",
+  "detectedPortionSizes": ["~7 oz", "~1.5 cups", "~1 tbsp"],
+  "warnings": ["Portion sizes are visual estimates - actual values may vary by 10-20%"],
+  "explanation": "Clear image showing protein and carb portions. Chicken appears grilled based on char marks. Rice portion estimated from plate coverage (~40% of plate). Small amount of fat visible (sheen on rice)."
+}
+
+Return ONLY the JSON object.`;
+
+  try {
+    const apiKey = AI_CONFIG.gemini.apiKey;
+    const model = 'gemini-1.5-flash-latest'; // Vision-enabled model
+
+    const requestBody = {
+      contents: [
+        {
+          parts: [
+            { text: prompt },
+            {
+              inline_data: {
+                mime_type: mimeType,
+                data: imageBase64,
+              },
+            },
+          ],
+        },
+      ],
+      generationConfig: {
+        temperature: 0.3,
+        maxOutputTokens: 4000,
+      },
+    };
+
+    const response = await axios.post(
+      `${AI_CONFIG.gemini.baseURL}/models/${model}:generateContent?key=${apiKey}`,
+      requestBody,
+      {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 30000,
+      }
+    );
+
+    const content = (response.data as any)?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const cleaned = cleanJsonResponse(content);
+    const result = JSON.parse(cleaned) as NutritionAnalysisResult;
+
+    // Validation
+    const calculatedCals =
+      result.totalMacros.protein * 4 +
+      result.totalMacros.carbs * 4 +
+      result.totalMacros.fat * 9;
+
+    const calDifference = Math.abs(result.totalMacros.calories - calculatedCals);
+
+    if (calDifference > result.totalMacros.calories * 0.15) {
+      result.warnings = result.warnings || [];
+      result.warnings.push('Calorie calculation adjusted to match macro breakdown');
+      result.totalMacros.calories = Math.round(calculatedCals);
+    }
+
+    console.log('✅ Image analysis complete:', {
+      calories: result.totalMacros.calories,
+      items: result.items.length,
+      confidence: result.confidence,
+    });
+
+    return result;
+  } catch (error) {
+    console.error('❌ Image analysis failed:', error);
+    throw new Error(`Failed to analyze meal image: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Universal meal analyzer - handles both text and images
+ */
+export async function analyzeMeal(input: {
+  text?: string;
+  imageBase64?: string;
+  imageMimeType?: string;
+  context?: string;
+}): Promise<NutritionAnalysisResult> {
+  if (input.imageBase64) {
+    return analyzeMealFromImage(
+      input.imageBase64,
+      input.imageMimeType || 'image/jpeg',
+      input.text || input.context
+    );
+  } else if (input.text) {
+    return analyzeMealFromText(input.text);
+  } else {
+    throw new Error('Must provide either text description or image');
+  }
+}
+
 export default {
   sendAIMessage,
   getWorkoutRecommendation,
@@ -1275,4 +1852,7 @@ export default {
   getAdaptiveProgramSuggestions,
   analyzeTrainingReadiness,
   analyzeWeeklyProgression,
+  analyzeMealFromText,
+  analyzeMealFromImage,
+  analyzeMeal,
 };

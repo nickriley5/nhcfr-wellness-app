@@ -6,6 +6,9 @@ apply plugin: "com.google.gms.google-services"
 // Expo modules
 apply from: new File(["node", "--print", "require.resolve('expo/package.json')"].execute(null, rootDir).text.trim(), "../scripts/autolinking.gradle")
 
+// React Native Config - Load environment variables from .env
+apply from: "../../node_modules/react-native-config/android/dotenv.gradle"
+
 react {
     autolinkLibrariesWithApp()
 }
@@ -26,7 +29,7 @@ android {
         versionCode 1
         versionName "1.0"
         
-        // Load environment variables from .env file
+        // Load environment variables from .env file (react-native-config)
         resValue "string", "build_config_package", "com.firefighterwellnessapp"
     }
 

@@ -1,6 +1,8 @@
 import axios from 'axios';
+import { getEnv } from './env';
 import crypto from 'crypto-js';
 import { validateNutritionResult as enhancedValidation } from './precisionMath';
+import { analyzeMealFromText, NutritionAnalysisResult } from './ai/aiService';
 
 // --- Safe console helpers to avoid Hermes "Error.stack invalid receiver" ---
 const safeLog = (label: string, value: unknown) => {
@@ -29,12 +31,13 @@ const safeError = (label: string, err: unknown) => {
 };
 
 
-/* ✅ PUT YOUR REAL API KEYS HERE */
-const NUTRITIONIX_APP_ID = 'a7dc596e';
-const NUTRITIONIX_APP_KEY = '833302e6a67cd67663f72a08e8a05137';
-const USDA_API_KEY = 'DJ23bi1Bdxqm2yX1koDezsIgtbOQXLrgr0Q3UrSl';
-const FATSECRET_CONSUMER_KEY = 'fc4290b05cf8490c8391ad7b707befcc';
-const FATSECRET_CONSUMER_SECRET = 'dc90e0d80d9c405d8a4387a65c5ce875';
+/* ✅ API keys loaded from environment (.env via react-native-config) */
+const env = getEnv();
+const NUTRITIONIX_APP_ID = env.NUTRITIONIX_APP_ID ?? '';
+const NUTRITIONIX_APP_KEY = env.NUTRITIONIX_APP_KEY ?? '';
+const USDA_API_KEY = env.USDA_API_KEY ?? '';
+const FATSECRET_CONSUMER_KEY = env.FATSECRET_CONSUMER_KEY ?? '';
+const FATSECRET_CONSUMER_SECRET = env.FATSECRET_CONSUMER_SECRET ?? '';
 
 /* ✅ Enhanced return type with confidence scoring */
 export interface MealMacroResult {
@@ -602,53 +605,61 @@ const crossValidateResults = (results: MealMacroResult[]): MealMacroResult => {
   return bestResult;
 };
 
-/* ✅ SMART ROUTING - The core intelligence */
+/* ✅ SMART ROUTING - Gemini-First with Free API Fallbacks */
 export const describeMeal = async (query: string): Promise<MealMacroResult> => {
-  console.log('🚀 Smart meal analysis for:', query);
+  console.log('🚀 Smart meal analysis (Gemini-powered) for:', query);
 
   const processed = preprocessQuery(query);
   const results: MealMacroResult[] = [];
 
-  // Enhanced routing logic
-  const shouldTryNutritionix = (
-    processed.restaurantDetected ||
-    processed.brandDetected ||
-    query.toLowerCase().includes('with') ||
-    query.split(' ').length >= 4 ||
-    ['burger', 'pizza', 'sandwich', 'salad', 'wrap', 'burrito'].some(food =>
-      query.toLowerCase().includes(food)
-    )
-  );
+  // ✅ STRATEGY 1: Try Gemini AI (Primary - Fast, Accurate, Handles Everything)
+  try {
+    console.log('🤖 Using Gemini AI for intelligent nutrition analysis...');
+    const geminiResult = await analyzeMealFromText(query);
+    
+    // Convert to MealMacroResult format
+    const mealResult: MealMacroResult = {
+      calories: geminiResult.totalMacros.calories,
+      protein: geminiResult.totalMacros.protein,
+      carbs: geminiResult.totalMacros.carbs,
+      fat: geminiResult.totalMacros.fat,
+      source: 'GEMINI_AI',
+      items: geminiResult.items.map(item => `${item.quantity} ${item.name}`),
+      confidence: geminiResult.confidence,
+      portionInfo: {
+        detectedSize: geminiResult.detectedPortionSizes.join(', '),
+        standardizedAmount: processed.detectedQuantity,
+        unit: processed.detectedUnit,
+      },
+      validationFlags: geminiResult.warnings,
+      itemMacros: geminiResult.items.map(item => ({
+        calories: item.calories,
+        protein: item.protein,
+        carbs: item.carbs,
+        fat: item.fat,
+      })),
+    };
 
-  const shouldTryUSDA = (
-    !processed.restaurantDetected &&
-    !processed.brandDetected &&
-    query.split(' ').length <= 3 &&
-    ['egg', 'chicken', 'fish', 'beef', 'rice', 'apple', 'banana', 'broccoli', 'milk'].some(food =>
-      query.toLowerCase().includes(food)
-    )
-  );
-
-  // Strategy 1: Try Nutritionix for complex/branded items
-  if (shouldTryNutritionix) {
-    console.log('🎯 Using Nutritionix for complex meal');
-    const nutritionixResult = await fetchFromNutritionix(query);
-    if (nutritionixResult && nutritionixResult.calories > 0) {
-      results.push(nutritionixResult);
+    // Validate Gemini result
+    if (mealResult.calories > 0 && mealResult.confidence >= 40) {
+      results.push(mealResult);
+      console.log(`✅ Gemini analysis complete: ${mealResult.calories} cal (${mealResult.confidence}% confidence)`);
     }
+  } catch (error) {
+    console.log('⚠️ Gemini AI failed, trying fallback APIs...', error);
   }
 
-  // Strategy 2: Try USDA for simple whole foods
-  if (shouldTryUSDA) {
-    console.log('🏛️ Using USDA for whole food');
+  // ✅ STRATEGY 2: Try USDA for simple whole foods (Free API - Fallback)
+  if (results.length === 0 && !processed.restaurantDetected && query.split(' ').length <= 3) {
+    console.log('🏛️ Using USDA database for whole food');
     const usdaResult = await fetchFromUSDA(query);
     if (usdaResult && usdaResult.calories > 0) {
       results.push(usdaResult);
     }
   }
 
-  // Strategy 3: FatSecret as fallback or for branded items
-  if (results.length === 0 || processed.brandDetected) {
+  // ✅ STRATEGY 3: Try FatSecret as last resort (Free API - Fallback)
+  if (results.length === 0) {
     console.log('🔄 Using FatSecret database');
     const fatSecretResult = await fetchFromFatSecret(query);
     if (fatSecretResult && fatSecretResult.calories > 0) {
@@ -656,34 +667,15 @@ export const describeMeal = async (query: string): Promise<MealMacroResult> => {
     }
   }
 
-  // Strategy 4: If we have no results, try the other APIs
   if (results.length === 0) {
-    console.log('🔄 No results yet, trying remaining APIs');
-
-    if (!shouldTryNutritionix) {
-      const nutritionixBackup = await fetchFromNutritionix(query);
-      if (nutritionixBackup && nutritionixBackup.calories > 0) {
-        results.push(nutritionixBackup);
-      }
-    }
-
-    if (!shouldTryUSDA) {
-      const usdaBackup = await fetchFromUSDA(query);
-      if (usdaBackup && usdaBackup.calories > 0) {
-        results.push(usdaBackup);
-      }
-    }
+    console.log('❌ All nutrition sources failed');
+    throw new Error(`No nutrition data found for "${query}". Try being more specific with portion size (e.g., "2 eggs" or "6oz chicken breast").`);
   }
 
-  if (results.length === 0) {
-    console.log('❌ All APIs failed');
-    throw new Error(`No nutrition data found for "${query}". Try being more specific with portion size and preparation method.`);
-  }
+  // Return best result (Gemini should always be first/best if it succeeded)
+  const finalResult = results.length === 1 ? results[0] : crossValidateResults(results);
 
-  // Cross-validate and return best result
-  const finalResult = crossValidateResults(results);
-
-  safeLog(`✅ Final result with ${finalResult.confidence}% confidence:`, finalResult);
+  safeLog(`✅ Final result (${finalResult.source}) with ${finalResult.confidence}% confidence:`, finalResult);
   return finalResult;
 };
 

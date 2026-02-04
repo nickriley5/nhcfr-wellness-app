@@ -34,7 +34,7 @@
 ### 1. API Key Configuration (Already Done ✅)
 Your Gemini API key is configured in `.env`:
 ```
-GEMINI_API_KEY=AIzaSyBPEC65Rlz3MeBC8BcKX-CvX5BkPP3hXwY
+GEMINI_API_KEY=<YOUR_GEMINI_API_KEY>
 ```
 
 ### 2. Restart Metro Bundler

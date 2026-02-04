@@ -45,12 +45,16 @@ const ActivityLevelSelector = ({
 
       {showInfo && (
         <Text style={styles.summary}>
-          Choose the level that best matches your daily lifestyle:{'\n\n'}
-          • <Text style={styles.boldText}>Sedentary</Text>: Desk job, minimal daily movement{'\n'}
-          • <Text style={styles.boldText}>Light</Text>: Regular walking, light household tasks{'\n'}
-          • <Text style={styles.boldText}>Moderate</Text>: Manual job or workouts 3–4x/week{'\n'}
-          • <Text style={styles.boldText}>Very Active</Text>: Intense training or daily physical labor{'\n\n'}
-          🔥 Firefighting doesn’t count unless you’re actively training or operating on scene.
+          Choose the level that best matches your <Text style={styles.boldText}>overall weekly activity</Text>:{'\n\n'}
+          🪑 <Text style={styles.boldText}>Sedentary</Text>: Desk job, minimal exercise (0-1 workouts/week){'\n'}
+          {'   '}Little daily movement, mostly sitting{'\n\n'}
+          🚶 <Text style={styles.boldText}>Light</Text>: Light exercise 1-3 days/week{'\n'}
+          {'   '}Walking, light cardio, or station duties without structured training{'\n\n'}
+          🏋️ <Text style={styles.boldText}>Moderate</Text>: Exercise 3-5 days/week{'\n'}
+          {'   '}Regular strength training, active job, or consistent fitness routine{'\n\n'}
+          💪 <Text style={styles.boldText}>Very Active</Text>: Intense training 6-7 days/week{'\n'}
+          {'   '}Daily workouts, physically demanding job, or competitive athlete{'\n\n'}
+          <Text style={styles.warningText}>⚠️ Choose based on your actual training frequency, not just your job title.</Text>
         </Text>
       )}
     </View>
@@ -94,8 +98,9 @@ const styles = StyleSheet.create({
     flexWrap: 'nowrap',
     marginTop: 4,
   },
-  summary: { color: '#aaa', marginTop: 8, fontSize: 13 },
-  boldText: { fontWeight: '700' },
+  summary: { color: '#aaa', marginTop: 8, fontSize: 13, lineHeight: 20 },
+  boldText: { fontWeight: '700', color: '#fff' },
+  warningText: { color: '#ff9800', fontWeight: '600' },
 });
 
 export default ActivityLevelSelector;

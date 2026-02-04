@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { generatePeriodizedProgram, PeriodizedProgram } from '../../utils/ai/aiService';
+import { getCuratedExerciseList } from '../../utils/exerciseMatching';
 import { auth, db } from '../../firebase';
 import { collection, addDoc } from 'firebase/firestore';
 import Toast from 'react-native-toast-message';
@@ -74,61 +75,18 @@ const PeriodizedProgramModal: React.FC<Props> = ({
     setStep('generating');
 
     try {
-      // Import exercise library
-      const { exercises } = await import('../../data/exercises');
+      // Use curated exercise list filtered by user's equipment
+      const curatedExercises = getCuratedExerciseList(selectedEquipment);
+      
+      // Map to expected format
+      const availableExercises = curatedExercises.map(ex => ({
+        id: ex.id,
+        name: ex.name,
+        equipment: ex.equipment || '',
+        focusArea: ex.focusArea || '',
+      }));
 
-      // Map goal to exercise goal tags
-      const goalTagMap: Record<string, string[]> = {
-        'Build Strength': ['strength', 'power'],
-        'Improve VO2 Max': ['conditioning', 'endurance', 'cardio'],
-        'Build Muscle': ['hypertrophy', 'strength'],
-        'Fat Loss': ['conditioning', 'metabolic', 'cardio'],
-      };
-      const relevantGoalTags = goalTagMap[goal] || ['strength'];
-
-      // Filter exercises dynamically based on equipment, fitness level, goal, and video availability
-      const userEquipment = selectedEquipment.map(e => e.toLowerCase());
-      const availableExercises = exercises
-        .filter(ex => {
-          // 1. Equipment check
-          const exerciseEquipment = (ex.equipment || '').toLowerCase();
-          const hasEquipment =
-            exerciseEquipment === 'bodyweight' ||
-            exerciseEquipment === '' ||
-            userEquipment.some((eq: string) => exerciseEquipment.includes(eq.toLowerCase()));
-
-          // 2. Fitness level check
-          const exerciseLevel = (ex.level || 'all').toLowerCase();
-          const levelMatch =
-            exerciseLevel === 'all' ||
-            exerciseLevel === fitnessLevel ||
-            (fitnessLevel === 'advanced' && exerciseLevel === 'intermediate') ||
-            (fitnessLevel === 'intermediate' && exerciseLevel === 'beginner');
-
-          // 3. Goal alignment check
-          const exerciseGoalTags = (ex.goalTags || []).map(t => t.toLowerCase());
-          const goalMatch =
-            exerciseGoalTags.length === 0 || // Include exercises with no goal tags
-            exerciseGoalTags.some(tag => relevantGoalTags.includes(tag));
-
-          // 4. Video availability (critical for user experience)
-          const hasVideo = ex.videoUrl && ex.videoUrl.trim() !== '';
-
-          return hasEquipment && levelMatch && goalMatch && hasVideo;
-        })
-        .map(ex => ({
-          id: ex.id,
-          name: ex.name,
-          equipment: ex.equipment || '',
-          focusArea: ex.focusArea || '',
-          level: ex.level || 'all',
-          goalTags: ex.goalTags || [],
-        }));
-
-      // console.log(
-      //   `📚 Dynamic filtering: ${availableExercises.length} exercises (Goal: ${goal}, Level: ${fitnessLevel}, Equipment: ${selectedEquipment.join(', ')})`
-      // );
-
+      console.log(`📋 Using ${availableExercises.length} curated exercises for AI`);
       console.log('🏃 Include Cardio:', includeCardio);
 
       const program = await generatePeriodizedProgram(

@@ -39,7 +39,7 @@ import TodaysWorkoutCard from '../components/Dashboard/TodaysWorkoutCard';
 import { CoachRecommendationBanner } from '../components/Dashboard/CoachRecommendationBanner';
 import { WeeklyProgressionCard } from '../components/Dashboard/WeeklyProgressionCard';
 import { DailyCheckInCard } from '../components/Dashboard/DailyCheckInCard';
-import { DedicationCard } from '../components/Dashboard/DedicationCard';
+
 import { ComingUpCard } from '../components/Dashboard/ComingUpCard';
 import { TodaysNutritionCard } from '../components/Dashboard/TodaysNutritionCard';
 import MealLoggingModal, { MealContext } from '../components/mealplan/MealLoggingModal';
@@ -258,26 +258,8 @@ export default function DashboardScreen() {
       const uid = auth.currentUser?.uid;
       if (!uid) return;
 
-      // Check if we've already analyzed today
-      const today = new Date().toDateString();
-      const lastAnalyzed = await AsyncStorage.getItem(`lastAIAnalysis_${uid}`);
-      
-      if (lastAnalyzed === today) {
-        console.log('⏭️ AI analysis already completed today');
-        return;
-      }
-
-      // Don't analyze if currently in progress
-      if (isAnalyzingReadiness) {
-        console.log('⏭️ AI analysis already in progress');
-        return;
-      }
-
       try {
-        // Mark as analyzing IMMEDIATELY to prevent duplicate calls
-        setIsAnalyzingReadiness(true);
-
-        // Fetch today's check-in (if exists)
+        // First, check if user has checked in today (regardless of AI analysis)
         const todayStart = new Date();
         todayStart.setHours(0, 0, 0, 0);
 
@@ -289,15 +271,31 @@ export default function DashboardScreen() {
         );
 
         const checkInSnapshot = await getDocs(checkInsQuery);
-        if (checkInSnapshot.empty) {
-          // No check-in today, don't analyze
-          setHasCheckedInToday(false);
-          setIsAnalyzingReadiness(false);
+        const hasCheckedIn = !checkInSnapshot.empty;
+        setHasCheckedInToday(hasCheckedIn);
+
+        if (!hasCheckedIn) {
+          // No check-in today, done
           return;
         }
 
-        // User has checked in today
-        setHasCheckedInToday(true);
+        // Check if we've already analyzed today
+        const today = new Date().toDateString();
+        const lastAnalyzed = await AsyncStorage.getItem(`lastAIAnalysis_${uid}`);
+        
+        if (lastAnalyzed === today) {
+          console.log('⏭️ AI analysis already completed today');
+          return;
+        }
+
+        // Don't analyze if currently in progress
+        if (isAnalyzingReadiness) {
+          console.log('⏭️ AI analysis already in progress');
+          return;
+        }
+
+        // Mark as analyzing IMMEDIATELY to prevent duplicate calls
+        setIsAnalyzingReadiness(true);
 
         const checkInData = checkInSnapshot.docs[0].data();
         
@@ -340,15 +338,15 @@ export default function DashboardScreen() {
 
         // Get program context if available
         const programContext = programInfo ? {
-          currentWeek: programInfo.currentWeek || 1,
-          totalWeeks: programInfo.totalWeeks || 12,
-          phase: programInfo.phase || 'Training',
-          isDeloadWeek: programInfo.isDeloadWeek || false,
+          currentWeek: (programInfo as any).currentWeek || 1,
+          totalWeeks: (programInfo as any).totalWeeks || 12,
+          phase: (programInfo as any).phase || 'Training',
+          isDeloadWeek: (programInfo as any).isDeloadWeek || false,
         } : undefined;
 
         // Run AI analysis
         const analysis = await analyzeTrainingReadiness(
-          checkInData,
+          checkInData as any,
           recentWorkouts,
           programContext
         );
@@ -689,12 +687,6 @@ export default function DashboardScreen() {
               onRefresh={() => setBump(prev => prev + 1)}
             />
 
-            {/* Streak & Achievements Card */}
-            <DedicationCard 
-              consistencyData={consistencyData} 
-              onPRPress={() => navigation.navigate('PRTracker')}
-            />
-
             {/* Enhanced Coming Up Preview */}
             <ComingUpCard
               tomorrowInfo={tomorrowInfo}
@@ -819,10 +811,10 @@ export default function DashboardScreen() {
         visible={showLightWorkoutModal}
         onRequestClose={() => setShowLightWorkoutModal(false)}
       >
-        <View style={dashboardStyles.modalOverlay}>
+        <View style={dashboardStyles.lightWorkoutModalOverlay}>
           <View style={dashboardStyles.lightWorkoutModalContent}>
-            <View style={dashboardStyles.modalHeader}>
-              <Text style={dashboardStyles.modalTitle}>⚡ Light Workout</Text>
+            <View style={dashboardStyles.lightWorkoutModalHeader}>
+              <Text style={dashboardStyles.lightWorkoutModalTitle}>⚡ Light Workout</Text>
               <TouchableOpacity onPress={() => setShowLightWorkoutModal(false)}>
                 <Text style={dashboardStyles.modalCloseButton}>✕</Text>
               </TouchableOpacity>

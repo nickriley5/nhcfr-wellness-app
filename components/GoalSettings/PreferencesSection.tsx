@@ -3,16 +3,16 @@ import { View, Text, Pressable, StyleSheet } from 'react-native';
 
 interface Props {
   dietaryPreference: 'none' | 'carnivore' | 'paleo' | 'vegetarian' | 'vegan';
-  dietaryRestriction: 'none' | 'gluten_free' | 'dairy_free' | 'low_fodmap';
+  dietaryRestrictions: Array<'gluten_free' | 'dairy_free' | 'low_fodmap'>;
   onChangePreference: (value: Props['dietaryPreference']) => void;
-  onChangeRestriction: (value: Props['dietaryRestriction']) => void;
+  onToggleRestriction: (value: 'gluten_free' | 'dairy_free' | 'low_fodmap') => void;
 }
 
 const PreferencesSection = ({
   dietaryPreference,
-  dietaryRestriction,
+  dietaryRestrictions,
   onChangePreference,
-  onChangeRestriction,
+  onToggleRestriction,
 }: Props) => {
   return (
     <>
@@ -47,12 +47,13 @@ const PreferencesSection = ({
 
       <View style={styles.card}>
         <Text style={styles.label}>Dietary Restrictions</Text>
+        <Text style={styles.hint}>Select all that apply</Text>
         <View style={styles.optionsRow}>
-          {['none', 'gluten_free', 'dairy_free', 'low_fodmap'].map((r) => (
+          {(['gluten_free', 'dairy_free', 'low_fodmap'] as const).map((r) => (
             <Pressable
               key={r}
-              style={[styles.optionButton, dietaryRestriction === r && styles.activeOption]}
-              onPress={() => onChangeRestriction(r as Props['dietaryRestriction'])}
+              style={[styles.optionButton, dietaryRestrictions.includes(r) && styles.activeOption]}
+              onPress={() => onToggleRestriction(r)}
             >
               <Text style={styles.optionText}>
                 {r.replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
@@ -60,6 +61,9 @@ const PreferencesSection = ({
             </Pressable>
           ))}
         </View>
+        {dietaryRestrictions.length === 0 && (
+          <Text style={styles.hint}>No restrictions selected</Text>
+        )}
         <Text style={styles.summary}>
           Restrictions will be used to filter future recipes.
         </Text>
@@ -104,6 +108,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   summary: { color: '#aaa', marginTop: 8, fontSize: 13 },
+  hint: { color: '#999', fontSize: 12, fontStyle: 'italic', marginBottom: 8 },
 });
 
 export default PreferencesSection;

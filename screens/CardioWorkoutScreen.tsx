@@ -14,7 +14,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { auth, db } from '../firebase';
-import { doc, setDoc, Timestamp, collection } from 'firebase/firestore';
+import { doc, setDoc, Timestamp, collection, getDoc, getDocs, query, where, updateDoc } from 'firebase/firestore';
 import Toast from 'react-native-toast-message';
 
 type CardioWorkoutRouteProp = RouteProp<RootStackParamList, 'CardioWorkout'>;
@@ -44,6 +44,13 @@ const CardioWorkoutScreen: React.FC = () => {
   const [calories, setCalories] = useState('');
   const [feeling, setFeeling] = useState<'easy' | 'moderate' | 'hard' | 'max' | null>(null);
   const [userNotes, setUserNotes] = useState('');
+  const [roundsCompleted, setRoundsCompleted] = useState('');
+
+  // Detect if this is an interval/HIIT workout
+  const isIntervalWorkout = session?.type?.toLowerCase().includes('hiit') || 
+                           session?.type?.toLowerCase().includes('circuit') ||
+                           session?.intensity?.toLowerCase().includes('interval') ||
+                           session?.notes?.toLowerCase().includes('rounds');
 
   // Timer logic
   useEffect(() => {
@@ -90,11 +97,13 @@ const CardioWorkoutScreen: React.FC = () => {
       const finalDuration = actualDuration ? parseInt(actualDuration) : Math.floor(elapsedSeconds / 60);
 
       const cardioData = {
+        dayTitle: `${session.type} - ${session.dayOfWeek}`,
         type: session.type,
         plannedDuration: session.duration,
         actualDuration: finalDuration,
         plannedIntensity: session.intensity,
         perceivedFeeling: feeling,
+        roundsCompleted: roundsCompleted ? parseInt(roundsCompleted) : null,
         distance: distance ? parseFloat(distance) : null,
         pace: pace || null,
         avgHeartRate: avgHeartRate ? parseInt(avgHeartRate) : null,
@@ -107,9 +116,34 @@ const CardioWorkoutScreen: React.FC = () => {
         workoutType: 'cardio',
       };
 
-      // Save to workout history
-      const historyRef = doc(collection(db, 'users', uid, 'workoutHistory'));
+      // Save to workout logs (matches WorkoutHistoryScreen collection name)
+      const historyRef = doc(collection(db, 'users', uid, 'workoutLogs'));
       await setDoc(historyRef, cardioData);
+      
+      console.log('✅ Cardio workout saved to workoutLogs collection:', cardioData.dayTitle);
+
+      // Mark the cardio day as complete in AI program if applicable
+      try {
+        const aiProgramsRef = collection(db, 'users', uid, 'aiPrograms');
+        const activeQuery = query(aiProgramsRef, where('isActive', '==', true));
+        const activeProgramSnap = await getDocs(activeQuery);
+        
+        if (!activeProgramSnap.empty) {
+          const programDoc = activeProgramSnap.docs[0];
+          const programData = programDoc.data();
+          const completedCardioSessions = programData.completedCardioSessions || [];
+          const sessionKey = `week${weekNumber}-${session.dayOfWeek}`;
+          
+          if (!completedCardioSessions.includes(sessionKey)) {
+            await updateDoc(programDoc.ref, {
+              completedCardioSessions: [...completedCardioSessions, sessionKey],
+            });
+            console.log('✅ Marked cardio session complete in AI program:', sessionKey);
+          }
+        }
+      } catch (error) {
+        console.warn('⚠️ Could not update AI program cardio completion:', error);
+      }
 
       Toast.show({
         type: 'success',
@@ -214,44 +248,73 @@ const CardioWorkoutScreen: React.FC = () => {
                 onChangeText={setActualDuration}
               />
             </View>
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Distance</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="3.5 mi"
-                placeholderTextColor="#666"
-                keyboardType="numeric"
-                value={distance}
-                onChangeText={setDistance}
-              />
-            </View>
+            {isIntervalWorkout ? (
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Rounds Completed</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="8"
+                  placeholderTextColor="#666"
+                  keyboardType="numeric"
+                  value={roundsCompleted}
+                  onChangeText={setRoundsCompleted}
+                />
+              </View>
+            ) : (
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Distance</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="3.5 mi"
+                  placeholderTextColor="#666"
+                  keyboardType="numeric"
+                  value={distance}
+                  onChangeText={setDistance}
+                />
+              </View>
+            )}
           </View>
 
-          <View style={styles.inputRow}>
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Avg Pace</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="8:30/mi"
-                placeholderTextColor="#666"
-                value={pace}
-                onChangeText={setPace}
-              />
+          {!isIntervalWorkout && (
+            <View style={styles.inputRow}>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Avg Pace</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="8:30/mi"
+                  placeholderTextColor="#666"
+                  value={pace}
+                  onChangeText={setPace}
+                />
+              </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Calories</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="300"
+                  placeholderTextColor="#666"
+                  keyboardType="numeric"
+                  value={calories}
+                  onChangeText={setCalories}
+                />
+              </View>
             </View>
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Calories</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="300"
-                placeholderTextColor="#666"
-                keyboardType="numeric"
-                value={calories}
-                onChangeText={setCalories}
-              />
-            </View>
-          </View>
+          )}
 
           <View style={styles.inputRow}>
+            {isIntervalWorkout && (
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Calories</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="300"
+                  placeholderTextColor="#666"
+                  keyboardType="numeric"
+                  value={calories}
+                  onChangeText={setCalories}
+                />
+              </View>
+            )}
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Avg HR (bpm)</Text>
               <TextInput

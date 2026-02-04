@@ -53,6 +53,8 @@ interface MealPlanData {
   dietMethod: 'standard' | 'zone';
   goalType: 'maintain' | 'fatloss' | 'muscle';
   name: string;
+  dietaryPreference?: string;
+  dietaryRestrictions?: string[];
 }
 
 interface FoodItem {
@@ -565,17 +567,57 @@ const prettyTime = (time?: string | null) => {
   // ✅ Save edited meal
   const handleSaveEditedMeal = async (updatedMeal: any) => {
     if (!uid || !updatedMeal.id) {return;}
+    console.log('💾 Saving edited meal:', {
+      id: updatedMeal.id,
+      name: updatedMeal.name,
+      calories: updatedMeal.calories,
+      protein: updatedMeal.protein,
+      carbs: updatedMeal.carbs,
+      fat: updatedMeal.fat,
+      manualTotals: updatedMeal.manualTotals,
+    });
+    
     try {
       const dateKey = format(selectedDate, 'yyyy-MM-dd');
       const mealDocRef = doc(db, `users/${uid}/mealLogs/${dateKey}/meals`, updatedMeal.id);
-      await updateDoc(mealDocRef, {
+      
+      // Save ALL fields from updatedMeal (not just top-level macros)
+      const updateData: any = {
         name: updatedMeal.name,
         calories: updatedMeal.calories,
         protein: updatedMeal.protein,
         carbs: updatedMeal.carbs,
         fat: updatedMeal.fat,
         updatedAt: new Date(),
+      };
+
+      // Preserve items, foodItems, manualTotals, originalDescription
+      if (updatedMeal.items !== undefined) updateData.items = updatedMeal.items;
+      if (updatedMeal.foodItems !== undefined) updateData.foodItems = updatedMeal.foodItems;
+      if (updatedMeal.manualTotals !== undefined) updateData.manualTotals = updatedMeal.manualTotals;
+      if (updatedMeal.originalDescription !== undefined) updateData.originalDescription = updatedMeal.originalDescription;
+
+      await updateDoc(mealDocRef, updateData);
+
+      console.log('✅ Firestore updated, now updating local state...');
+
+      // ✅ Update local state immediately for instant UI feedback
+      setLoggedMeals((prev: MealCardProps[]) => {
+        console.log('📝 Current logged meals:', prev.length);
+        const updated = prev.map((meal) => {
+          if (meal.id === updatedMeal.id) {
+            console.log('🔄 Updating meal:', meal.id, 'protein:', meal.protein, '→', updatedMeal.protein);
+            return {
+              ...meal,
+              ...updatedMeal, // Replace entire meal object with updated version
+            };
+          }
+          return meal;
+        });
+        console.log('✅ Logged meals updated');
+        return updated;
       });
+
       setShowEditModal(false);
       setEditingMeal(null);
     } catch (error) {
@@ -790,24 +832,26 @@ const prettyTime = (time?: string | null) => {
 
       {/* ✅ Log Food Button */}
       <View style={styles.floatingButtonContainer}>
+        <View style={{ flex: 1 }}>
+          <LogFoodButton onPress={() => {
+            console.log('🍽️ Log Food button pressed');
+            console.log('🍽️ Current modal states:', {
+              showMealLoggingModal,
+              showDescribeModal,
+              showQuickFavoritesModal,
+              showCameraModal,
+              showEditModal
+            });
+            setShowMealLoggingModal(true);
+            console.log('🍽️ Set showMealLoggingModal to true');
+          }} />
+        </View>
         <Pressable
           style={styles.aiMealButton}
           onPress={() => setShowAIMealPlanner(true)}
         >
           <Ionicons name="sparkles" size={24} color="#fff" />
         </Pressable>
-        <LogFoodButton onPress={() => {
-          console.log('🍽️ Log Food button pressed');
-          console.log('🍽️ Current modal states:', {
-            showMealLoggingModal,
-            showDescribeModal,
-            showQuickFavoritesModal,
-            showCameraModal,
-            showEditModal
-          });
-          setShowMealLoggingModal(true);
-          console.log('🍽️ Set showMealLoggingModal to true');
-        }} />
       </View>
 
       {/* ✅ MODALS - Only render one at a time to prevent crashes */}
@@ -1039,6 +1083,7 @@ mealMeta: {
   floatingButtonContainer: {
     position: 'absolute',
     bottom: 20,
+    left: 20,
     right: 20,
     flexDirection: 'row',
     gap: 12,

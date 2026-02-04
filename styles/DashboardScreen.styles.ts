@@ -1011,7 +1011,7 @@ export const dashboardStyles = StyleSheet.create({
   },
 
   // Light Workout Modal Styles
-  modalOverlay: {
+  lightWorkoutModalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.85)',
     justifyContent: 'center',
@@ -1026,13 +1026,13 @@ export const dashboardStyles = StyleSheet.create({
     padding: 20,
     maxHeight: '80%',
   },
-  modalHeader: {
+  lightWorkoutModalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 16,
   },
-  modalTitle: {
+  lightWorkoutModalTitle: {
     fontSize: 22,
     fontWeight: '700',
     color: '#fff',

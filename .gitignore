@@ -80,3 +80,4 @@ serviceAccountKey.json
 # Environment variables (contains API keys)
 .env
 .env.local
+utils/localSecrets.ts

@@ -74,7 +74,7 @@ const AIMealPlanner: React.FC<Props> = ({ visible, onClose, mealType, date = new
         targetCarbs: Math.round(mealPlan.carbGrams * mealFraction),
         targetFat: Math.round(mealPlan.fatGrams * mealFraction),
         dietaryPreference: mealPlan.dietaryPreference,
-        restrictions: mealPlan.dietaryRestriction ? [mealPlan.dietaryRestriction] : [],
+        restrictions: mealPlan.dietaryRestrictions || [],
         mealType,
         prepTimeLimit: 30,
       };

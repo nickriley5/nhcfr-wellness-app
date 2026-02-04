@@ -29,13 +29,25 @@ import { resolveExerciseDetails } from '../utils/exerciseUtils';
 interface WorkoutLog {
   dayTitle: string;
   completedAt: Timestamp;
-  exercises: {
+  workoutType?: 'strength' | 'cardio';
+  // Strength workout fields
+  exercises?: {
     name: string;
     sets: {
       weight: string;
       reps: string;
     }[];
   }[];
+  // Cardio workout fields
+  type?: string;
+  actualDuration?: number;
+  distance?: number;
+  pace?: string;
+  avgHeartRate?: number;
+  maxHeartRate?: number;
+  calories?: number;
+  perceivedFeeling?: string;
+  roundsCompleted?: number;
 }
 
 const WorkoutHistoryScreen: React.FC = () => {
@@ -120,10 +132,30 @@ const WorkoutHistoryScreen: React.FC = () => {
 
   const getLastThreeSessions = (exerciseName: string) =>
     logs
-      .filter(l => l.log.exercises.some(ex => ex.name === exerciseName))
+      .filter(l => l.log.exercises?.some(ex => ex.name === exerciseName))
       .slice(0, 3);
 
   const renderSmartSummary = (log: WorkoutLog) => {
+    // Handle cardio workouts differently
+    if (log.workoutType === 'cardio') {
+      return (
+        <View style={styles.summary}>
+          <Text style={styles.summaryTitle}>Cardio Summary</Text>
+          <Text style={styles.summaryItem}>⏱️ Duration: {log.actualDuration} min</Text>
+          {log.distance && <Text style={styles.summaryItem}>📏 Distance: {log.distance} mi</Text>}
+          {log.pace && <Text style={styles.summaryItem}>⚡ Pace: {log.pace}</Text>}
+          {log.roundsCompleted && <Text style={styles.summaryItem}>🔄 Rounds: {log.roundsCompleted}</Text>}
+          {log.calories && <Text style={styles.summaryItem}>🔥 Calories: {log.calories}</Text>}
+          {log.avgHeartRate && <Text style={styles.summaryItem}>❤️ Avg HR: {log.avgHeartRate} bpm</Text>}
+        </View>
+      );
+    }
+
+    // Handle strength workouts
+    if (!log.exercises || log.exercises.length === 0) {
+      return null;
+    }
+
     let totalVolume = 0;
     let heaviest = 0;
     const freqMap: Record<string, number> = {};
@@ -140,7 +172,9 @@ const WorkoutHistoryScreen: React.FC = () => {
       });
     });
 
-    const mostFrequentId = Object.entries(freqMap).sort((a, b) => b[1] - a[1])[0][0];
+    const mostFrequentId = Object.entries(freqMap).sort((a, b) => b[1] - a[1])[0]?.[0];
+    if (!mostFrequentId) return null;
+    
     const mostFrequentName = getExerciseName(mostFrequentId);
 
     return (
@@ -205,11 +239,23 @@ const WorkoutHistoryScreen: React.FC = () => {
           </View>
         ) : (
           logs
-          .filter(l =>
-            l.log.exercises.some(ex =>
-              ex.name.toLowerCase().includes(searchQuery.toLowerCase())
-            )
-          )
+          .filter(l => {
+            // Show all if no search query
+            if (!searchQuery) return true;
+            
+            const query = searchQuery.toLowerCase();
+            
+            // Search in title
+            if (l.log.dayTitle?.toLowerCase().includes(query)) return true;
+            
+            // Search in cardio type
+            if (l.log.workoutType === 'cardio' && l.log.type?.toLowerCase().includes(query)) return true;
+            
+            // Search in exercises for strength workouts
+            return l.log.exercises?.some(ex =>
+              ex.name.toLowerCase().includes(query)
+            ) || false;
+          })
           .map(({ id, log }) => (
             <View key={id} style={styles.card}>
               <TouchableOpacity onPress={() => toggleExpand(id)} style={styles.cardHeader}>
@@ -224,7 +270,24 @@ const WorkoutHistoryScreen: React.FC = () => {
               </TouchableOpacity>
               {expanded === id && (
                 <View style={styles.cardBody}>
-                  {log.exercises.map((ex, idx) => {
+                  {log.workoutType === 'cardio' ? (
+                    // Cardio workout display
+                    <View style={styles.cardioDetails}>
+                      <Text style={styles.cardioType}>🏃 {log.type}</Text>
+                      <Text style={styles.cardioStat}>⏱️ Duration: {log.actualDuration} min</Text>
+                      {log.distance && <Text style={styles.cardioStat}>📏 Distance: {log.distance} mi</Text>}
+                      {log.pace && <Text style={styles.cardioStat}>⚡ Pace: {log.pace}</Text>}
+                      {log.roundsCompleted && <Text style={styles.cardioStat}>🔄 Rounds: {log.roundsCompleted}</Text>}
+                      {log.calories && <Text style={styles.cardioStat}>🔥 Calories: {log.calories}</Text>}
+                      {log.avgHeartRate && <Text style={styles.cardioStat}>❤️ Avg HR: {log.avgHeartRate} bpm</Text>}
+                      {log.maxHeartRate && <Text style={styles.cardioStat}>💥 Max HR: {log.maxHeartRate} bpm</Text>}
+                      {log.perceivedFeeling && (
+                        <Text style={styles.cardioStat}>😊 Feeling: {log.perceivedFeeling}</Text>
+                      )}
+                    </View>
+                  ) : log.exercises && log.exercises.length > 0 ? (
+                    // Strength workout display
+                    log.exercises.map((ex, idx) => {
                     const exerciseName = getExerciseName(ex.name);
                     return (
                     <View key={idx} style={styles.exerciseBlock}>
@@ -249,7 +312,7 @@ const WorkoutHistoryScreen: React.FC = () => {
                       </Pressable>
                       {showLastThree[ex.name] &&
                         getLastThreeSessions(ex.name).map((entry, i) => {
-                          const match = entry.log.exercises.find(e => e.name === ex.name);
+                          const match = entry.log.exercises?.find(e => e.name === ex.name);
                           return (
                             <View key={i} style={styles.lastSessionBox}>
                               <Text style={styles.sessionDate}>
@@ -265,7 +328,10 @@ const WorkoutHistoryScreen: React.FC = () => {
                         })}
                     </View>
                     );
-                  })}
+                  })
+                  ) : (
+                    <Text style={styles.emptyText}>No workout data available</Text>
+                  )}
                   {renderSmartSummary(log)}
                 </View>
               )}
@@ -424,6 +490,24 @@ const styles = StyleSheet.create({
     color: '#999',
     textAlign: 'center',
     lineHeight: 20,
+  },
+  cardioDetails: {
+    padding: 12,
+    backgroundColor: '#1a1a1a',
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  cardioType: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FF6B35',
+    marginBottom: 12,
+  },
+  cardioStat: {
+    fontSize: 14,
+    color: '#ccc',
+    marginBottom: 6,
+    paddingLeft: 8,
   },
 });
 

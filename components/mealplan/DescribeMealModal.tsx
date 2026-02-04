@@ -8,13 +8,16 @@ import {
   ActivityIndicator,
   StyleSheet,
   ScrollView,
+  Image,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import Toast from 'react-native-toast-message';
 import { describeMeal, MealMacroResult } from '../../utils/nutritionService';
+import { analyzeMeal } from '../../utils/ai/aiService';
 import { auth, db } from '../../firebase';
 import { collection, addDoc } from 'firebase/firestore';
 import { format } from 'date-fns';
+import * as FileSystem from 'expo-file-system';
 
 // NOTE: ParsedFoodItem here is the STORAGE-SHAPE item used by TempFoodList
 // (i.e., it contains baseQuantity/currentQuantity/baseCalories/etc.)
@@ -170,7 +173,13 @@ const DescribeMealModal: React.FC<Props> = ({
   ];
 
   const handleSubmit = async () => {
-    if (!query.trim()) {return;}
+    if (!query.trim() && !pendingPhotoUri) {
+      Toast.show({
+        type: 'error',
+        text1: 'Please describe your meal or use a photo',
+      });
+      return;
+    }
 
     setLoading(true);
     setError(null);
@@ -179,7 +188,49 @@ const DescribeMealModal: React.FC<Props> = ({
     setLastResult(null);
 
     try {
-      const result = await describeMeal(query);
+      let result: MealMacroResult;
+
+      // 🔥 NEW: If there's a photo, use Gemini Vision AI
+      if (pendingPhotoUri) {
+        console.log('📸 Analyzing meal from photo with Gemini Vision...');
+        
+        // Convert image to base64
+        const base64 = await FileSystem.readAsStringAsync(pendingPhotoUri, {
+          encoding: 'base64',
+        });
+
+        // Call Gemini Vision API
+        const geminiResult = await analyzeMeal({
+          imageBase64: base64,
+          imageMimeType: 'image/jpeg',
+          text: query.trim() || undefined, // Optional text context
+        });
+
+        // Convert to MealMacroResult format
+        result = {
+          calories: geminiResult.totalMacros.calories,
+          protein: geminiResult.totalMacros.protein,
+          carbs: geminiResult.totalMacros.carbs,
+          fat: geminiResult.totalMacros.fat,
+          source: geminiResult.source.toUpperCase(),
+          items: geminiResult.items.map(item => `${item.quantity} ${item.name}`),
+          confidence: geminiResult.confidence,
+          validationFlags: geminiResult.warnings,
+          photoUri: pendingPhotoUri,
+          itemMacros: geminiResult.items.map(item => ({
+            calories: item.calories,
+            protein: item.protein,
+            carbs: item.carbs,
+            fat: item.fat,
+          })),
+        };
+
+        console.log('✅ Photo analysis complete:', result);
+      } else {
+        // Original text-based analysis
+        result = await describeMeal(query);
+      }
+
       setLastResult(result);
 
       // Normalize into STORAGE SHAPE for FoodAdjustmentList
@@ -498,8 +549,23 @@ const DescribeMealModal: React.FC<Props> = ({
 
             {!showResults ? (
               <>
+                {/* Photo Preview */}
+                {pendingPhotoUri && (
+                  <View style={styles.photoPreview}>
+                    <Image source={{ uri: pendingPhotoUri }} style={styles.photoImage} />
+                    <View style={styles.photoOverlay}>
+                      <Ionicons name="camera" size={24} color="#fff" />
+                      <Text style={styles.photoText}>📸 Photo will be analyzed with AI</Text>
+                    </View>
+                  </View>
+                )}
+
                 <TextInput
-                  placeholder="e.g. 2 eggs and toast, McDonald's Big Mac, 6oz chicken with rice"
+                  placeholder={
+                    pendingPhotoUri
+                      ? "Optional: Add context (e.g., 'post-workout meal', 'double portion')"
+                      : "e.g. 2 eggs and toast, McDonald's Big Mac, 6oz chicken with rice"
+                  }
                   placeholderTextColor="#999"
                   style={styles.input}
                   value={query}
@@ -507,7 +573,7 @@ const DescribeMealModal: React.FC<Props> = ({
                   multiline
                 />
 
-                {!loading && (
+                {!loading && !pendingPhotoUri && (
                   <View style={styles.suggestionsContainer}>
                     <Text style={styles.suggestionsTitle}>💡 Quick suggestions:</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.suggestionsScroll}>
@@ -521,29 +587,39 @@ const DescribeMealModal: React.FC<Props> = ({
                 )}
 
                 <Pressable
-                  style={[styles.searchButton, !query.trim() && styles.searchButtonDisabled]}
+                  style={[styles.searchButton, !query.trim() && !pendingPhotoUri && styles.searchButtonDisabled]}
                   onPress={handleSubmit}
-                  disabled={!query.trim() || loading}
+                  disabled={(!query.trim() && !pendingPhotoUri) || loading}
                 >
                   <Ionicons
-                    name={loading ? 'hourglass' : 'search'}
+                    name={loading ? 'hourglass' : pendingPhotoUri ? 'camera' : 'search'}
                     size={18}
-                    color={loading || !query.trim() ? '#666' : '#000'}
+                    color={loading || (!query.trim() && !pendingPhotoUri) ? '#666' : '#000'}
                   />
                   <Text
                     style={[
                       styles.searchButtonText,
-                      (!query.trim() || loading) && styles.searchButtonTextDisabled,
+                      ((!query.trim() && !pendingPhotoUri) || loading) && styles.searchButtonTextDisabled,
                     ]}
                   >
-                    {loading ? 'Analyzing with AI...' : 'Analyze Meal'}
+                    {loading
+                      ? pendingPhotoUri
+                        ? 'Analyzing photo with Gemini Vision AI...'
+                        : 'Analyzing with Gemini AI...'
+                      : pendingPhotoUri
+                      ? '📸 Analyze Photo'
+                      : 'Analyze Meal'}
                   </Text>
                 </Pressable>
 
                 {loading && (
                   <View style={styles.loadingContainer}>
                     <ActivityIndicator color="#4FC3F7" size="large" />
-                    <Text style={styles.loadingText}>Using 3 nutrition databases...</Text>
+                    <Text style={styles.loadingText}>
+                      {pendingPhotoUri
+                        ? '🤖 Gemini Vision AI analyzing your photo...'
+                        : '🤖 Gemini AI analyzing nutrition data...'}
+                    </Text>
                   </View>
                 )}
 
@@ -603,6 +679,30 @@ const DescribeMealModal: React.FC<Props> = ({
                 {/* Items editor (STORAGE SHAPE) */}
                 <FoodAdjustmentList foods={parsedFoods} onFoodsChange={setParsedFoods} photoUri={pendingPhotoUri} />
 
+                {/* Current Totals Summary */}
+                <View style={styles.totalsSummary}>
+                  <Text style={styles.totalsSummaryTitle}>📊 Current Totals</Text>
+                  <View style={styles.totalsRow}>
+                    <View style={styles.totalItem}>
+                      <Text style={styles.totalValue}>{afterTotals.calories}</Text>
+                      <Text style={styles.totalLabel}>Calories</Text>
+                    </View>
+                    <View style={styles.totalItem}>
+                      <Text style={styles.totalValue}>{afterTotals.protein}g</Text>
+                      <Text style={styles.totalLabel}>Protein</Text>
+                    </View>
+                    <View style={styles.totalItem}>
+                      <Text style={styles.totalValue}>{afterTotals.carbs}g</Text>
+                      <Text style={styles.totalLabel}>Carbs</Text>
+                    </View>
+                    <View style={styles.totalItem}>
+                      <Text style={styles.totalValue}>{afterTotals.fat}g</Text>
+                      <Text style={styles.totalLabel}>Fat</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.totalsNote}>💡 Updates as you adjust quantities above</Text>
+                </View>
+
                 {/* Actions */}
                 {isReDescribe ? (
   <View style={styles.applyBar}>
@@ -657,6 +757,36 @@ const styles = StyleSheet.create({
   contextText: { color: '#fff', fontWeight: '600' },
   contextSubtext: { color: '#aaa', marginTop: 2, fontSize: 12 },
 
+  photoPreview: {
+    width: '100%',
+    height: 200,
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: 12,
+    position: 'relative',
+  },
+  photoImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  photoOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    padding: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  photoText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+
   input: { backgroundColor: '#2a2a2a', color: '#fff', borderRadius: 8, padding: 12, minHeight: 70 },
 
   suggestionsContainer: { marginTop: 10 },
@@ -690,6 +820,49 @@ const styles = StyleSheet.create({
   compareCard: { backgroundColor: '#232323', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: '#333', marginBottom: 10 },
   compareTitle: { color: '#fff', fontWeight: '700', marginBottom: 6 },
   compareRow: { color: '#ddd', fontSize: 12 },
+
+  /* Totals Summary */
+  totalsSummary: {
+    backgroundColor: '#232323',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 16,
+    marginBottom: 12,
+    borderWidth: 2,
+    borderColor: '#4FC3F7',
+  },
+  totalsSummaryTitle: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  totalsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 8,
+  },
+  totalItem: {
+    alignItems: 'center',
+  },
+  totalValue: {
+    color: '#4FC3F7',
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  totalLabel: {
+    color: '#aaa',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  totalsNote: {
+    color: '#999',
+    fontSize: 11,
+    textAlign: 'center',
+    fontStyle: 'italic',
+    marginTop: 4,
+  },
 
   /* Normal log actions */
   actionButtons: { flexDirection: 'row', gap: 10, marginTop: 14 },
