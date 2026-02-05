@@ -54,4 +54,18 @@ describe('aiService nutrition parsing', () => {
       })
     ).toThrow('missing "name"');
   });
+
+  it('applies safe defaults for optional nutrition fields', () => {
+    const parsed = __testables.parseNutritionResult({
+      totalMacros: { calories: 500, protein: 30, carbs: 50, fat: 20 },
+      items: [{ name: 'Oats', calories: 300, protein: 10, carbs: 54, fat: 5 }],
+      confidence: 72,
+      source: 'unexpected-source',
+      detectedPortionSizes: ['1 cup', '', null, 42],
+    });
+
+    expect(parsed.items[0].quantity).toBe('1 serving');
+    expect(parsed.source).toBe('gemini-text');
+    expect(parsed.detectedPortionSizes).toEqual(['1 cup']);
+  });
 });

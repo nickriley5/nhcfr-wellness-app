@@ -95,7 +95,7 @@ const VideoToggle: React.FC<VideoToggleProps> = ({ uri }) => {
           height={300}
           videoId={videoId}
           play={false}
-          onError={(error) => {
+          onError={(error: unknown) => {
             console.error('❌ YouTube player error:', error, 'for video ID:', videoId);
           }}
           onReady={() => {

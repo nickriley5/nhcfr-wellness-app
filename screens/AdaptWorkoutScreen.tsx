@@ -238,9 +238,14 @@ const AdaptWorkoutScreen: React.FC = () => {
         );
         const aiWorkoutsSnap = await getDocs(aiWorkoutsQuery);
         
-        let latestAiWorkout = null;
-        aiWorkoutsSnap.forEach(docSnap => {
-          const data = docSnap.data();
+        type LatestAiWorkout = {
+          id: string;
+          data: Record<string, any>;
+          createdAt: Date;
+        };
+        let latestAiWorkout: LatestAiWorkout | null = null;
+        for (const docSnap of aiWorkoutsSnap.docs) {
+          const data = docSnap.data() as Record<string, any>;
           const createdAt = data.createdAt?.toDate();
           if (createdAt && createdAt >= todayStart) {
             if (!latestAiWorkout || createdAt > latestAiWorkout.createdAt) {
@@ -251,10 +256,12 @@ const AdaptWorkoutScreen: React.FC = () => {
               };
             }
           }
-        });
+        }
         
         let blocks: any[] = [];
         let dayIdx = 0;
+        let currentProgramDay = 1;
+        let totalProgramDays = 0;
         
         if (latestAiWorkout) {
           // Use AI workout exercises
@@ -284,6 +291,8 @@ const AdaptWorkoutScreen: React.FC = () => {
           const data = progSnap.data() as any;
           const curDay = data?.metadata?.currentDay ?? data?.currentDay ?? 1;
           dayIdx = Math.max(0, curDay - 1);
+          currentProgramDay = curDay;
+          totalProgramDays = Array.isArray(data?.days) ? data.days.length : 0;
           console.log('AdaptWorkout: Current day:', curDay, 'Day index:', dayIdx);
 
           blocks = data.days?.[dayIdx]?.exercises ?? [];
@@ -295,7 +304,12 @@ const AdaptWorkoutScreen: React.FC = () => {
         console.log('AdaptWorkout: Exercises count:', blocks.length);
 
         if (blocks.length === 0) {
-          Alert.alert('No Exercises', `No exercises found for day ${curDay}. Total days in program: ${data.days?.length ?? 0}`);
+          const dayLabel = activeWorkoutSource?.type === 'ai' ? 1 : currentProgramDay;
+          const suffix =
+            activeWorkoutSource?.type === 'ai'
+              ? 'AI workout had no exercises for today.'
+              : `Total days in program: ${totalProgramDays}`;
+          Alert.alert('No Exercises', `No exercises found for day ${dayLabel}. ${suffix}`);
           if (showLoadingSpinner) setLoading(false);
           else setRefreshing(false);
           navigation.goBack();

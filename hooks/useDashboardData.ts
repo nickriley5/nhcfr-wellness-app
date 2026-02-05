@@ -117,10 +117,15 @@ export function useDashboardData(view: 'week' | 'month' | 'all', bump: number = 
         // Get the most recent AI workout from today
         const todayStart = new Date();
         todayStart.setHours(0, 0, 0, 0);
-        let latestAiWorkout = null;
+        type LatestAiWorkout = {
+          id: string;
+          data: Record<string, any>;
+          createdAt: Date;
+        };
+        let latestAiWorkout: LatestAiWorkout | null = null;
         
-        aiWorkoutsSnap.forEach(docSnap => {
-          const data = docSnap.data();
+        for (const docSnap of aiWorkoutsSnap.docs) {
+          const data = docSnap.data() as Record<string, any>;
           const createdAt = data.createdAt?.toDate();
           if (createdAt && createdAt >= todayStart) {
             if (!latestAiWorkout || createdAt > latestAiWorkout.createdAt) {
@@ -131,7 +136,7 @@ export function useDashboardData(view: 'week' | 'month' | 'all', bump: number = 
               };
             }
           }
-        });
+        }
         
         if (latestAiWorkout) {
           // AI workout exists from today - use it
@@ -214,8 +219,23 @@ export function useDashboardData(view: 'week' | 'month' | 'all', bump: number = 
               // Convert AI program day to ProgramDay format
               const nameToId = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '_');
               
+              const rawPhase = week?.phase;
+              const phase: ProgramDay['phase'] =
+                rawPhase === 'Strength' ||
+                rawPhase === 'Hypertrophy' ||
+                rawPhase === 'Volume' ||
+                rawPhase === 'Overload' ||
+                rawPhase === 'Deload'
+                  ? rawPhase
+                  : 'Strength';
+
               const programDay: ProgramDay = {
+                week: currentWeek,
+                day: currentDay,
                 title: `${day.dayName} - Week ${currentWeek}`,
+                priority: 1,
+                type: 'training',
+                phase,
                 warmup: day.warmup?.map((w: string) => ({ 
                   exerciseId: nameToId(w), 
                   repsOrDuration: '5-10 reps' 
