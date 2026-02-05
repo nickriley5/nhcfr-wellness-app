@@ -4,75 +4,27 @@
  */
 
 import axios from 'axios';
-import { getEnv } from '../env';
-
-// ============= CONFIGURATION =============
-// Read API keys from environment (react-native-config) with safe fallbacks.
-const env = getEnv();
-const config = {
-  GEMINI_API_KEY: env.GEMINI_API_KEY ?? '',
-  OPENAI_API_KEY: env.OPENAI_API_KEY ?? '',
-  ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY ?? '',
-};
-
-if (config.GEMINI_API_KEY) {
-  console.log('✅ Gemini API key loaded successfully');
-} else {
-  console.warn('⚠️ Gemini API key not configured');
-}
-
-const AI_CONFIG = {
-  openai: {
-    apiKey: config.OPENAI_API_KEY || '',
-    baseURL: 'https://api.openai.com/v1',
-    model: 'gpt-4-turbo-preview',
-  },
-  anthropic: {
-    apiKey: config.ANTHROPIC_API_KEY || '',
-    baseURL: 'https://api.anthropic.com/v1',
-    model: 'claude-3-5-sonnet-20241022',
-  },
-  gemini: {
-    apiKey: config.GEMINI_API_KEY || '',
-    baseURL: 'https://generativelanguage.googleapis.com/v1beta',
-    model: 'gemini-flash-latest', // Auto-updates to latest stable flash model
-  },
-};
-
-// ============= RATE LIMITING =============
-// Track last request time to prevent 429 errors
-let lastRequestTime = 0;
-const MIN_REQUEST_DELAY = 1800; // 1.8 seconds between requests
-
-/**
- * Enforce minimum delay between AI requests to avoid rate limits
- */
-async function enforceRateLimit(): Promise<void> {
-  const now = Date.now();
-  const timeSinceLastRequest = now - lastRequestTime;
-  
-  if (timeSinceLastRequest < MIN_REQUEST_DELAY) {
-    const waitTime = MIN_REQUEST_DELAY - timeSinceLastRequest;
-    console.log(`⏱️  Rate limit: waiting ${waitTime}ms before next request...`);
-    await new Promise(resolve => setTimeout(resolve, waitTime));
-  }
-  
-  lastRequestTime = Date.now();
-}
+import { NutritionAnalysisResult, parseNutritionResult } from './nutritionSchema';
+import { AIProvider, sendProviderMessage } from './providers';
+import { cleanJsonResponse, parseCleanJsonResponse } from './jsonUtils';
+import { AI_CONFIG } from './config';
+import { enforceRateLimit } from './rateLimiter';
+import type { AIMessage, AIResponse } from './types';
+import {
+  buildWorkoutAdjustmentsPrompt,
+  buildWorkoutRecommendationPrompt,
+  WorkoutAdjustmentsContext,
+  WorkoutRecommendationContext,
+} from './prompts/workoutPrompts';
+import {
+  buildAnalyzeMealImagePrompt,
+  buildAnalyzeMealTextPrompt,
+  buildMealSuggestionsPrompt,
+} from './prompts/nutritionPrompts';
+export type { NutritionAnalysisResult } from './nutritionSchema';
+export type { AIMessage, AIResponse } from './types';
 
 // ============= TYPES =============
-export interface AIMessage {
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-}
-
-export interface AIResponse {
-  content: string;
-  tokensUsed?: number;
-  model?: string;
-  confidence?: number;
-}
-
 export interface WorkoutRecommendation {
   warmup: string[];
   exercises: string[];
@@ -174,7 +126,7 @@ export interface FormAnalysis {
  */
 export async function sendAIMessage(
   messages: AIMessage[],
-  provider: 'openai' | 'anthropic' | 'gemini' = 'gemini',
+  provider: AIProvider = 'gemini',
   options?: {
     temperature?: number;
     maxTokens?: number;
@@ -184,307 +136,8 @@ export async function sendAIMessage(
   // Enforce rate limiting to prevent 429 errors
   await enforceRateLimit();
   
-  // Validate API key exists
-  const providerConfig = AI_CONFIG[provider];
-  if (!providerConfig.apiKey) {
-    throw new Error(`${provider} API key not configured. Please check your .env file.`);
-  }
-  
   console.log(`🤖 Sending message to ${provider}...`);
-  const config = AI_CONFIG[provider];
-  
-  if (!config.apiKey) {
-    throw new Error(`${provider} API key not configured`);
-  }
-
-  try {
-    let response;
-    
-    switch (provider) {
-      case 'openai':
-        response = await sendOpenAIMessage(messages, config, options);
-        break;
-      case 'anthropic':
-        response = await sendAnthropicMessage(messages, config, options);
-        break;
-      case 'gemini':
-        response = await sendGeminiMessage(messages, config, options);
-        break;
-      default:
-        throw new Error(`Unknown provider: ${provider}`);
-    }
-    
-    return response;
-  } catch (error) {
-    throw error;
-  }
-}
-
-// ============= PROVIDER-SPECIFIC IMPLEMENTATIONS =============
-
-async function sendOpenAIMessage(
-  messages: AIMessage[],
-  config: typeof AI_CONFIG.openai,
-  options?: any
-): Promise<AIResponse> {
-  const response = await axios.post<any>(
-    `${config.baseURL}/chat/completions`,
-    {
-      model: config.model,
-      messages: messages.map(m => ({ role: m.role, content: m.content })),
-      temperature: options?.temperature || 0.7,
-      max_tokens: options?.maxTokens || 2000,
-    },
-    {
-      headers: {
-        'Authorization': `Bearer ${config.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-    }
-  );
-
-  return {
-    content: response.data.choices[0].message.content,
-    tokensUsed: response.data.usage?.total_tokens,
-    model: config.model,
-  };
-}
-
-async function sendAnthropicMessage(
-  messages: AIMessage[],
-  config: typeof AI_CONFIG.anthropic,
-  options?: any
-): Promise<AIResponse> {
-  const systemMessage = messages.find(m => m.role === 'system');
-  const userMessages = messages.filter(m => m.role !== 'system');
-
-  const response = await axios.post<any>(
-    `${config.baseURL}/messages`,
-    {
-      model: config.model,
-      max_tokens: options?.maxTokens || 2000,
-      system: systemMessage?.content,
-      messages: userMessages.map(m => ({
-        role: m.role === 'assistant' ? 'assistant' : 'user',
-        content: m.content,
-      })),
-    },
-    {
-      headers: {
-        'x-api-key': config.apiKey,
-        'anthropic-version': '2023-06-01',
-        'Content-Type': 'application/json',
-      },
-    }
-  );
-
-  return {
-    content: response.data.content[0].text,
-    tokensUsed: response.data.usage?.input_tokens + response.data.usage?.output_tokens,
-    model: config.model,
-  };
-}
-
-async function sendGeminiMessage(
-  messages: AIMessage[],
-  config: typeof AI_CONFIG.gemini,
-  options?: any
-): Promise<AIResponse> {
-  // Retry logic for 503 errors (server overload)
-  const maxRetries = 3;
-  const baseDelay = 2000; // 2 seconds
-  
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      return await sendGeminiMessageAttempt(messages, config, options);
-    } catch (error: any) {
-      const is503 = error.response?.status === 503;
-      const isLastAttempt = attempt === maxRetries;
-      
-      if (is503 && !isLastAttempt) {
-        const delay = baseDelay * Math.pow(2, attempt - 1); // Exponential backoff: 2s, 4s, 8s
-        console.log(`🔄 Retry ${attempt}/${maxRetries} after ${delay}ms...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-        continue;
-      }
-      
-      // If not 503, or if last attempt, throw the error
-      throw error;
-    }
-  }
-  
-  throw new Error('Failed after all retry attempts');
-}
-
-async function sendGeminiMessageAttempt(
-  messages: AIMessage[],
-  config: typeof AI_CONFIG.gemini,
-  options?: any
-): Promise<AIResponse> {
-  // Gemini doesn't support system messages - merge system prompt into first user message
-  const systemMessage = messages.find(m => m.role === 'system');
-  const nonSystemMessages = messages.filter(m => m.role !== 'system');
-  
-  // Gemini requires alternating user/model messages
-  // Filter to ensure proper alternation (remove consecutive messages of same role)
-  const alternatingMessages: AIMessage[] = [];
-  let lastRole: string | null = null;
-  
-  for (const msg of nonSystemMessages) {
-    if (msg.role !== lastRole) {
-      alternatingMessages.push(msg);
-      lastRole = msg.role;
-    }
-  }
-  
-  // If we only have user messages (no assistant responses), just send the last one
-  // with system prompt prepended
-  if (alternatingMessages.every(m => m.role === 'user')) {
-    const lastUserMessage = alternatingMessages[alternatingMessages.length - 1];
-    const messageText = systemMessage 
-      ? `${systemMessage.content}\n\nUser: ${lastUserMessage.content}`
-      : lastUserMessage.content;
-    
-    const formattedMessages = [{
-      role: 'user',
-      parts: [{ text: messageText }],
-    }];
-    
-    const url = `${config.baseURL}/models/${config.model}:generateContent?key=${config.apiKey}`;
-    console.log('🌐 Gemini API URL:', url.replace(config.apiKey, 'API_KEY_HIDDEN'));
-    // console.log('📨 Request payload:', JSON.stringify({ contents: formattedMessages }, null, 2));
-
-    try {
-      const response = await axios.post<any>(
-        url,
-        {
-          contents: formattedMessages,
-          generationConfig: {
-            temperature: options?.temperature || 0.7,
-            maxOutputTokens: options?.maxTokens || 8192, // Gemini max is 8192
-            topP: 0.95,
-            topK: 40,
-          },
-        },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          timeout: 60000, // 60 second timeout
-        }
-      );
-
-      // console.log('📥 Gemini response received:', JSON.stringify(response.data).substring(0, 200));
-      
-      if (!response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
-        // console.error('❌ Unexpected Gemini response structure:', JSON.stringify(response.data, null, 2));
-        throw new Error('Invalid response from Gemini API');
-      }
-
-      return {
-        content: response.data.candidates[0].content.parts[0].text,
-        model: config.model,
-      };
-    } catch (error: any) {
-      // Handle specific error codes
-      if (error.response) {
-        const status = error.response.status;
-        const errorData = error.response.data;
-
-        if (status === 503) {
-          // Don't throw immediately - let retry logic handle it
-          console.warn('⚠️ Gemini API returned 503, will retry...');
-          throw error; // Throw to trigger retry
-        } else if (status === 429) {
-          throw new Error('⏱️ Rate limit exceeded. You\'ve made too many requests. Please wait a few minutes and try again.');
-        } else if (status === 400) {
-          throw new Error(`❌ Invalid request: ${errorData?.error?.message || 'Bad request'}`);
-        } else if (status === 401 || status === 403) {
-          throw new Error('🔑 API key is invalid or has been revoked. Please check your configuration.');
-        } else if (status === 404) {
-          throw new Error(`🔍 Model not found. The model "${config.model}" may not be available.`);
-        }
-        
-        throw new Error(`Gemini API error (${status}): ${errorData?.error?.message || error.message}`);
-      }
-      
-      // Network or timeout errors
-      if (error.code === 'ECONNABORTED') {
-        throw new Error('⏱️ Request timed out. The AI is taking too long to respond. Please try again.');
-      }
-      
-      throw error;
-    }
-  }
-  
-  // If there's a system message, prepend it to the first user message
-  if (systemMessage && alternatingMessages.length > 0) {
-    const firstUserMsg = alternatingMessages.find(m => m.role === 'user');
-    if (firstUserMsg) {
-      firstUserMsg.content = `${systemMessage.content}\n\nUser: ${firstUserMsg.content}`;
-    }
-  }
-
-  const formattedMessages = alternatingMessages.map(m => ({
-    role: m.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: m.content }],
-  }));
-
-  const url = `${config.baseURL}/models/${config.model}:generateContent?key=${config.apiKey}`;
-  console.log('🌐 Gemini API URL:', url.replace(config.apiKey, 'API_KEY_HIDDEN'));
-  console.log('📨 Request payload:', JSON.stringify({ contents: formattedMessages }, null, 2));
-
-  const response = await axios.post<any>(
-    url,
-    {
-      contents: formattedMessages,
-      generationConfig: {
-        temperature: options?.temperature || 0.7,
-        maxOutputTokens: options?.maxTokens || 2000,
-      },
-    },
-    {
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    }
-  );
-
-  console.log('📥 Gemini response received:', JSON.stringify(response.data).substring(0, 200));
-  
-  if (!response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
-    console.error('❌ Unexpected Gemini response structure:', JSON.stringify(response.data, null, 2));
-    throw new Error('Invalid response from Gemini API');
-  }
-
-  return {
-    content: response.data.candidates[0].content.parts[0].text,
-    model: config.model,
-  };
-}
-
-// ============= HELPER FUNCTIONS =============
-
-/**
- * Clean markdown formatting from AI responses (e.g., ```json ... ```)
- */
-function cleanJsonResponse(text: string): string {
-  // Remove markdown code blocks
-  let cleaned = text.trim();
-  
-  // Remove ```json or ``` at the start
-  if (cleaned.startsWith('```json')) {
-    cleaned = cleaned.substring(7);
-  } else if (cleaned.startsWith('```')) {
-    cleaned = cleaned.substring(3);
-  }
-  
-  // Remove ``` at the end
-  if (cleaned.endsWith('```')) {
-    cleaned = cleaned.substring(0, cleaned.length - 3);
-  }
-  
-  return cleaned.trim();
+  return sendProviderMessage(provider, messages, AI_CONFIG, options);
 }
 
 // ============= SPECIALIZED AI FUNCTIONS =============
@@ -492,101 +145,10 @@ function cleanJsonResponse(text: string): string {
 /**
  * Get AI-powered workout recommendations based on user data
  */
-export async function getWorkoutRecommendation(userContext: {
-  goal: string;
-  experience: string;
-  equipment: string[];
-  recentWorkouts: string[];
-  injuries?: string[];
-  preferences?: string[];
-  availableExercises?: Array<{ id: string; name: string; equipment: string; focusArea: string }>;
-  duration?: number;
-  focus?: string;
-  trainingStyle?: string;
-  intensity?: number;
-}): Promise<WorkoutRecommendation> {
-  // Build compact exercise list (newline-separated, no quotes to save tokens)
-  let exerciseListText = '';
-  if (userContext.availableExercises && userContext.availableExercises.length > 0) {
-    const exerciseNames = userContext.availableExercises.map(ex => ex.name).join('\n');
-    exerciseListText = `\n\nAVAILABLE EXERCISES:\n${exerciseNames}`;
-  }
-
-  const targetDuration = userContext.duration || 45;
-  const focusArea = userContext.focus || 'Full Body';
-  const style = userContext.trainingStyle || 'Strength';
-  const intensityLevel = userContext.intensity || 5;
-  
-  // Map intensity to descriptive term
-  const intensityMap: { [key: number]: string } = {
-    1: 'Very Light', 2: 'Light', 3: 'Light', 4: 'Moderate', 5: 'Moderate',
-    6: 'Moderate', 7: 'Hard', 8: 'Hard', 9: 'Very Hard', 10: 'Maximum'
-  };
-  const intensityDesc = intensityMap[intensityLevel] || 'Moderate';
-
-  const prompt = `You are designing a single workout for a FIREFIGHTER.
-
-PROFILE:
-Experience: ${userContext.experience}
-Primary Goal: ${userContext.goal}
-Equipment Available: ${userContext.equipment.join(', ')}
-Recent Workouts (avoid repeating): ${userContext.recentWorkouts.join(', ') || 'none'}
-${userContext.injuries ? `Injuries/Limitations: ${userContext.injuries.join(', ')}` : ''}
-
-TODAY'S WORKOUT PARAMETERS:
-Duration Target: ${targetDuration} minutes
-Focus Area: ${focusArea}
-Training Style: ${style}
-Intensity Level: ${intensityDesc} (${intensityLevel}/10 RPE)${exerciseListText}
-
-🚒 FIREFIGHTER JOB-SPECIFIC FOCUS:
-Design this workout to improve occupational readiness. Consider:
-- Functional strength for victim rescue and equipment manipulation
-- Work capacity for extended duration operations
-- Movement quality under load (50+ lbs of gear)
-- Injury prevention for common firefighter issues (lower back, shoulders)
-- Real-world application to fireground tasks
-
-WORKOUT STRUCTURE:
-1. Warmup (2-3 exercises, 5-8 min): Dynamic mobility, muscle activation
-2. Main Work (4-6 exercises, ${targetDuration - 15} min): Match ${style} style and ${focusArea} focus
-   - If ${style} = "Strength": 3-5 reps, heavy loads, full recovery
-   - If ${style} = "Hypertrophy": 8-12 reps, moderate loads, 60-90s rest
-   - If ${style} = "Power": 3-5 reps, explosive movement, full recovery
-   - If ${style} = "HIIT": 30-60 sec work intervals, minimal rest
-   - If ${style} = "Conditioning": High reps or timed work, moderate rest
-   - If ${style} = "Endurance": 15+ reps or 2+ min work, short rest
-3. Cooldown (2-3 exercises, 5-7 min): Static stretching, mobility, recovery
-
-EXERCISE SELECTION RULES:
-✅ Use ONLY exercises from the AVAILABLE EXERCISES list
-✅ Copy names EXACTLY as shown (case-sensitive)
-✅ Choose exercises that match ${focusArea} focus
-✅ AVOID repeating: ${userContext.recentWorkouts.join(', ') || 'none'}
-✅ Include firefighter-priority movements when possible:
-   - Carrying (Farmer Carry, Sled work)
-   - Hip hinge (Deadlift variations)
-   - Overhead pressing (ladder/ceiling work simulation)
-   - Pulling (hoseline operations)
-   - Core stability (spine protection)
-${userContext.injuries ? `✅ Modify for: ${userContext.injuries.join(', ')}` : ''}
-
-INTENSITY CALIBRATION FOR ${intensityDesc} (${intensityLevel}/10):
-- RPE Target: ${intensityLevel - 1} to ${intensityLevel}
-- Load: ${intensityLevel < 4 ? 'Light (60-70% max)' : intensityLevel < 7 ? 'Moderate (70-80% max)' : 'Heavy (80-90% max)'}
-- Rest Periods: ${intensityLevel < 4 ? '30-45s' : intensityLevel < 7 ? '60-90s' : '2-3 min'}
-- Volume: ${intensityLevel < 4 ? 'Lower sets/reps' : intensityLevel < 7 ? 'Moderate volume' : 'Higher volume or intensity'}
-
-Return ONLY this JSON (no markdown, no extra text):
-{
-  "warmup": ["Exercise Name 1", "Exercise Name 2"],
-  "exercises": ["Exercise Name 1", "Exercise Name 2", "Exercise Name 3", "Exercise Name 4"],
-  "cooldown": ["Exercise Name 1", "Exercise Name 2"],
-  "rationale": "Brief 1-2 sentence explanation of how this workout supports firefighter ${focusArea} performance and ${userContext.goal}",
-  "estimatedDuration": ${targetDuration},
-  "difficultyScore": ${intensityLevel},
-  "focusAreas": ["${focusArea}"]
-}`;
+export async function getWorkoutRecommendation(
+  userContext: WorkoutRecommendationContext
+): Promise<WorkoutRecommendation> {
+  const prompt = buildWorkoutRecommendationPrompt(userContext);
 
   const response = await sendAIMessage(
     [
@@ -600,9 +162,7 @@ Return ONLY this JSON (no markdown, no extra text):
     { temperature: 0.9, maxTokens: 4000 } // Higher temperature for more variety
   );
 
-  const cleanedResponse = cleanJsonResponse(response.content);
-  const parsed = JSON.parse(cleanedResponse);
-  return parsed as WorkoutRecommendation;
+  return parseCleanJsonResponse<WorkoutRecommendation>(response.content);
 }
 
 /**
@@ -906,8 +466,7 @@ Return ONLY valid, parseable JSON. No markdown formatting. Be concise in notes (
     console.log('📦 First 200:', response.content.substring(0, 200));
     console.log('📦 Last 200:', response.content.substring(response.content.length - 200));
     
-    const cleaned = cleanJsonResponse(response.content);
-    const program = JSON.parse(cleaned) as PeriodizedProgram;
+    const program = parseCleanJsonResponse<PeriodizedProgram>(response.content);
     
     console.log('🏃 Generated program has cardio:', !!program.cardioSchedule);
     if (program.cardioSchedule) {
@@ -957,38 +516,7 @@ Return ONLY valid, parseable JSON. No markdown formatting. Be concise in notes (
 /**
  * Get dynamic coaching adjustments based on last workout feedback
  */
-export async function getWorkoutAdjustments(context: {
-  lastWorkout?: {
-    completedAt: string;
-    exercises: Array<{
-      name: string;
-      sets: number;
-      reps?: number;
-      weight?: number;
-      completed: boolean;
-    }>;
-    feedback?: {
-      feeling: string;
-      note?: string;
-    };
-  };
-  scheduledWorkout: {
-    dayName: string;
-    focus: string;
-    exercises: Array<{
-      name: string;
-      sets: number;
-      reps: string;
-      restSeconds: number;
-    }>;
-  };
-  programContext: {
-    currentWeek: number;
-    totalWeeks: number;
-    goal: string;
-    phase: string;
-  };
-}): Promise<{
+export async function getWorkoutAdjustments(context: WorkoutAdjustmentsContext): Promise<{
   shouldAdjust: boolean;
   coachingAdvice: string;
   adjustedWorkout?: {
@@ -1002,74 +530,7 @@ export async function getWorkoutAdjustments(context: {
   };
   reasoning: string;
 }> {
-  const lastWorkoutInfo = context.lastWorkout
-    ? `LAST WORKOUT (${context.lastWorkout.completedAt}):
-Feeling: ${context.lastWorkout.feedback?.feeling || 'Not provided'}
-Note: ${context.lastWorkout.feedback?.note || 'None'}
-Completion Rate: ${context.lastWorkout.exercises.filter(e => e.completed).length}/${context.lastWorkout.exercises.length} exercises completed
-Exercises performed:
-${context.lastWorkout.exercises
-  .map(
-    ex =>
-      `- ${ex.name}: ${ex.sets} sets${ex.weight ? ` @ ${ex.weight}lbs` : ''}${!ex.completed ? ' (INCOMPLETE)' : ''}`
-  )
-  .join('\n')}`
-    : 'No previous workout data available';
-
-  const prompt = `You are an elite strength coach analyzing a firefighter's training session to make intelligent adjustments.
-
-${lastWorkoutInfo}
-
-CURRENT PROGRAM CONTEXT:
-Week ${context.programContext.currentWeek} of ${context.programContext.totalWeeks}
-Phase: ${context.programContext.phase}
-Goal: ${context.programContext.goal}
-
-NEXT SCHEDULED WORKOUT:
-Day: ${context.scheduledWorkout.dayName}
-Focus: ${context.scheduledWorkout.focus}
-Planned Exercises:
-${context.scheduledWorkout.exercises.map(ex => `- ${ex.name}: ${ex.sets} sets × ${ex.reps}, rest ${ex.restSeconds}s`).join('\n')}
-
-COACHING TASK:
-Based on the user's feedback ("${context.lastWorkout?.feedback?.feeling}") and notes ("${context.lastWorkout?.feedback?.note || 'none'}"), determine:
-
-1. Should we adjust today's workout? Consider:
-   - If they felt "Exhausted" or "Tough" with negative notes (structure fires, poor sleep, etc.) → REDUCE intensity/volume
-   - If they felt "Strong" or "Good" consistently → Maybe INCREASE slightly
-   - If workout completion was low (< 75%) → SIMPLIFY or REDUCE volume
-   - If they're in a deload week → Keep it light regardless
-
-2. Provide specific coaching advice (2-3 sentences) that:
-   - Acknowledges their situation
-   - Explains the adjustment rationale
-   - Motivates them appropriately
-
-3. If adjusting, modify the workout (keep same exercises, adjust sets/reps/rest)
-
-ADJUSTMENT GUIDELINES:
-- For "Exhausted" with work stress: Reduce volume by 30-40%, increase rest periods
-- For "Tough" but no major issues: Reduce volume by 10-20%
-- For "Good/Strong": Proceed as planned or consider 5-10% increase
-- Always prioritize recovery over pushing through fatigue
-
-Return ONLY valid JSON:
-{
-  "shouldAdjust": true,
-  "coachingAdvice": "I see you responded to 2 structure fires last night and felt exhausted. Let's reduce today's volume by 35% and focus on quality movement. Recovery is where adaptation happens.",
-  "adjustedWorkout": {
-    "exercises": [
-      {
-        "name": "Dumbbell Bench Press",
-        "sets": 3,
-        "reps": "6-8",
-        "restSeconds": 120,
-        "notes": "Focus on form, don't push to failure"
-      }
-    ]
-  },
-  "reasoning": "Reduced sets from 4 to 3, lowered reps to prioritize recovery"
-}`;
+  const prompt = buildWorkoutAdjustmentsPrompt(context);
 
   const response = await sendAIMessage(
     [
@@ -1084,8 +545,20 @@ Return ONLY valid JSON:
     { temperature: 0.6, maxTokens: 4096 }
   );
 
-  const cleanedResponse = cleanJsonResponse(response.content);
-  const parsed = JSON.parse(cleanedResponse);
+  const parsed = parseCleanJsonResponse<{
+    shouldAdjust: boolean;
+    coachingAdvice: string;
+    adjustedWorkout?: {
+      exercises: Array<{
+        name: string;
+        sets: number;
+        reps: string;
+        restSeconds: number;
+        notes?: string;
+      }>;
+    };
+    reasoning: string;
+  }>(response.content);
   return parsed;
 }
 
@@ -1102,28 +575,7 @@ export async function getMealSuggestions(nutritionContext: {
   mealType: 'breakfast' | 'lunch' | 'dinner' | 'snack';
   prepTimeLimit?: number;
 }): Promise<MealSuggestion[]> {
-  const prompt = `You are a nutrition expert. Suggest 3 meal options for a firefighter with these requirements:
-
-Target Macros:
-- Calories: ${nutritionContext.targetCalories}
-- Protein: ${nutritionContext.targetProtein}g
-- Carbs: ${nutritionContext.targetCarbs}g
-- Fat: ${nutritionContext.targetFat}g
-
-Meal Type: ${nutritionContext.mealType}
-${nutritionContext.dietaryPreference ? `Dietary Preference: ${nutritionContext.dietaryPreference}` : ''}
-${nutritionContext.restrictions?.length ? `Restrictions: ${nutritionContext.restrictions.join(', ')}` : ''}
-${nutritionContext.prepTimeLimit ? `Max Prep Time: ${nutritionContext.prepTimeLimit} minutes` : ''}
-
-Provide a JSON array of 3 meal suggestions. Each should include:
-- name: meal name
-- ingredients: array of strings with quantities (e.g., ["200g chicken breast", "1 cup rice", "2 tbsp olive oil"])
-- macros: {calories, protein, carbs, fat}
-- prepTime: preparation time in minutes
-- difficulty: "easy", "medium", or "hard"
-- dietaryTags: array of tags like "high-protein", "low-carb", etc.
-
-Return ONLY valid JSON array, no additional text.`;
+  const prompt = buildMealSuggestionsPrompt(nutritionContext);
 
   const response = await sendAIMessage(
     [
@@ -1134,8 +586,7 @@ Return ONLY valid JSON array, no additional text.`;
     { maxTokens: 8000 }
   );
 
-  const cleanedResponse = cleanJsonResponse(response.content);
-  const parsed = JSON.parse(cleanedResponse);
+  const parsed = parseCleanJsonResponse<any[]>(response.content);
   
   // ✅ Normalize ingredients format - handle both string[] and object[] formats
   const normalizedMeals = parsed.map((meal: any) => {
@@ -1527,8 +978,7 @@ Return ONLY valid JSON with updated weights for each exercise:
     { temperature: 0.4, maxTokens: 8192 }
   );
 
-  const cleaned = cleanJsonResponse(response.content);
-  return JSON.parse(cleaned);
+  return parseCleanJsonResponse(response.content);
 }
 
 /**
@@ -1536,27 +986,10 @@ Return ONLY valid JSON with updated weights for each exercise:
  * Analyzes text descriptions OR images to extract accurate macros
  */
 
-export interface NutritionAnalysisResult {
-  totalMacros: {
-    calories: number;
-    protein: number;
-    carbs: number;
-    fat: number;
-  };
-  items: Array<{
-    name: string;
-    quantity: string;
-    calories: number;
-    protein: number;
-    carbs: number;
-    fat: number;
-  }>;
-  confidence: number; // 0-100
-  source: 'gemini-text' | 'gemini-vision';
-  detectedPortionSizes: string[];
-  warnings?: string[];
-  explanation?: string;
-}
+// Exposed for unit tests only.
+export const __testables = {
+  parseNutritionResult,
+};
 
 /**
  * Analyze meal from text description using Gemini
@@ -1566,77 +999,7 @@ export async function analyzeMealFromText(
 ): Promise<NutritionAnalysisResult> {
   console.log('🍽️ Analyzing meal from text:', description);
 
-  const prompt = `You are a professional nutritionist and dietitian specializing in accurate macro calculation for firefighters and athletes.
-
-TASK: Analyze this meal description and provide detailed nutritional information.
-
-MEAL DESCRIPTION: "${description}"
-
-INSTRUCTIONS:
-1. Identify ALL food items mentioned
-2. Estimate reasonable portion sizes based on context (firefighters typically eat 1.2-1.5x normal portions)
-3. Calculate accurate macros for EACH item individually
-4. Use standard USDA/restaurant nutrition data as reference
-5. Be conservative with estimates - slightly underestimate rather than overestimate
-6. If portion size is ambiguous, assume "1 serving" or "medium" size
-7. For restaurant items (McDonald's, Chipotle, etc.), use official nutrition facts
-
-CONFIDENCE SCORING:
-- 90-100: Exact portion specified + brand name (e.g., "McDonald's Big Mac")
-- 75-89: Clear portion specified (e.g., "6oz chicken breast", "2 eggs")
-- 60-74: General description with context (e.g., "grilled chicken sandwich")
-- 40-59: Vague description (e.g., "some chicken")
-- 0-39: Very ambiguous or missing information
-
-VALIDATION RULES:
-- Protein should be 4 cal/g
-- Carbs should be 4 cal/g  
-- Fat should be 9 cal/g
-- Total calories should roughly match sum of macros
-- Warn if values seem unrealistic
-
-RETURN FORMAT - Valid JSON only, no markdown:
-{
-  "totalMacros": {
-    "calories": 650,
-    "protein": 45,
-    "carbs": 60,
-    "fat": 22
-  },
-  "items": [
-    {
-      "name": "Grilled Chicken Breast",
-      "quantity": "6 oz",
-      "calories": 280,
-      "protein": 53,
-      "carbs": 0,
-      "fat": 6
-    },
-    {
-      "name": "Brown Rice",
-      "quantity": "1 cup cooked",
-      "calories": 215,
-      "protein": 5,
-      "carbs": 45,
-      "fat": 2
-    },
-    {
-      "name": "Olive Oil",
-      "quantity": "1 tbsp",
-      "calories": 120,
-      "protein": 0,
-      "carbs": 0,
-      "fat": 14
-    }
-  ],
-  "confidence": 75,
-  "source": "gemini-text",
-  "detectedPortionSizes": ["6 oz", "1 cup", "1 tbsp"],
-  "warnings": [],
-  "explanation": "Based on standard USDA values for cooked chicken breast (165 cal per 100g), brown rice (112 cal per 100g cooked), and olive oil (120 cal per tbsp)"
-}
-
-Return ONLY the JSON object, no additional text.`;
+  const prompt = buildAnalyzeMealTextPrompt(description);
 
   const response = await sendAIMessage(
     [
@@ -1647,8 +1010,9 @@ Return ONLY the JSON object, no additional text.`;
     { temperature: 0.3, maxTokens: 4000 }
   );
 
-  const cleaned = cleanJsonResponse(response.content);
-  const result = JSON.parse(cleaned) as NutritionAnalysisResult;
+  const parsed = parseCleanJsonResponse(response.content) as unknown;
+  const result = parseNutritionResult(parsed);
+  result.source = 'gemini-text';
 
   // Validation
   const calculatedCals = 
@@ -1686,74 +1050,7 @@ export async function analyzeMealFromImage(
 
   await enforceRateLimit();
 
-  const prompt = `You are a professional nutritionist analyzing a food photo for accurate macro calculation.
-
-TASK: Identify all foods in this image and calculate their nutritional content.
-
-${additionalContext ? `ADDITIONAL CONTEXT: ${additionalContext}` : ''}
-
-INSTRUCTIONS:
-1. Identify EVERY food item visible in the photo
-2. Estimate portion sizes based on visual cues (plate size, utensil size, food dimensions)
-3. For firefighters, portions are typically 1.2-1.5x standard servings
-4. Calculate accurate macros for each item
-5. Use visual indicators:
-   - Standard dinner plate ≈ 10-11 inches diameter
-   - Protein portion ≈ palm size or deck of cards
-   - Carb portion ≈ fist size
-   - Fat portion ≈ thumb size
-6. Account for cooking method (fried vs grilled affects calories significantly)
-7. Identify any sauces, toppings, or condiments
-
-CONFIDENCE SCORING:
-- 90-100: Clear view of all items, recognizable portions, known foods
-- 75-89: Most items visible, portion sizes estimable
-- 60-74: Some items unclear or portions hard to judge
-- 40-59: Poor lighting, blurry, or unusual foods
-- 0-39: Very unclear image or unidentifiable foods
-
-RETURN FORMAT - Valid JSON only:
-{
-  "totalMacros": {
-    "calories": 720,
-    "protein": 48,
-    "carbs": 65,
-    "fat": 24
-  },
-  "items": [
-    {
-      "name": "Grilled Chicken Breast",
-      "quantity": "~7 oz (visual estimate)",
-      "calories": 320,
-      "protein": 58,
-      "carbs": 0,
-      "fat": 8
-    },
-    {
-      "name": "White Rice",
-      "quantity": "~1.5 cups (visual estimate)",
-      "calories": 310,
-      "protein": 6,
-      "carbs": 68,
-      "fat": 1
-    },
-    {
-      "name": "Butter/Oil on rice",
-      "quantity": "~1 tbsp (visual estimate)",
-      "calories": 90,
-      "protein": 0,
-      "carbs": 0,
-      "fat": 10
-    }
-  ],
-  "confidence": 80,
-  "source": "gemini-vision",
-  "detectedPortionSizes": ["~7 oz", "~1.5 cups", "~1 tbsp"],
-  "warnings": ["Portion sizes are visual estimates - actual values may vary by 10-20%"],
-  "explanation": "Clear image showing protein and carb portions. Chicken appears grilled based on char marks. Rice portion estimated from plate coverage (~40% of plate). Small amount of fat visible (sheen on rice)."
-}
-
-Return ONLY the JSON object.`;
+  const prompt = buildAnalyzeMealImagePrompt(additionalContext);
 
   try {
     const apiKey = AI_CONFIG.gemini.apiKey;
@@ -1789,8 +1086,9 @@ Return ONLY the JSON object.`;
     );
 
     const content = (response.data as any)?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    const cleaned = cleanJsonResponse(content);
-    const result = JSON.parse(cleaned) as NutritionAnalysisResult;
+    const parsed = parseCleanJsonResponse(content) as unknown;
+    const result = parseNutritionResult(parsed);
+    result.source = 'gemini-vision';
 
     // Validation
     const calculatedCals =

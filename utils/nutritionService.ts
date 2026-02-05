@@ -2,7 +2,7 @@ import axios from 'axios';
 import { getEnv } from './env';
 import crypto from 'crypto-js';
 import { validateNutritionResult as enhancedValidation } from './precisionMath';
-import { analyzeMealFromText, NutritionAnalysisResult } from './ai/aiService';
+import { analyzeMealFromText } from './ai/aiService';
 
 // --- Safe console helpers to avoid Hermes "Error.stack invalid receiver" ---
 const safeLog = (label: string, value: unknown) => {

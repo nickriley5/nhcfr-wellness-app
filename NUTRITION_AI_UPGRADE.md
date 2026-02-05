@@ -100,10 +100,10 @@ New: "🤖 Gemini AI analyzing nutrition data..."
 ## 🔧 Technical Details
 
 ### API Changes:
-- **Removed:** Nutritionix API (no longer available)
 - **Primary:** Google Gemini 1.5 Flash (text + vision)
 - **Fallback 1:** USDA FoodData Central (free, government-run)
 - **Fallback 2:** FatSecret Platform API (free tier)
+- **Legacy (not in default routing):** Nutritionix integration remains in code but is not used by the current smart-routing flow
 
 ### New Functions in `aiService.ts`:
 ```typescript
@@ -185,6 +185,7 @@ export const describeMeal = async (query: string): Promise<MealMacroResult>
 - $49-$99/month for commercial use
 - Limited to 5,000 requests/month
 - Text-only analysis
+- Legacy integration exists but is not part of the default routing
 
 ### New System (Gemini):
 - ~$0.002 per text analysis (1,000 analyses = $2)
