@@ -17,7 +17,7 @@ import { analyzeMeal } from '../../utils/ai/aiService';
 import { auth, db } from '../../firebase';
 import { collection, addDoc } from 'firebase/firestore';
 import { format } from 'date-fns';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 
 // NOTE: ParsedFoodItem here is the STORAGE-SHAPE item used by TempFoodList
 // (i.e., it contains baseQuantity/currentQuantity/baseCalories/etc.)
@@ -404,6 +404,11 @@ const DescribeMealModal: React.FC<Props> = ({
       if (uid) {
         const dateKey = mealContext?.date || format(new Date(), 'yyyy-MM-dd');
         const mealLogRef = collection(db, `users/${uid}/mealLogs/${dateKey}/meals`);
+        const sanitizedPortionInfo = lastResult?.portionInfo
+          ? Object.fromEntries(
+              Object.entries(lastResult.portionInfo).filter(([, value]) => value !== undefined)
+            )
+          : undefined;
 
         const mealData = {
           name: mealName,
@@ -418,12 +423,12 @@ const DescribeMealModal: React.FC<Props> = ({
           confidence: lastResult?.confidence || 75,
           validationFlags: lastResult?.validationFlags || [],
           analysisSource: lastResult?.source || 'UNKNOWN',
-          portionInfo: lastResult?.portionInfo,
           mealType: mealContext?.mealType?.id || 'unknown',
           mealEmoji: mealContext?.mealType?.emoji || '🍽️',
           plannedDate: mealContext?.date || format(new Date(), 'yyyy-MM-dd'),
           plannedTime: mealContext?.time || format(new Date(), 'HH:mm'),
           loggedAt: new Date(),
+          ...(sanitizedPortionInfo ? { portionInfo: sanitizedPortionInfo } : {}),
         };
 
         await addDoc(mealLogRef, mealData);
