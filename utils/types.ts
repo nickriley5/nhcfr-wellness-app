@@ -25,6 +25,7 @@ export interface ExerciseBlock {
   rpe: number;               // 1–10 RPE scale
   tags?: string[];           // e.g. ["push","upper"] or whatever
   replacements?: string[];   // alternative Exercise.id values
+  notes?: string;
 }
 
 /**

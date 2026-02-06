@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,12 +7,16 @@ import {
   ScrollView,
   TextInput,
   Alert,
+  Vibration,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import Sound from 'react-native-sound';
+import Video from 'react-native-video';
+import WebView from 'react-native-webview';
 import { auth, db } from '../firebase';
 import { doc, setDoc, Timestamp, collection, getDoc, getDocs, query, where, updateDoc } from 'firebase/firestore';
 import Toast from 'react-native-toast-message';
@@ -26,6 +30,14 @@ interface CardioSession {
   intensity: string;
   notes?: string;
   targetHeartRate?: string;
+  circuit?: {
+    rounds: number;
+    workSec: number;
+    restSec: number;
+    exercises: Array<string | { name: string; notes?: string }>;
+  };
+  warmup?: Array<string | { name: string; notes?: string }>;
+  cooldown?: Array<string | { name: string; notes?: string }>;
 }
 
 const CardioWorkoutScreen: React.FC = () => {
@@ -35,6 +47,7 @@ const CardioWorkoutScreen: React.FC = () => {
   const { session, weekNumber } = route.params || {};
   
   const [isActive, setIsActive] = useState(false);
+  const [hasStopped, setHasStopped] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [actualDuration, setActualDuration] = useState('');
   const [distance, setDistance] = useState('');
@@ -45,12 +58,135 @@ const CardioWorkoutScreen: React.FC = () => {
   const [feeling, setFeeling] = useState<'easy' | 'moderate' | 'hard' | 'max' | null>(null);
   const [userNotes, setUserNotes] = useState('');
   const [roundsCompleted, setRoundsCompleted] = useState('');
+  const [intervalActive, setIntervalActive] = useState(false);
+  const [intervalPaused, setIntervalPaused] = useState(true);
+  const [intervalPhase, setIntervalPhase] = useState<'work' | 'rest'>('work');
+  const [intervalMsLeft, setIntervalMsLeft] = useState(0);
+  const [intervalRound, setIntervalRound] = useState(1);
+  const [intervalExerciseIndex, setIntervalExerciseIndex] = useState(0);
+  const [intervalElapsedMs, setIntervalElapsedMs] = useState(0);
+  const intervalLastTickRef = useRef<number | null>(null);
+  const intervalCountdownRef = useRef<string | null>(null);
+  const beepRef = useRef<Sound | null>(null);
+  const [expandedVideos, setExpandedVideos] = useState<Set<string>>(new Set());
 
   // Detect if this is an interval/HIIT workout
-  const isIntervalWorkout = session?.type?.toLowerCase().includes('hiit') || 
-                           session?.type?.toLowerCase().includes('circuit') ||
-                           session?.intensity?.toLowerCase().includes('interval') ||
-                           session?.notes?.toLowerCase().includes('rounds');
+  const isIntervalWorkout = !!session?.circuit ||
+    session?.type?.toLowerCase().includes('hiit') || 
+    session?.type?.toLowerCase().includes('circuit') ||
+    session?.intensity?.toLowerCase().includes('interval') ||
+    session?.notes?.toLowerCase().includes('rounds');
+
+  const parseIntervalNotes = (notes?: string) => {
+    if (!notes) return null;
+    const normalized = notes.toLowerCase();
+    const match = normalized.match(/(\d+)\s*rounds?[:\s-]*\s*(\d+)\s*s(?:ec|econds)?\s*work\s*\/\s*(\d+)\s*s(?:ec|econds)?\s*rest/);
+    const matchCompact = normalized.match(/(\d+)\s*[x×]\s*(\d+)\s*s(?:ec|econds)?\s*\/\s*(\d+)\s*s(?:ec|econds)?/);
+    if (!match) {
+      if (!matchCompact) return null;
+      const rounds = parseInt(matchCompact[1], 10);
+      const workSec = parseInt(matchCompact[2], 10);
+      const restSec = parseInt(matchCompact[3], 10);
+      if (!rounds || !workSec || !restSec) return null;
+      return { rounds, workSec, restSec };
+    }
+    const rounds = parseInt(match[1], 10);
+    const workSec = parseInt(match[2], 10);
+    const restSec = parseInt(match[3], 10);
+    if (!rounds || !workSec || !restSec) return null;
+    return { rounds, workSec, restSec };
+  };
+
+  const normalizePrepList = (list?: Array<string | { name: string; notes?: string }>) => {
+    if (!list) return [];
+    return list
+      .map(item => {
+        if (typeof item === 'string') return { name: item };
+        return { name: item?.name || 'Exercise', notes: item?.notes };
+      })
+      .filter(item => item.name);
+  };
+  const warmupList = normalizePrepList(session?.warmup);
+  const cooldownList = normalizePrepList(session?.cooldown);
+
+  const intervalConfig = session?.circuit
+    ? {
+        rounds: session.circuit.rounds,
+        workSec: session.circuit.workSec,
+        restSec: session.circuit.restSec,
+      }
+    : parseIntervalNotes(session?.notes);
+
+  const suggestedCircuit = session?.circuit?.exercises?.length
+    ? session.circuit.exercises
+    : isIntervalWorkout
+      ? ['Burpees', 'Kettlebell Swings', 'Mountain Climbers', 'Jump Rope', 'Air Squats']
+      : [];
+
+  const isCircuitFormat = !!intervalConfig && suggestedCircuit.length > 0;
+
+  const getYoutubeVideoId = (url: string): string | null => {
+    if (!url) return null;
+    const match1 = url.match(/youtube\.com\/watch\?v=([^&]+)/);
+    if (match1) return match1[1];
+    const match2 = url.match(/youtu\.be\/([^?]+)/);
+    if (match2) return match2[1];
+    const match3 = url.match(/youtube\.com\/embed\/([^?]+)/);
+    if (match3) return match3[1];
+    return null;
+  };
+
+  const toggleVideo = (exerciseKey: string) => {
+    setExpandedVideos(prev => {
+      const next = new Set(prev);
+      if (next.has(exerciseKey)) {
+        next.delete(exerciseKey);
+      } else {
+        next.add(exerciseKey);
+      }
+      return next;
+    });
+  };
+
+  const resolveCircuitExercise = (exercise: string | { name: string; notes?: string }) => {
+    const name = typeof exercise === 'string' ? exercise : (exercise?.name || 'Exercise');
+    const notes = typeof exercise === 'string' ? '' : (exercise?.notes || '');
+    let matched: any = null;
+    try {
+      const { exercises: exerciseLibrary } = require('../data/exercises');
+      matched = exerciseLibrary.find((ex: any) => ex.name.toLowerCase() === name.toLowerCase());
+    } catch {
+      matched = null;
+    }
+    return { name, notes, matched };
+  };
+
+  const resolvedCircuit = suggestedCircuit.map((exercise) => resolveCircuitExercise(exercise));
+
+  const formatPrepLine = (item: { name: string; notes?: string }) =>
+    item.notes ? `${item.name} - ${item.notes}` : item.name;
+
+  const buildCardioContext = () => {
+    if (!session) return 'No cardio session loaded.';
+    const lines = [
+      `Cardio: ${session.type} (${session.duration} min, ${session.intensity})`,
+      `Day: ${session.dayOfWeek} • Week ${weekNumber}`,
+      session.notes ? `Coach Notes: ${session.notes}` : 'Coach Notes: none',
+      warmupList.length ? `Warm-Up: ${warmupList.map(formatPrepLine).join('; ')}` : 'Warm-Up: none',
+      cooldownList.length ? `Cool-Down: ${cooldownList.map(formatPrepLine).join('; ')}` : 'Cool-Down: none',
+    ];
+
+    if (intervalConfig && suggestedCircuit.length > 0) {
+      lines.push(
+        `Interval: ${intervalConfig.rounds} rounds, ${intervalConfig.workSec}s work / ${intervalConfig.restSec}s rest`,
+        `Circuit: ${suggestedCircuit
+          .map(ex => (typeof ex === 'string' ? ex : ex.name))
+          .join(', ')}`
+      );
+    }
+
+    return lines.join('\n');
+  };
 
   // Timer logic
   useEffect(() => {
@@ -63,6 +199,108 @@ const CardioWorkoutScreen: React.FC = () => {
     return () => clearInterval(interval);
   }, [isActive]);
 
+  useEffect(() => {
+    Sound.setCategory('Playback');
+    const sound = new Sound(require('../assets/sounds/beep.wav'), (error) => {
+      if (error) {
+        console.warn('Failed to load beep sound', error);
+      }
+    });
+    beepRef.current = sound;
+    return () => {
+      sound.release();
+    };
+  }, []);
+
+  const playBeep = () => {
+    const sound = beepRef.current;
+    if (!sound) return;
+    sound.stop(() => sound.play());
+  };
+
+  const playBeepSequence = (count: number) => {
+    for (let i = 0; i < count; i += 1) {
+      setTimeout(() => playBeep(), i * 200);
+    }
+  };
+
+  // Interval timer logic (HIIT/rounds)
+  useEffect(() => {
+    if (!intervalConfig) return;
+    if (!intervalActive || intervalPaused) return;
+
+    intervalLastTickRef.current = Date.now();
+
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const last = intervalLastTickRef.current || now;
+      const delta = now - last;
+      intervalLastTickRef.current = now;
+
+      setIntervalMsLeft(prev => {
+        const nextMs = Math.max(0, prev - delta);
+        const secondsLeft = Math.ceil(nextMs / 1000);
+        if (secondsLeft > 0 && secondsLeft <= 3) {
+          const countdownKey = `${intervalPhase}-${secondsLeft}`;
+          if (intervalCountdownRef.current !== countdownKey) {
+            playBeep();
+            intervalCountdownRef.current = countdownKey;
+          }
+        }
+        if (nextMs > 0) {
+          return nextMs;
+        }
+
+        if (intervalPhase === 'rest') {
+          if (isCircuitFormat) {
+            const nextExerciseIndex = intervalExerciseIndex + 1;
+            if (nextExerciseIndex >= resolvedCircuit.length) {
+              const nextRound = intervalRound + 1;
+              if (nextRound > intervalConfig.rounds) {
+                setIntervalActive(false);
+                setIntervalPaused(true);
+                setIsActive(false);
+                Vibration.vibrate(300);
+                setRoundsCompleted((prev) => prev || String(intervalConfig.rounds));
+                setActualDuration((prev) => prev || String(Math.max(1, Math.ceil(intervalElapsedMs / 60000))));
+                playBeepSequence(3);
+                intervalCountdownRef.current = null;
+                return 0;
+              }
+              setIntervalRound(nextRound);
+              setIntervalExerciseIndex(0);
+            } else {
+              setIntervalExerciseIndex(nextExerciseIndex);
+            }
+          } else {
+            if (intervalRound >= intervalConfig.rounds) {
+              setIntervalActive(false);
+              setIntervalPaused(true);
+              setIsActive(false);
+              Vibration.vibrate(300);
+              setRoundsCompleted((prev) => prev || String(intervalConfig.rounds));
+              setActualDuration((prev) => prev || String(Math.max(1, Math.ceil(intervalElapsedMs / 60000))));
+              playBeepSequence(3);
+              intervalCountdownRef.current = null;
+              return 0;
+            }
+            setIntervalRound(intervalRound + 1);
+          }
+        }
+
+        const nextPhase = intervalPhase === 'work' ? 'rest' : 'work';
+        const nextMsPhase = (nextPhase === 'work' ? intervalConfig.workSec : intervalConfig.restSec) * 1000;
+        setIntervalPhase(nextPhase);
+        Vibration.vibrate(150);
+        intervalCountdownRef.current = null;
+        return nextMsPhase;
+      });
+      setIntervalElapsedMs(prev => prev + delta);
+    }, 250);
+
+    return () => clearInterval(interval);
+  }, [intervalActive, intervalPaused, intervalPhase, intervalConfig, intervalRound]);
+
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -70,7 +308,86 @@ const CardioWorkoutScreen: React.FC = () => {
   };
 
   const handleStartStop = () => {
+    if (hasStopped) {
+      return;
+    }
     setIsActive(!isActive);
+  };
+
+  const handleStop = () => {
+    if (elapsedSeconds === 0) {
+      return;
+    }
+    setIsActive(false);
+    setHasStopped(true);
+    if (!actualDuration) {
+      const minutes = Math.max(1, Math.ceil(elapsedSeconds / 60));
+      setActualDuration(String(minutes));
+    }
+  };
+
+  const handleReset = () => {
+    setIsActive(false);
+    setHasStopped(false);
+    setElapsedSeconds(0);
+    if (!actualDuration) {
+      setActualDuration('');
+    }
+  };
+
+  const startIntervalTimer = () => {
+    if (!intervalConfig) return;
+    setIntervalActive(true);
+    setIntervalPaused(false);
+    setIntervalPhase('work');
+    setIntervalRound(1);
+    setIntervalExerciseIndex(0);
+    setIntervalMsLeft(intervalConfig.workSec * 1000);
+    intervalCountdownRef.current = null;
+    setIntervalElapsedMs(0);
+    if (!isActive) {
+      setIsActive(true);
+    }
+  };
+
+  const toggleIntervalPause = () => {
+    if (!intervalActive) {
+      startIntervalTimer();
+      return;
+    }
+    setIntervalPaused(prev => {
+      const next = !prev;
+      setIsActive(!next);
+      if (!next) {
+        intervalLastTickRef.current = Date.now();
+      }
+      return next;
+    });
+  };
+
+  const resetIntervalTimer = () => {
+    setIntervalActive(false);
+    setIntervalPaused(true);
+    setIntervalPhase('work');
+    setIntervalRound(1);
+    setIntervalExerciseIndex(0);
+    setIntervalMsLeft(intervalConfig ? intervalConfig.workSec * 1000 : 0);
+    setIsActive(false);
+    intervalCountdownRef.current = null;
+    setIntervalElapsedMs(0);
+  };
+
+  const stopIntervalTimer = () => {
+    if (!intervalActive) return;
+    setIntervalActive(false);
+    setIntervalPaused(true);
+    setIsActive(false);
+    intervalCountdownRef.current = null;
+    const completedRounds = intervalPhase === 'work'
+      ? Math.max(0, intervalRound - 1)
+      : intervalRound;
+    setRoundsCompleted((prev) => prev || String(completedRounds));
+    setActualDuration((prev) => prev || String(Math.max(1, Math.ceil(intervalElapsedMs / 60000))));
   };
 
   const handleComplete = async () => {
@@ -94,7 +411,10 @@ const CardioWorkoutScreen: React.FC = () => {
         return;
       }
 
-      const finalDuration = actualDuration ? parseInt(actualDuration) : Math.floor(elapsedSeconds / 60);
+      const derivedMinutes = isIntervalWorkout && intervalConfig
+        ? Math.max(1, Math.ceil(intervalElapsedMs / 60000))
+        : Math.max(1, Math.ceil(elapsedSeconds / 60));
+      const finalDuration = actualDuration ? parseInt(actualDuration) : derivedMinutes;
 
       const cardioData = {
         dayTitle: `${session.type} - ${session.dayOfWeek}`,
@@ -188,7 +508,12 @@ const CardioWorkoutScreen: React.FC = () => {
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </Pressable>
         <Text style={styles.headerTitle}>Cardio Workout</Text>
-        <View style={{ width: 40 }} />
+        <Pressable
+          onPress={() => navigation.navigate('AIChat', { context: buildCardioContext() })}
+          style={styles.coachButton}
+        >
+          <Ionicons name="chatbubbles-outline" size={22} color="#fff" />
+        </Pressable>
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
@@ -219,18 +544,210 @@ const CardioWorkoutScreen: React.FC = () => {
           )}
         </View>
 
+        {warmupList.length > 0 && (
+          <View style={styles.prepCard}>
+            <Text style={styles.dataCardTitle}>Warm-Up</Text>
+            <View style={styles.prepList}>
+              {warmupList.map((item, idx) => (
+                <View key={`warmup-${idx}`} style={styles.prepItemRow}>
+                  <Text style={styles.prepItem}>• {item.name}</Text>
+                  {item.notes ? (
+                    <Text style={styles.prepItemNotes}>{item.notes}</Text>
+                  ) : null}
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {cooldownList.length > 0 && (
+          <View style={styles.prepCard}>
+            <Text style={styles.dataCardTitle}>Cool-Down</Text>
+            <View style={styles.prepList}>
+              {cooldownList.map((item, idx) => (
+                <View key={`cooldown-${idx}`} style={styles.prepItemRow}>
+                  <Text style={styles.prepItem}>• {item.name}</Text>
+                  {item.notes ? (
+                    <Text style={styles.prepItemNotes}>{item.notes}</Text>
+                  ) : null}
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+
         {/* TIMER */}
         <View style={styles.timerCard}>
           <Text style={styles.timerLabel}>Workout Timer</Text>
-          <Text style={styles.timerDisplay}>{formatTime(elapsedSeconds)}</Text>
-          <Pressable
-            style={[styles.timerButton, isActive && styles.timerButtonActive]}
-            onPress={handleStartStop}
-          >
-            <Ionicons name={isActive ? 'pause' : 'play'} size={32} color="#fff" />
-            <Text style={styles.timerButtonText}>{isActive ? 'Pause' : 'Start'}</Text>
-          </Pressable>
+          <Text style={styles.timerDisplay}>
+            {isIntervalWorkout && intervalConfig
+              ? formatTime(Math.floor(intervalElapsedMs / 1000))
+              : formatTime(elapsedSeconds)}
+          </Text>
+          {isIntervalWorkout && intervalConfig ? (
+            <Text style={styles.timerHelperText}>
+              Controlled by the interval timer
+            </Text>
+          ) : (
+            <View style={styles.timerButtonRow}>
+              <Pressable
+                style={[styles.timerButton, isActive && styles.timerButtonActive, hasStopped && styles.timerButtonDisabled]}
+                onPress={handleStartStop}
+                disabled={hasStopped}
+              >
+                <Ionicons name={isActive ? 'pause' : 'play'} size={28} color="#fff" />
+                <Text style={styles.timerButtonText}>{isActive ? 'Pause' : 'Start'}</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.timerButtonSecondary, elapsedSeconds === 0 && styles.timerButtonDisabled]}
+                onPress={handleStop}
+                disabled={elapsedSeconds === 0}
+              >
+                <Ionicons name="stop-circle-outline" size={26} color="#fff" />
+                <Text style={styles.timerButtonText}>Stop</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.timerButtonGhost, elapsedSeconds === 0 && styles.timerButtonDisabled]}
+                onPress={handleReset}
+                disabled={elapsedSeconds === 0}
+              >
+                <Ionicons name="refresh" size={24} color="#fff" />
+                <Text style={styles.timerButtonText}>Reset</Text>
+              </Pressable>
+            </View>
+          )}
         </View>
+
+        {/* HIIT CIRCUIT DETAILS */}
+        {isIntervalWorkout && intervalConfig && suggestedCircuit.length > 0 && (
+          <View style={styles.circuitCard}>
+            <Text style={styles.dataCardTitle}>HIIT Circuit</Text>
+            <Text style={styles.circuitMeta}>
+              {intervalConfig.rounds} rounds • {intervalConfig.workSec}s work / {intervalConfig.restSec}s rest
+            </Text>
+            <Text style={styles.circuitSubtext}>1 round = all exercises once</Text>
+            <View style={styles.circuitList}>
+              {suggestedCircuit.map((exercise, idx) => {
+                const { name, notes, matched } = resolveCircuitExercise(exercise);
+                const exerciseKey = `${name}-${idx}`;
+                const youtubeId = matched?.videoUrl ? getYoutubeVideoId(matched.videoUrl) : null;
+                return (
+                  <View key={exerciseKey} style={styles.circuitItemCard}>
+                    <View style={styles.circuitItemHeader}>
+                      <Text style={styles.circuitBullet}>•</Text>
+                      <Text style={styles.circuitText}>{name}</Text>
+                    </View>
+                    {notes ? (
+                      <Text style={styles.circuitNotes}>{notes}</Text>
+                    ) : null}
+
+                    {matched?.videoUrl ? (
+                      <View style={styles.exerciseVideoContainer}>
+                        {expandedVideos.has(exerciseKey) ? (
+                          <View style={styles.videoPlayerContainer}>
+                            {youtubeId ? (
+                              <WebView
+                                source={{ uri: `https://www.youtube.com/embed/${youtubeId}?playsinline=1&controls=1` }}
+                                style={styles.videoPlayer}
+                                allowsInlineMediaPlayback={true}
+                                mediaPlaybackRequiresUserAction={false}
+                              />
+                            ) : (
+                              <Video
+                                source={{ uri: matched.videoUrl }}
+                                style={styles.videoPlayer}
+                                resizeMode="contain"
+                                controls={true}
+                                paused={false}
+                                repeat={false}
+                                onEnd={() => toggleVideo(exerciseKey)}
+                              />
+                            )}
+                            <Pressable
+                              style={styles.hideVideoButton}
+                              onPress={() => toggleVideo(exerciseKey)}
+                            >
+                              <Text style={styles.hideVideoText}>Hide Video</Text>
+                              <Ionicons name="close" size={16} color="#fff" style={styles.closeIcon} />
+                            </Pressable>
+                          </View>
+                        ) : (
+                          <Pressable
+                            style={styles.viewExerciseButton}
+                            onPress={() => toggleVideo(exerciseKey)}
+                          >
+                            <Ionicons name="play-circle-outline" size={20} color="#fff" />
+                            <Text style={styles.viewExerciseText}>View Exercise</Text>
+                          </Pressable>
+                        )}
+                      </View>
+                    ) : (
+                      <View style={styles.noVideoContainer}>
+                        <Ionicons name="videocam-off-outline" size={16} color="#666" />
+                        <Text style={styles.noVideoText}>No video available</Text>
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        )}
+
+        {/* HIIT / INTERVAL TIMER */}
+        {isIntervalWorkout && intervalConfig && (
+          <View style={styles.intervalCard}>
+            <Text style={styles.dataCardTitle}>Interval Timer</Text>
+            <Text style={styles.intervalMeta}>
+              {intervalConfig.rounds} rounds • {intervalConfig.workSec}s work / {intervalConfig.restSec}s rest
+            </Text>
+            <View style={styles.intervalDisplay}>
+              {isCircuitFormat && resolvedCircuit[intervalExerciseIndex] && (
+                <Text style={styles.intervalExerciseText}>
+                  Exercise {intervalExerciseIndex + 1}/{resolvedCircuit.length}: {resolvedCircuit[intervalExerciseIndex].name}
+                </Text>
+              )}
+              <View style={styles.intervalPhaseBadge}>
+                <Text style={styles.intervalPhaseText}>
+                  {intervalPhase === 'work' ? 'WORK' : 'REST'}
+                </Text>
+              </View>
+              <Text style={styles.intervalTimeText}>
+                {intervalMsLeft > 0 ? Math.ceil(intervalMsLeft / 1000) : intervalActive ? intervalConfig.workSec : 0}s
+              </Text>
+              <Text style={styles.intervalRoundText}>
+                Round {intervalRound}/{intervalConfig.rounds}
+              </Text>
+            </View>
+            <View style={styles.timerButtonRow}>
+              <Pressable
+                style={[styles.timerButton, intervalActive && !intervalPaused && styles.timerButtonActive]}
+                onPress={toggleIntervalPause}
+              >
+                <Ionicons name={intervalActive && !intervalPaused ? 'pause' : 'play'} size={28} color="#fff" />
+                <Text style={styles.timerButtonText}>
+                  {intervalActive && !intervalPaused ? 'Pause' : 'Start'}
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[styles.timerButtonSecondary, !intervalActive && styles.timerButtonDisabled]}
+                onPress={stopIntervalTimer}
+                disabled={!intervalActive}
+              >
+                <Ionicons name="stop-circle-outline" size={26} color="#fff" />
+                <Text style={styles.timerButtonText}>Stop</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.timerButtonGhost, !intervalActive && styles.timerButtonDisabled]}
+                onPress={resetIntervalTimer}
+                disabled={!intervalActive}
+              >
+                <Ionicons name="refresh" size={24} color="#fff" />
+                <Text style={styles.timerButtonText}>Reset</Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
 
         {/* WORKOUT DATA */}
         <View style={styles.dataCard}>
@@ -407,6 +924,9 @@ const styles = StyleSheet.create({
   backButton: {
     padding: 8,
   },
+  coachButton: {
+    padding: 8,
+  },
   headerTitle: {
     fontSize: 20,
     fontWeight: '700',
@@ -508,17 +1028,249 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     backgroundColor: '#4CAF50',
-    paddingVertical: 16,
-    paddingHorizontal: 32,
+    paddingVertical: 12,
+    paddingHorizontal: 18,
     borderRadius: 12,
+    minWidth: 120,
+    flexGrow: 1,
+    justifyContent: 'center',
   },
   timerButtonActive: {
     backgroundColor: '#FF9800',
+  },
+  timerButtonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    width: '100%',
+  },
+  timerButtonSecondary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#d32f2f',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    minWidth: 110,
+    flexGrow: 1,
+    justifyContent: 'center',
+  },
+  timerButtonGhost: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#333',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#555',
+    minWidth: 110,
+    flexGrow: 1,
+    justifyContent: 'center',
+  },
+  timerButtonDisabled: {
+    opacity: 0.5,
   },
   timerButtonText: {
     fontSize: 18,
     fontWeight: '700',
     color: '#fff',
+  },
+  timerHelperText: {
+    marginTop: 8,
+    fontSize: 12,
+    color: '#aaa',
+    textAlign: 'center',
+  },
+  prepCard: {
+    backgroundColor: '#1f1f1f',
+    padding: 16,
+    borderRadius: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  prepList: {
+    gap: 6,
+  },
+  prepItemRow: {
+    gap: 4,
+  },
+  prepItem: {
+    color: '#e0e0e0',
+    fontSize: 14,
+  },
+  prepItemNotes: {
+    color: '#FFB74D',
+    fontSize: 12,
+  },
+  circuitCard: {
+    backgroundColor: '#1f1f1f',
+    padding: 20,
+    borderRadius: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 152, 0, 0.35)',
+  },
+  circuitMeta: {
+    fontSize: 13,
+    color: '#ffb74d',
+    textAlign: 'center',
+    marginBottom: 12,
+    fontWeight: '600',
+  },
+  circuitSubtext: {
+    fontSize: 12,
+    color: '#aaa',
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  circuitList: {
+    gap: 8,
+  },
+  circuitItemCard: {
+    backgroundColor: '#141414',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  circuitItemHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
+  },
+  circuitBullet: {
+    color: '#FF6B35',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  circuitText: {
+    color: '#e0e0e0',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  circuitNotes: {
+    color: '#aaa',
+    fontSize: 12,
+    marginBottom: 8,
+  },
+  exerciseVideoContainer: {
+    position: 'relative' as const,
+    marginTop: 4,
+    borderRadius: 8,
+    backgroundColor: '#1a1a1a',
+    padding: 8,
+  },
+  videoPlayerContainer: {
+    position: 'relative' as const,
+  },
+  videoPlayer: {
+    width: '100%' as const,
+    height: 200,
+    backgroundColor: '#000',
+    borderRadius: 8,
+  },
+  hideVideoButton: {
+    position: 'absolute' as const,
+    top: 8,
+    right: 8,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  hideVideoText: {
+    fontSize: 12,
+    color: '#fff',
+    fontWeight: '500' as const,
+  },
+  closeIcon: {
+    marginLeft: 4,
+  },
+  viewExerciseButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    backgroundColor: 'rgba(51, 214, 166, 0.8)',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    minHeight: 44,
+  },
+  viewExerciseText: {
+    fontSize: 14,
+    fontWeight: '500' as const,
+    color: '#fff',
+    marginLeft: 8,
+  },
+  noVideoContainer: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    backgroundColor: 'rgba(102, 102, 102, 0.1)',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+  },
+  noVideoText: {
+    fontSize: 12,
+    color: '#999',
+    marginLeft: 6,
+    fontStyle: 'italic' as const,
+  },
+  intervalCard: {
+    backgroundColor: '#1f1f1f',
+    padding: 20,
+    borderRadius: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 107, 53, 0.3)',
+  },
+  intervalMeta: {
+    fontSize: 13,
+    color: '#aaa',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  intervalDisplay: {
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  intervalPhaseBadge: {
+    backgroundColor: '#FF6B35',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  intervalPhaseText: {
+    color: '#fff',
+    fontWeight: '700',
+    letterSpacing: 1,
+  },
+  intervalTimeText: {
+    fontSize: 40,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  intervalExerciseText: {
+    fontSize: 13,
+    color: '#FFB74D',
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  intervalRoundText: {
+    fontSize: 14,
+    color: '#FF9800',
+    fontWeight: '600',
   },
   dataCard: {
     backgroundColor: '#2a2a2a',

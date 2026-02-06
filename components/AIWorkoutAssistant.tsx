@@ -36,11 +36,37 @@ const AIWorkoutAssistant: React.FC<Props> = ({ visible, onClose, onApplyRecommen
   const [trainingStyle, setTrainingStyle] = useState<string[]>(['Strength']);
   const [intensity, setIntensity] = useState(5);
 
+  const formatExerciseItem = (exercise: any) => {
+    if (!exercise) return 'Exercise';
+    if (typeof exercise === 'string') return exercise;
+    if (typeof exercise === 'object') {
+      const name = exercise.name || 'Exercise';
+      const reps = exercise.reps || exercise.reps_or_time || exercise.repsOrTime;
+      const sets = exercise.sets;
+      const rest = exercise.rest || exercise.rest_seconds || exercise.restSeconds;
+      const notes = exercise.notes;
+      const details = [
+        sets ? `${sets} sets` : null,
+        reps ? `${reps}` : null,
+        rest ? `${rest}s rest` : null,
+        notes ? `${notes}` : null,
+      ].filter(Boolean).join(' • ');
+      return details ? `${name} • ${details}` : name;
+    }
+    return String(exercise);
+  };
+
   useEffect(() => {
     if (visible) {
       loadUserContext();
     }
   }, [visible]);
+
+  useEffect(() => {
+    if (trainingStyle.includes('Endurance')) {
+      setFocus(['Cardio']);
+    }
+  }, [trainingStyle]);
 
   const loadUserContext = async () => {
     const uid = auth.currentUser?.uid;
@@ -93,9 +119,11 @@ const AIWorkoutAssistant: React.FC<Props> = ({ visible, onClose, onApplyRecommen
       const availableExercises = exercises
         .filter(ex => {
           const exerciseEquipment = (ex.equipment || '').toLowerCase();
-          
-          // Check if user has the equipment
-          const hasEquipment = exerciseEquipment === 'bodyweight' || 
+          const category = (ex.category || '').toLowerCase();
+          const isBodyweight = category.includes('bodyweight') || exerciseEquipment.includes('bodyweight');
+
+          // Check if user has the equipment (bodyweight always allowed)
+          const hasEquipment = isBodyweight ||
                                exerciseEquipment === '' ||
                                userEquipment.some((eq: string) => exerciseEquipment.includes(eq.toLowerCase()));
           
@@ -128,7 +156,28 @@ const AIWorkoutAssistant: React.FC<Props> = ({ visible, onClose, onApplyRecommen
         trainingStyle: trainingStyle[0] || 'Strength',
         intensity,
       });
-      setRecommendation(rec);
+      const styleValue = trainingStyle[0] || 'Strength';
+      const isHiit = styleValue.toLowerCase().includes('hiit') || styleValue.toLowerCase().includes('conditioning');
+      const isEndurance = styleValue.toLowerCase().includes('endurance');
+      const defaultInterval = isHiit
+        ? {
+            rounds: intensity >= 8 ? 10 : intensity >= 6 ? 8 : 6,
+            workSec: intensity >= 8 ? 50 : intensity >= 6 ? 40 : 30,
+            restSec: intensity >= 8 ? 20 : intensity >= 6 ? 30 : 45,
+            transitionSec: 10,
+            format: 'circuit',
+          }
+        : null;
+
+      setRecommendation({
+        ...rec,
+        _trainingStyle: trainingStyle[0] || 'Strength',
+        _duration: duration,
+        _intensity: intensity,
+        _focus: focus[0] || 'Full Body',
+        interval: rec.interval || defaultInterval,
+        _isEndurance: isEndurance,
+      } as any);
     } catch (error) {
       console.error('Error getting recommendation:', error);
       Toast.show({
@@ -173,11 +222,7 @@ const AIWorkoutAssistant: React.FC<Props> = ({ visible, onClose, onApplyRecommen
           <ScrollView style={styles.content}>
             {!recommendation && (
               <View style={styles.introSection}>
-                <Text style={styles.introIcon}>💪</Text>
-                <Text style={styles.introTitle}>Get a Quick Workout</Text>
-                <Text style={styles.introText}>
-                  Customize your workout session based on your current needs and available time.
-                </Text>
+                <Text style={styles.introTitle}>Quick Workout Setup</Text>
 
                 {/* DURATION SLIDER */}
                 <View style={styles.preferenceSection}>
@@ -201,7 +246,10 @@ const AIWorkoutAssistant: React.FC<Props> = ({ visible, onClose, onApplyRecommen
                 <View style={styles.preferenceSection}>
                   <Text style={styles.preferenceLabel}>Focus Area</Text>
                   <View style={styles.chipContainer}>
-                    {['Upper Body', 'Lower Body', 'Full Body', 'Core', 'Cardio'].map(area => (
+                    {(trainingStyle.includes('Endurance')
+                      ? ['Cardio']
+                      : ['Upper Body', 'Lower Body', 'Full Body', 'Core', 'Cardio']
+                    ).map(area => (
                       <Pressable
                         key={area}
                         style={[styles.chip, focus.includes(area) && styles.chipActive]}
@@ -212,6 +260,7 @@ const AIWorkoutAssistant: React.FC<Props> = ({ visible, onClose, onApplyRecommen
                             setFocus([area]); // Single selection
                           }
                         }}
+                        disabled={trainingStyle.includes('Endurance') && area !== 'Cardio'}
                       >
                         <Text style={[styles.chipText, focus.includes(area) && styles.chipTextActive]}>
                           {area}
@@ -243,6 +292,11 @@ const AIWorkoutAssistant: React.FC<Props> = ({ visible, onClose, onApplyRecommen
                       </Pressable>
                     ))}
                   </View>
+                  {trainingStyle.includes('Endurance') && (
+                    <Text style={styles.helperInline}>
+                      Endurance = steady-state cardio (Zone 2-3). Focus locked to Cardio.
+                    </Text>
+                  )}
                 </View>
 
                 {/* INTENSITY SLIDER */}
@@ -290,26 +344,42 @@ const AIWorkoutAssistant: React.FC<Props> = ({ visible, onClose, onApplyRecommen
                   <View style={styles.metaItem}>
                     <Ionicons name="flame-outline" size={20} color="#FF3C38" />
                     <Text style={styles.metaText}>
-                      Difficulty: {recommendation.difficultyScore}/10
+                      Intensity {recommendation.difficultyScore}/10
                     </Text>
                   </View>
                 </View>
 
-                <View style={styles.rationaleCard}>
-                  <Text style={styles.rationaleTitle}>Why This Workout?</Text>
-                  <Text style={styles.rationaleText}>{recommendation.rationale}</Text>
-                </View>
-
-                <View style={styles.focusCard}>
-                  <Text style={styles.focusTitle}>Focus Areas:</Text>
-                  <View style={styles.focusTags}>
-                    {recommendation.focusAreas.map((area, index) => (
-                      <View key={index} style={styles.focusTag}>
-                        <Text style={styles.focusTagText}>{area}</Text>
-                      </View>
-                    ))}
+                {recommendation.cardio && (
+                  <View style={styles.intervalSummaryCard}>
+                    <Text style={styles.intervalSummaryTitle}>Endurance Plan</Text>
+                    <Text style={styles.intervalSummaryText}>
+                      {recommendation.cardio.type} • {recommendation.cardio.duration} min • {recommendation.cardio.intensity}
+                    </Text>
+                    {recommendation.cardio.notes && (
+                      <Text style={styles.intervalSummaryText}>{recommendation.cardio.notes}</Text>
+                    )}
                   </View>
-                </View>
+                )}
+
+                {recommendation.interval && (
+                  <View style={styles.intervalSummaryCard}>
+                    <Text style={styles.intervalSummaryTitle}>HIIT Structure</Text>
+                    <Text style={styles.intervalSummaryText}>
+                      {recommendation.interval.rounds} rounds • {recommendation.interval.workSec}s work / {recommendation.interval.restSec}s rest
+                      {recommendation.interval.transitionSec ? ` • ${recommendation.interval.transitionSec}s transition` : ''}
+                    </Text>
+                    <Text style={styles.intervalSummaryText}>
+                      1 round = all exercises once
+                    </Text>
+                  </View>
+                )}
+
+                {recommendation.rationale && (
+                  <View style={styles.rationaleCard}>
+                    <Text style={styles.rationaleTitle}>Coach Note</Text>
+                    <Text style={styles.rationaleText}>{recommendation.rationale}</Text>
+                  </View>
+                )}
 
                 {recommendation.warmup && recommendation.warmup.length > 0 && (
                   <View style={styles.exercisesCard}>
@@ -319,7 +389,7 @@ const AIWorkoutAssistant: React.FC<Props> = ({ visible, onClose, onApplyRecommen
                         <View style={[styles.exerciseNumber, { backgroundColor: '#FF9800' }]}>
                           <Text style={styles.exerciseNumberText}>{index + 1}</Text>
                         </View>
-                        <Text style={styles.exerciseName}>{exercise}</Text>
+                        <Text style={styles.exerciseName}>{formatExerciseItem(exercise)}</Text>
                       </View>
                     ))}
                   </View>
@@ -332,7 +402,7 @@ const AIWorkoutAssistant: React.FC<Props> = ({ visible, onClose, onApplyRecommen
                       <View style={styles.exerciseNumber}>
                         <Text style={styles.exerciseNumberText}>{index + 1}</Text>
                       </View>
-                      <Text style={styles.exerciseName}>{exercise}</Text>
+                      <Text style={styles.exerciseName}>{formatExerciseItem(exercise)}</Text>
                     </View>
                   ))}
                 </View>
@@ -345,7 +415,7 @@ const AIWorkoutAssistant: React.FC<Props> = ({ visible, onClose, onApplyRecommen
                         <View style={[styles.exerciseNumber, { backgroundColor: '#2196F3' }]}>
                           <Text style={styles.exerciseNumberText}>{index + 1}</Text>
                         </View>
-                        <Text style={styles.exerciseName}>{exercise}</Text>
+                        <Text style={styles.exerciseName}>{formatExerciseItem(exercise)}</Text>
                       </View>
                     ))}
                   </View>
@@ -353,14 +423,13 @@ const AIWorkoutAssistant: React.FC<Props> = ({ visible, onClose, onApplyRecommen
 
                 <View style={styles.buttonRow}>
                   <Pressable
-                    style={styles.regenerateButton}
+                    style={styles.backButton}
                     onPress={() => {
                       setRecommendation(null);
-                      handleGetRecommendation();
                     }}
                   >
-                    <Ionicons name="refresh-outline" size={20} color="#fff" />
-                    <Text style={styles.regenerateButtonText}>Try Again</Text>
+                    <Ionicons name="arrow-back-outline" size={20} color="#fff" />
+                    <Text style={styles.backButtonText}>Back to Setup</Text>
                   </Pressable>
 
                   <Pressable style={styles.applyButton} onPress={handleApply}>
@@ -411,21 +480,16 @@ const styles = StyleSheet.create({
   introSection: {
     alignItems: 'center',
   },
-  introIcon: {
-    fontSize: 60,
-    marginBottom: 16,
-  },
   introTitle: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '700',
     color: '#fff',
     marginBottom: 12,
   },
-  introText: {
-    fontSize: 16,
+  helperInline: {
+    marginTop: 8,
+    fontSize: 12,
     color: '#aaa',
-    textAlign: 'center',
-    marginBottom: 24,
   },
   contextCard: {
     backgroundColor: '#222',
@@ -614,6 +678,25 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
   },
+  intervalSummaryCard: {
+    backgroundColor: '#1f1f1f',
+    padding: 14,
+    borderRadius: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 152, 0, 0.35)',
+  },
+  intervalSummaryTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFB74D',
+    marginBottom: 6,
+  },
+  intervalSummaryText: {
+    fontSize: 12,
+    color: '#ddd',
+    lineHeight: 18,
+  },
   exercisesCard: {
     backgroundColor: '#222',
     padding: 16,
@@ -660,7 +743,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
   },
-  regenerateButton: {
+  backButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
@@ -669,7 +752,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 12,
   },
-  regenerateButtonText: {
+  backButtonText: {
     color: '#fff',
     fontSize: 14,
     fontWeight: '600',

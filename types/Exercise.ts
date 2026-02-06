@@ -27,6 +27,7 @@ export interface ExerciseBlock {
   rpe: number;
   tags?: string[];
   replacements?: string[];
+  notes?: string;
 }
 
 export interface ProgramDay {
@@ -48,5 +49,4 @@ export interface ProgramTemplate {
   description?: string;
   days: ProgramDay[];
 }
-
 

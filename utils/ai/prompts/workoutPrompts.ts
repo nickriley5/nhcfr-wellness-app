@@ -59,9 +59,9 @@ WORKOUT STRUCTURE:
    - If ${style} = "Strength": 3-5 reps, heavy loads, full recovery
    - If ${style} = "Hypertrophy": 8-12 reps, moderate loads, 60-90s rest
    - If ${style} = "Power": 3-5 reps, explosive movement, full recovery
-   - If ${style} = "HIIT": 30-60 sec work intervals, minimal rest
-   - If ${style} = "Conditioning": High reps or timed work, moderate rest
-   - If ${style} = "Endurance": 15+ reps or 2+ min work, short rest
+   - If ${style} = "HIIT": 30-60 sec work, 10-30 sec rest, 6-10 rounds (include interval object below)
+   - If ${style} = "Conditioning": Timed work, moderate rest, higher density
+   - If ${style} = "Endurance": Steady-state effort (Zone 2-3). Return cardio object below, set exercises to an empty array, and do NOT include AMRAP/circuits.
 3. Cooldown (2-3 exercises, 5-7 min): Static stretching, mobility, recovery
 
 EXERCISE SELECTION RULES:
@@ -85,13 +85,15 @@ INTENSITY CALIBRATION FOR ${intensityDesc} (${intensityLevel}/10):
 
 Return ONLY this JSON (no markdown, no extra text):
 {
-  "warmup": ["Exercise Name 1", "Exercise Name 2"],
-  "exercises": ["Exercise Name 1", "Exercise Name 2", "Exercise Name 3", "Exercise Name 4"],
-  "cooldown": ["Exercise Name 1", "Exercise Name 2"],
+  "warmup": [{"name": "Exercise Name 1", "sets": 2, "reps_or_time": "10 reps", "rest": 30, "notes": "mobility"}, {"name": "Exercise Name 2", "sets": 2, "reps_or_time": "30 sec", "rest": 30}],
+  "exercises": [{"name": "Exercise Name 1", "sets": 4, "reps_or_time": "8-10", "rest": 90, "notes": "controlled"}, {"name": "Exercise Name 2", "sets": 3, "reps_or_time": "10-12", "rest": 60}],
+  "cooldown": [{"name": "Exercise Name 1", "sets": 1, "reps_or_time": "45 sec", "rest": 0}, {"name": "Exercise Name 2", "sets": 1, "reps_or_time": "45 sec", "rest": 0}],
   "rationale": "Brief 1-2 sentence explanation of how this workout supports firefighter ${focusArea} performance and ${userContext.goal}",
   "estimatedDuration": ${targetDuration},
   "difficultyScore": ${intensityLevel},
-  "focusAreas": ["${focusArea}"]
+  "focusAreas": ["${focusArea}"],
+  "interval": ${style === 'HIIT' ? '{ "rounds": 8, "workSec": 40, "restSec": 20, "transitionSec": 10, "format": "circuit" }' : 'null'},
+  "cardio": ${style === 'Endurance' ? '{ "type": "Run", "duration": ' + targetDuration + ', "intensity": "Zone 2", "notes": "Steady-state, nasal breathing if possible" }' : 'null'}
 }`;
 }
 

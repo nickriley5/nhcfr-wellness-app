@@ -36,6 +36,7 @@ import ProfileCompletionBanner from '../components/Profile/ProfileCompletionBann
 import { WeightTrackingTile } from '../components/Dashboard/WeightTrackingTile';
 // import TodaysReadinessCard from '../components/Dashboard/TodaysReadinessCard'; // COMMENTED OUT FOR PHASE 2
 import TodaysWorkoutCard from '../components/Dashboard/TodaysWorkoutCard';
+import TodaysCardioCard from '../components/Dashboard/TodaysCardioCard';
 import { CoachRecommendationBanner } from '../components/Dashboard/CoachRecommendationBanner';
 import { WeeklyProgressionCard } from '../components/Dashboard/WeeklyProgressionCard';
 import { DailyCheckInCard } from '../components/Dashboard/DailyCheckInCard';
@@ -55,6 +56,18 @@ import { analyzeTrainingReadiness } from '../utils/ai/aiService';
 import { getAuth } from 'firebase/auth';
 import { getFirestore, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
+
+const logSafeError = (label: string, err: unknown) => {
+  if (err instanceof Error) {
+    console.error(label, err.message);
+    return;
+  }
+  try {
+    console.error(label, JSON.parse(JSON.stringify(err)));
+  } catch {
+    console.error(label, String(err));
+  }
+};
 
 export default function DashboardScreen() {
   const navigation = useNavigation<
@@ -125,6 +138,8 @@ export default function DashboardScreen() {
     programInfo,
     tomorrowInfo,
     todayWorkoutSummary,
+    todayCardioSummary,
+    cardioScheduleInfo,
     consistencyData,
     updateHydrationGoal,
     updateContainerSize,
@@ -357,7 +372,7 @@ export default function DashboardScreen() {
 
         console.log('🤖 AI Readiness Analysis:', analysis);
       } catch (error) {
-        console.error('❌ Error analyzing readiness:', error);
+        logSafeError('❌ Error analyzing readiness:', error);
         // Don't mark as done on error so it can retry next time
       } finally {
         setIsAnalyzingReadiness(false);
@@ -596,7 +611,7 @@ export default function DashboardScreen() {
         {/* AI Coach Section */}
         <Pressable
           style={dashboardStyles.aiCoachCard}
-          onPress={() => navigation.navigate('AIChat')}
+          onPress={() => navigation.navigate('AIChat', { context: '' })}
         >
           <LinearGradient
             colors={['#6a11cb', '#2575fc']}
@@ -685,6 +700,12 @@ export default function DashboardScreen() {
               countSets={countSets}
               estimateTime={estimateTime}
               onRefresh={() => setBump(prev => prev + 1)}
+            />
+
+            <TodaysCardioCard
+              cardioScheduleInfo={cardioScheduleInfo}
+              todayCardioSummary={todayCardioSummary}
+              navigation={navigation}
             />
 
             {/* Enhanced Coming Up Preview */}

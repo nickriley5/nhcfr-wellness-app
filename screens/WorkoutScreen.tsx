@@ -10,9 +10,9 @@ import {
   Alert,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation, useFocusEffect, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../App';
+import { RootStackParamList, TabParamList } from '../App';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { auth, db } from '../firebase';
 import { doc, getDoc, setDoc, Timestamp, collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
@@ -76,6 +76,7 @@ const formatWorkoutDescription = (repsOrDuration: string): string => {
 const WorkoutScreen: React.FC = () => {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const route = useRoute<RouteProp<TabParamList, 'Workout'>>();
 
   const [loading, setLoading] = useState(true);
   const [state, setState] = useState<StoredState | null>(null);
@@ -102,6 +103,225 @@ const WorkoutScreen: React.FC = () => {
   const [selectedProgramForAction, setSelectedProgramForAction] = useState<PeriodizedProgram | null>(null);
   const [showProgramActionModal, setShowProgramActionModal] = useState(false);
   const [showFullProgramModal, setShowFullProgramModal] = useState(false);
+
+  const handleApplyRecommendation = async (recommendation: any) => {
+    console.log('📋 Applying AI workout recommendation:', recommendation);
+
+    try {
+      const uid = auth.currentUser?.uid;
+      if (!uid) {
+        Toast.show({
+          type: 'error',
+          text1: 'Not logged in',
+          text2: 'Please sign in to save workout',
+        });
+        return;
+      }
+
+      const recommendationAny = recommendation as any;
+      const safeDifficulty =
+        typeof recommendation?.difficultyScore === 'number' ? recommendation.difficultyScore : 5;
+      const normalizePrepItem = (item: any) => {
+        if (!item) return null;
+        if (typeof item === 'string') return { name: item };
+        const name = item.name || item.exercise || 'Exercise';
+        const notes = item.notes || item.note;
+        return { name, notes };
+      };
+      const warmupList = (recommendation.warmup || []).map(normalizePrepItem).filter(Boolean);
+      const cooldownList = (recommendation.cooldown || []).map(normalizePrepItem).filter(Boolean);
+      const trainingStyle = (recommendationAny._trainingStyle || '').toLowerCase();
+      const isHiitStyle = trainingStyle.includes('hiit') || trainingStyle.includes('interval') || trainingStyle.includes('conditioning');
+      const isEnduranceStyle = trainingStyle.includes('endurance');
+
+      if (isHiitStyle) {
+        const todayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+        const interval = recommendationAny.interval;
+        const defaultInterval = interval || { rounds: 8, workSec: 30, restSec: 90 };
+        const { exercises: exerciseLibrary } = await import('../data/exercises');
+        const userEquipment = (userProfile?.equipment || []).map((e: string) => e.toLowerCase());
+        const hasVideo = (ex: any) => ex.videoUrl && ex.videoUrl.trim() !== '';
+        const isBodyweight = (ex: any) =>
+          (ex.category || '').toLowerCase().includes('bodyweight') ||
+          (ex.equipment || '').toLowerCase().includes('bodyweight');
+        const hasEquipment = (ex: any) =>
+          isBodyweight(ex) ||
+          userEquipment.length === 0 ||
+          userEquipment.some((eq: string) => (ex.equipment || '').toLowerCase().includes(eq));
+        const hiitPool = exerciseLibrary.filter((ex: any) => hasVideo(ex) && hasEquipment(ex));
+
+        const circuitExercises = (recommendation.exercises || [])
+          .map((ex: any) => (typeof ex === 'string' ? { name: ex } : ex))
+          .map((ex: any) => {
+            const match = exerciseLibrary.find((lib: any) => lib.name.toLowerCase() === (ex.name || '').toLowerCase());
+            if (match && hasVideo(match)) {
+              return { name: match.name, notes: ex.notes };
+            }
+            return null;
+          })
+          .filter(Boolean) as Array<{ name: string; notes?: string }>;
+
+        if (circuitExercises.length < 4) {
+          const existing = new Set(circuitExercises.map(ex => ex.name));
+          for (const ex of hiitPool) {
+            if (existing.has(ex.name)) continue;
+            circuitExercises.push({ name: ex.name });
+            if (circuitExercises.length >= 4) break;
+          }
+        }
+
+        navigation.navigate('CardioWorkout', {
+          session: {
+            dayOfWeek: todayName,
+            type: 'HIIT',
+            duration: recommendation.estimatedDuration || recommendationAny._duration || 20,
+            intensity: 'Intervals',
+            notes: interval
+              ? `${interval.rounds} rounds: ${interval.workSec}s work/${interval.restSec}s rest`
+              : '8 rounds: 30s work/90s rest',
+            warmup: warmupList,
+            cooldown: cooldownList,
+            circuit: {
+              rounds: defaultInterval.rounds,
+              workSec: defaultInterval.workSec,
+              restSec: defaultInterval.restSec,
+              exercises: circuitExercises.length
+                ? circuitExercises
+                : ['Burpees', 'Kettlebell Swings', 'Mountain Climbers', 'Jump Rope'],
+            },
+          },
+          weekNumber: 1,
+        });
+        return;
+      }
+
+      if (isEnduranceStyle) {
+        const todayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+        const cardio = recommendationAny.cardio;
+        const intensityLabel = cardio?.intensity || (safeDifficulty >= 8 ? 'Hard' : safeDifficulty >= 6 ? 'Moderate' : 'Easy');
+        navigation.navigate('CardioWorkout', {
+          session: {
+            dayOfWeek: todayName,
+            type: cardio?.type || 'Endurance',
+            duration: cardio?.duration || recommendation.estimatedDuration || recommendationAny._duration || 30,
+            intensity: intensityLabel,
+            notes: cardio?.notes || recommendation.rationale || 'Steady-state effort',
+            targetHeartRate: cardio?.targetHeartRate,
+            warmup: warmupList,
+            cooldown: cooldownList,
+          },
+          weekNumber: 1,
+        });
+        return;
+      }
+
+      // Import exercise library to match names to IDs
+      const { exercises: exerciseLibrary } = await import('../data/exercises');
+      
+      // Helper function to map exercise name to library entry
+      const mapExercise = (exerciseInput: any, defaultSets: number = 3, defaultReps: string = '8-12 reps') => {
+        const exerciseName = typeof exerciseInput === 'string' ? exerciseInput : (exerciseInput?.name || 'Exercise');
+        const matchedExercise = exerciseLibrary.find(
+          ex => ex.name.toLowerCase() === exerciseName.toLowerCase()
+        );
+        
+        if (matchedExercise) {
+          const isYouTube = matchedExercise.videoUrl?.includes('youtube.com') || matchedExercise.videoUrl?.includes('youtu.be');
+          console.log(`✅ Matched: \"${exerciseName}\"`);
+          console.log(`   ID: ${matchedExercise.id}`);
+          console.log(`   Video: ${matchedExercise.videoUrl ? (isYouTube ? 'YouTube' : 'Direct MP4') : 'NONE'}`);
+        } else {
+          console.error(`❌ NOT FOUND: \"${exerciseName}\" - video will not be available`);
+        }
+        
+        const repsValue = exerciseInput?.reps || exerciseInput?.reps_or_time || exerciseInput?.repsOrTime || defaultReps;
+        const setsValue = typeof exerciseInput?.sets === 'number' ? exerciseInput.sets : defaultSets;
+        const restValue = exerciseInput?.rest || exerciseInput?.rest_seconds || exerciseInput?.restSeconds;
+
+        return {
+          id: matchedExercise?.id || exerciseName.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
+          name: matchedExercise?.name || exerciseName,
+          sets: setsValue,
+          repsOrDuration: repsValue,
+          rpe: safeDifficulty,
+          tags: recommendation.focusAreas || [],
+          replacements: matchedExercise?.swapOptions || [],
+          restSeconds: typeof restValue === 'number' ? restValue : null,
+          notes: exerciseInput?.notes,
+        };
+      };
+      
+      // Convert AI recommendation to workout program format with warm-ups and cool-downs
+      console.log('🎯 AI recommended:');
+      console.log('   Warm-up:', recommendation.warmup);
+      console.log('   Main exercises:', recommendation.exercises);
+      console.log('   Cool-down:', recommendation.cooldown);
+      
+      const aiWorkoutDays: ProgramDay[] = [{
+        week: 1,
+        day: 1,
+        title: 'AI Generated Workout',
+        priority: 1,
+        type: 'training' as const,
+        phase: 'Strength' as const,
+        warmup: (recommendation.warmup || []).map((ex: any) => mapExercise(ex, 2, '10 reps')),
+        exercises: (recommendation.exercises || []).map((ex: any) => mapExercise(ex, 3, '8-12 reps')),
+        cooldown: (recommendation.cooldown || []).map((ex: any) => mapExercise(ex, 1, '30 sec hold')),
+      }];
+      
+      console.log('💾 Saving AI workout:');
+      console.log(`   Warm-up: ${aiWorkoutDays[0].warmup.length} exercises`);
+      console.log(`   Main: ${aiWorkoutDays[0].exercises.length} exercises`);
+      console.log(`   Cool-down: ${aiWorkoutDays[0].cooldown.length} exercises`);
+
+      // Save as a separate AI workout document (doesn't overwrite active program)
+      const aiWorkoutId = `ai_${Date.now()}`;
+      await setDoc(
+        doc(db, 'users', uid, 'aiWorkouts', aiWorkoutId),
+        {
+          programId: 'ai-generated',
+          createdAt: Timestamp.now(),
+          metadata: {
+            currentDay: 1,
+            startDate: Timestamp.now(),
+            daysPerWeek: 1,
+            aiGenerated: true,
+          },
+          template: {
+            name: 'AI Generated Workout',
+            description: recommendation.rationale || '',
+            daysPerWeek: 1,
+            durationWeeks: 1,
+            difficulty: safeDifficulty > 7 ? 'Advanced' : safeDifficulty > 4 ? 'Intermediate' : 'Beginner',
+            focus: recommendation.focusAreas || [],
+          },
+          days: aiWorkoutDays,
+        }
+      );
+
+      console.log(`✅ Saved AI workout to: aiWorkouts/${aiWorkoutId}`);
+      
+      Toast.show({
+        type: 'success',
+        text1: 'AI Workout Ready! 💪',
+        text2: 'Starting your workout now',
+      });
+
+      // Navigate directly to workout detail
+      navigation.navigate('WorkoutDetail', {
+        day: aiWorkoutDays[0],
+        weekIdx: 0,
+        dayIdx: 0,
+      });
+    } catch (error) {
+      console.error('Error applying AI workout:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Failed to apply workout',
+        text2: 'Please try again',
+      });
+    }
+  };
 
   // Load recent workout history
   const fetchRecentWorkout = async () => {
@@ -731,6 +951,11 @@ const WorkoutScreen: React.FC = () => {
               {activeAiProgram.cardioSchedule.weeks
                 .find(w => w.weekNumber === currentWeekNum)
                 ?.sessions.map((session, idx) => (
+                  (() => {
+                    const completedCardioSessions = activeAiProgram.completedCardioSessions || [];
+                    const sessionKey = `week${currentWeekNum}-${session.dayOfWeek}`;
+                    const isCompleted = completedCardioSessions.includes(sessionKey);
+                    return (
                   <Pressable
                     key={idx}
                     style={styles.cardioSession}
@@ -757,8 +982,14 @@ const WorkoutScreen: React.FC = () => {
                         )}
                       </View>
                     </View>
-                    <Ionicons name="play-circle-outline" size={28} color="#FF6B35" />
+                    <Ionicons
+                      name={isCompleted ? 'checkmark-circle' : 'play-circle-outline'}
+                      size={28}
+                      color={isCompleted ? '#4CAF50' : '#FF6B35'}
+                    />
                   </Pressable>
+                    );
+                  })()
                 ))}
             </View>
           )}
@@ -847,11 +1078,12 @@ const WorkoutScreen: React.FC = () => {
           )}
         </ScrollView>
 
-        {/* AI ASSISTANT MODAL */}
-        <AIWorkoutAssistant
-          visible={showAIAssistant}
-          onClose={() => setShowAIAssistant(false)}
-        />
+      {/* AI ASSISTANT MODAL */}
+      <AIWorkoutAssistant
+        visible={showAIAssistant}
+        onClose={() => setShowAIAssistant(false)}
+        onApplyRecommendation={handleApplyRecommendation}
+      />
         
         {/* PROGRAM GENERATOR MODAL */}
         <PeriodizedProgramModal
@@ -1035,7 +1267,21 @@ const WorkoutScreen: React.FC = () => {
                       <Text style={styles.fullProgramWeekTitle}>Week {week.weekNumber}</Text>
                       {week.sessions.map((session, sessIdx) => (
                         <View key={sessIdx} style={styles.fullProgramCardioSession}>
-                          <Text style={styles.fullProgramCardioDay}>{session.dayOfWeek}</Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            <Text style={styles.fullProgramCardioDay}>{session.dayOfWeek}</Text>
+                            {(() => {
+                              const completedCardioSessions = activeAiProgram.completedCardioSessions || [];
+                              const sessionKey = `week${week.weekNumber}-${session.dayOfWeek}`;
+                              const isCompleted = completedCardioSessions.includes(sessionKey);
+                              return (
+                                <Ionicons
+                                  name={isCompleted ? 'checkmark-circle' : 'ellipse-outline'}
+                                  size={16}
+                                  color={isCompleted ? '#4CAF50' : '#666'}
+                                />
+                              );
+                            })()}
+                          </View>
                           <Text style={styles.fullProgramCardioDetails}>
                             {session.type} • {session.duration}min • {session.intensity}
                           </Text>
@@ -1216,6 +1462,7 @@ const WorkoutScreen: React.FC = () => {
         <AIWorkoutAssistant
           visible={showAIAssistant}
           onClose={() => setShowAIAssistant(false)}
+          onApplyRecommendation={handleApplyRecommendation}
         />
         
         {/* PROGRAM GENERATOR MODAL */}
@@ -1446,120 +1693,7 @@ const WorkoutScreen: React.FC = () => {
       <AIWorkoutAssistant
         visible={showAIAssistant}
         onClose={() => setShowAIAssistant(false)}
-        onApplyRecommendation={async (recommendation) => {
-          console.log('📋 Applying AI workout recommendation:', recommendation);
-          
-          try {
-            const uid = auth.currentUser?.uid;
-            if (!uid) {
-              Toast.show({
-                type: 'error',
-                text1: 'Not logged in',
-                text2: 'Please sign in to save workout',
-              });
-              return;
-            }
-
-            // Import exercise library to match names to IDs
-            const { exercises: exerciseLibrary } = await import('../data/exercises');
-            
-            // Helper function to map exercise name to library entry
-            const mapExercise = (exerciseName: string, defaultSets: number = 3, defaultReps: string = '8-12 reps') => {
-              const matchedExercise = exerciseLibrary.find(
-                ex => ex.name.toLowerCase() === exerciseName.toLowerCase()
-              );
-              
-              if (matchedExercise) {
-                const isYouTube = matchedExercise.videoUrl?.includes('youtube.com') || matchedExercise.videoUrl?.includes('youtu.be');
-                console.log(`✅ Matched: "${exerciseName}"`);
-                console.log(`   ID: ${matchedExercise.id}`);
-                console.log(`   Video: ${matchedExercise.videoUrl ? (isYouTube ? 'YouTube' : 'Direct MP4') : 'NONE'}`);
-              } else {
-                console.error(`❌ NOT FOUND: "${exerciseName}" - video will not be available`);
-              }
-              
-              return {
-                id: matchedExercise?.id || exerciseName.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
-                name: matchedExercise?.name || exerciseName,
-                sets: defaultSets,
-                repsOrDuration: defaultReps,
-                rpe: recommendation.difficultyScore,
-                tags: recommendation.focusAreas || [],
-                replacements: matchedExercise?.swapOptions || [],
-              };
-            };
-            
-            // Convert AI recommendation to workout program format with warm-ups and cool-downs
-            console.log('🎯 AI recommended:');
-            console.log('   Warm-up:', recommendation.warmup);
-            console.log('   Main exercises:', recommendation.exercises);
-            console.log('   Cool-down:', recommendation.cooldown);
-            
-            const aiWorkoutDays: ProgramDay[] = [{
-              week: 1,
-              day: 1,
-              title: 'AI Generated Workout',
-              priority: 1,
-              type: 'training' as const,
-              phase: 'Strength' as const,
-              warmup: (recommendation.warmup || []).map(ex => mapExercise(ex, 2, '10 reps')),
-              exercises: (recommendation.exercises || []).map(ex => mapExercise(ex, 3, '8-12 reps')),
-              cooldown: (recommendation.cooldown || []).map(ex => mapExercise(ex, 1, '30 sec hold')),
-            }];
-            
-            console.log('💾 Saving AI workout:');
-            console.log(`   Warm-up: ${aiWorkoutDays[0].warmup.length} exercises`);
-            console.log(`   Main: ${aiWorkoutDays[0].exercises.length} exercises`);
-            console.log(`   Cool-down: ${aiWorkoutDays[0].cooldown.length} exercises`);
-
-            // Save as a separate AI workout document (doesn't overwrite active program)
-            const aiWorkoutId = `ai_${Date.now()}`;
-            await setDoc(
-              doc(db, 'users', uid, 'aiWorkouts', aiWorkoutId),
-              {
-                programId: 'ai-generated',
-                createdAt: Timestamp.now(),
-                metadata: {
-                  currentDay: 1,
-                  startDate: Timestamp.now(),
-                  daysPerWeek: 1,
-                  aiGenerated: true,
-                },
-                template: {
-                  name: 'AI Generated Workout',
-                  description: recommendation.rationale,
-                  daysPerWeek: 1,
-                  durationWeeks: 1,
-                  difficulty: recommendation.difficultyScore > 7 ? 'Advanced' : recommendation.difficultyScore > 4 ? 'Intermediate' : 'Beginner',
-                  focus: recommendation.focusAreas,
-                },
-                days: aiWorkoutDays,
-              }
-            );
-
-            console.log(`✅ Saved AI workout to: aiWorkouts/${aiWorkoutId}`);
-            
-            Toast.show({
-              type: 'success',
-              text1: 'AI Workout Ready! 💪',
-              text2: 'Starting your workout now',
-            });
-
-            // Navigate directly to workout detail
-            navigation.navigate('WorkoutDetail', {
-              day: aiWorkoutDays[0],
-              weekIdx: 0,
-              dayIdx: 0,
-            });
-          } catch (error) {
-            console.error('Error applying AI workout:', error);
-            Toast.show({
-              type: 'error',
-              text1: 'Failed to apply workout',
-              text2: 'Please try again',
-            });
-          }
-        }}
+        onApplyRecommendation={handleApplyRecommendation}
       />
 
       {/* PERIODIZED PROGRAM GENERATOR */}
@@ -2377,3 +2511,9 @@ dayTabText: {
 
 
 export default WorkoutScreen;
+  useEffect(() => {
+    if (route.params?.openQuickWorkout) {
+      setShowAIAssistant(true);
+      navigation.setParams({ openQuickWorkout: false } as any);
+    }
+  }, [route.params?.openQuickWorkout, navigation]);

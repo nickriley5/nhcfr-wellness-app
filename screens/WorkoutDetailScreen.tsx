@@ -35,6 +35,7 @@ interface ExerciseData {
   videoUrl?: string;
   swapOptions?: string[];
   equipment?: string;
+  notes?: string;
 }
 
 interface SetData {
@@ -65,25 +66,57 @@ const WorkoutDetailScreen: React.FC = () => {
   
   const restIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  const formatContextBlock = (block: any) => {
+    if (!block) return 'Exercise';
+    if (typeof block === 'string') return block;
+    const name = block.name || block.id || 'Exercise';
+    const details: string[] = [];
+    if (block.sets) details.push(`${block.sets} sets`);
+    if (block.repsOrDuration) details.push(`${block.repsOrDuration}`);
+    if (block.restSeconds) details.push(`${block.restSeconds}s rest`);
+    const detailText = details.length ? ` (${details.join(', ')})` : '';
+    const notes = block.notes ? ` - ${block.notes}` : '';
+    return `${name}${detailText}${notes}`;
+  };
+
+  const buildWorkoutContext = () => {
+    if (!day) return 'No workout loaded.';
+    const warmupLines = (day.warmup || []).map(formatContextBlock);
+    const mainLines = (day.exercises || []).map(formatContextBlock);
+    const cooldownLines = (day.cooldown || []).map(formatContextBlock);
+    return [
+      `Workout: ${day.title || 'Workout'}`,
+      `Week ${weekIdx + 1} Day ${dayIdx + 1}`,
+      warmupLines.length ? `Warm-Up: ${warmupLines.join('; ')}` : 'Warm-Up: none',
+      mainLines.length ? `Main: ${mainLines.join('; ')}` : 'Main: none',
+      cooldownLines.length ? `Cool-Down: ${cooldownLines.join('; ')}` : 'Cool-Down: none',
+    ].join('\n');
+  };
+
   useEffect(() => {
     if (!day) return;
     
-    // Parse exercises from day data
-    const parsedExercises: ExerciseData[] = (day.exercises || []).map((ex: any) => {
-      // Resolve exercise from library
-      const resolved = resolveExercise(ex.id || ex.name);
-      
-      return {
-        id: resolved?.id || ex.id || ex.name,
-        name: resolved?.name || ex.name || 'Unknown Exercise',
-        sets: ex.sets || 3,
-        reps: ex.reps || ex.repsOrDuration || '10',
-        weight: ex.weight,
-        videoUrl: resolved?.videoUrl,
-        swapOptions: resolved?.swapOptions,
-        equipment: resolved?.equipment,
-      };
-    });
+    const parseExerciseList = (list: any[]) =>
+      (list || []).map((ex: any) => {
+        const rawName = typeof ex === 'string' ? ex : (ex.id || ex.name);
+        const resolved = resolveExercise(rawName);
+        return {
+          id: resolved?.id || rawName,
+          name: resolved?.name || rawName || 'Unknown Exercise',
+          sets: ex.sets || 3,
+          reps: ex.reps || ex.repsOrDuration || '10',
+          weight: ex.weight,
+          videoUrl: resolved?.videoUrl,
+          swapOptions: resolved?.swapOptions,
+          equipment: resolved?.equipment,
+          notes: ex.notes,
+        };
+      });
+
+    const warmupList = parseExerciseList(day.warmup || []);
+    const mainList = parseExerciseList(day.exercises || []);
+    const cooldownList = parseExerciseList(day.cooldown || []);
+    const parsedExercises: ExerciseData[] = [...warmupList, ...mainList, ...cooldownList];
     
     setExerciseList(parsedExercises);
     
@@ -379,6 +412,21 @@ const WorkoutDetailScreen: React.FC = () => {
     { value: 'hard', label: 'Hard', icon: 'flame-outline', color: '#FF9800' },
     { value: 'crushed', label: 'Crushed It', icon: 'trophy-outline', color: '#9C27B0' },
   ];
+  const warmupCount = day?.warmup?.length || 0;
+  const mainCount = day?.exercises?.length || 0;
+  const cooldownCount = day?.cooldown?.length || 0;
+  const sectionConfigs = [
+    { title: 'Warm-Up', count: warmupCount },
+    { title: 'Main Workout', count: mainCount },
+    { title: 'Cool-Down', count: cooldownCount },
+  ];
+  let sectionOffset = 0;
+  const sectionData = sectionConfigs.map(section => {
+    const start = sectionOffset;
+    const end = start + section.count;
+    sectionOffset = end;
+    return { ...section, exercises: exerciseList.slice(start, end) };
+  });
 
   return (
     <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
@@ -391,7 +439,12 @@ const WorkoutDetailScreen: React.FC = () => {
           <Text style={styles.headerTitle}>{day.title || 'Workout'}</Text>
           <Text style={styles.headerSubtitle}>Week {weekIdx + 1} • Day {dayIdx + 1}</Text>
         </View>
-        <View style={{ width: 40 }} />
+        <Pressable
+          onPress={() => navigation.navigate('AIChat', { context: buildWorkoutContext() })}
+          style={styles.coachButton}
+        >
+          <Ionicons name="chatbubbles-outline" size={22} color="#fff" />
+        </Pressable>
       </View>
 
       {/* REST TIMER BANNER */}
@@ -407,115 +460,126 @@ const WorkoutDetailScreen: React.FC = () => {
 
       <ScrollView contentContainerStyle={styles.content}>
         {/* EXERCISES */}
-        {exerciseList.map((exercise, exIdx) => {
-          const isExpanded = expandedExercises.has(exercise.id);
-          const sets = workoutSets[exercise.id] || [];
-          const completedSets = sets.filter(s => s.completed).length;
-          
+        {sectionData.map((section, sectionIdx) => {
+          if (!section.exercises.length) return null;
           return (
-            <View key={exercise.id} style={styles.exerciseCard}>
-              {/* EXERCISE HEADER */}
-              <Pressable 
-                style={styles.exerciseHeader}
-                onPress={() => toggleVideoExpand(exercise.id)}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.exerciseName}>{exercise.name}</Text>
-                  <Text style={styles.exerciseInfo}>
-                    {exercise.sets} sets × {exercise.reps} • {completedSets}/{exercise.sets} complete
-                  </Text>
-                </View>
-                <Pressable 
-                  onPress={(e) => {
-                    e.stopPropagation();
-                    handleSwapExercise(exercise);
-                  }}
-                  style={styles.swapButton}
-                >
-                  <Ionicons name="swap-horizontal" size={20} color="#4fc3f7" />
-                </Pressable>
-                <Ionicons 
-                  name={isExpanded ? 'chevron-up' : 'chevron-down'} 
-                  size={24} 
-                  color="#999" 
-                />
-              </Pressable>
-
-              {/* COLLAPSIBLE VIDEO */}
-              {isExpanded && exercise.videoUrl && (
-                <View style={styles.videoContainer}>
-                  {(() => {
-                    const youtubeId = getYoutubeVideoId(exercise.videoUrl);
-                    if (youtubeId) {
-                      return (
-                        <YoutubePlayer
-                          height={220}
-                          videoId={youtubeId}
-                          play={false}
-                        />
-                      );
-                    } else {
-                      return (
-                        <Video
-                          source={{ uri: exercise.videoUrl }}
-                          style={styles.video}
-                          controls
-                          resizeMode="contain"
-                          paused
-                        />
-                      );
-                    }
-                  })()}
-                </View>
-              )}
-
-              {/* SETS */}
-              {sets.map((set, setIdx) => (
-                <View 
-                  key={`${exercise.id}-set-${setIdx}`} 
-                  style={[styles.setRow, set.completed && styles.setRowCompleted]}
-                >
-                  <View style={styles.setNumber}>
-                    <Text style={styles.setNumberText}>{setIdx + 1}</Text>
-                  </View>
-                  
-                  <View style={styles.setInputs}>
-                    <View style={styles.inputGroup}>
-                      <Text style={styles.inputLabel}>Weight</Text>
-                      <TextInput
-                        style={styles.input}
-                        placeholder={exercise.weight || '0'}
-                        placeholderTextColor="#666"
-                        keyboardType="numeric"
-                        value={set.weight}
-                        onChangeText={(val) => updateSet(exercise.id, setIdx, 'weight', val)}
-                        editable={!set.completed}
+            <View key={`${section.title}-${sectionIdx}`} style={styles.sectionBlock}>
+              <Text style={styles.sectionHeaderText}>{section.title}</Text>
+              {section.exercises.map((exercise) => {
+                const isExpanded = expandedExercises.has(exercise.id);
+                const sets = workoutSets[exercise.id] || [];
+                const completedSets = sets.filter(s => s.completed).length;
+                
+                return (
+                  <View key={exercise.id} style={styles.exerciseCard}>
+                    {/* EXERCISE HEADER */}
+                    <Pressable 
+                      style={styles.exerciseHeader}
+                      onPress={() => toggleVideoExpand(exercise.id)}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.exerciseName}>{exercise.name}</Text>
+                        <Text style={styles.exerciseInfo}>
+                          {exercise.sets} sets × {exercise.reps} • {completedSets}/{exercise.sets} complete
+                        </Text>
+                        {exercise.notes ? (
+                          <Text style={styles.exerciseNotes}>{exercise.notes}</Text>
+                        ) : null}
+                      </View>
+                      <Pressable 
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          handleSwapExercise(exercise);
+                        }}
+                        style={styles.swapButton}
+                      >
+                        <Ionicons name="swap-horizontal" size={20} color="#4fc3f7" />
+                      </Pressable>
+                      <Ionicons 
+                        name={isExpanded ? 'chevron-up' : 'chevron-down'} 
+                        size={24} 
+                        color="#999" 
                       />
-                    </View>
-                    
-                    <View style={styles.inputGroup}>
-                      <Text style={styles.inputLabel}>Reps</Text>
-                      <TextInput
-                        style={styles.input}
-                        placeholder={exercise.reps}
-                        placeholderTextColor="#666"
-                        keyboardType="numeric"
-                        value={set.reps}
-                        onChangeText={(val) => updateSet(exercise.id, setIdx, 'reps', val)}
-                        editable={!set.completed}
-                      />
-                    </View>
+                    </Pressable>
+
+                    {/* COLLAPSIBLE VIDEO */}
+                    {isExpanded && exercise.videoUrl && (
+                      <View style={styles.videoContainer}>
+                        {(() => {
+                          const youtubeId = getYoutubeVideoId(exercise.videoUrl);
+                          if (youtubeId) {
+                            return (
+                              <YoutubePlayer
+                                height={220}
+                                videoId={youtubeId}
+                                play={false}
+                              />
+                            );
+                          } else {
+                            return (
+                              <Video
+                                source={{ uri: exercise.videoUrl }}
+                                style={styles.video}
+                                controls
+                                resizeMode="contain"
+                                paused
+                              />
+                            );
+                          }
+                        })()}
+                      </View>
+                    )}
+
+                    {/* SETS */}
+                    {sets.map((set, setIdx) => (
+                      <View 
+                        key={`${exercise.id}-set-${setIdx}`} 
+                        style={[styles.setRow, set.completed && styles.setRowCompleted]}
+                      >
+                        <View style={styles.setNumber}>
+                          <Text style={styles.setNumberText}>{setIdx + 1}</Text>
+                        </View>
+                        
+                        <View style={styles.setInputs}>
+                          <View style={styles.inputGroup}>
+                            <Text style={styles.inputLabel}>Weight</Text>
+                            <TextInput
+                              style={styles.input}
+                              placeholder={exercise.weight || '0'}
+                              placeholderTextColor="#666"
+                              keyboardType="numeric"
+                              value={set.weight}
+                              onChangeText={(val) => updateSet(exercise.id, setIdx, 'weight', val)}
+                              editable={!set.completed}
+                            />
+                          </View>
+                          
+                          <View style={styles.inputGroup}>
+                            <Text style={styles.inputLabel}>Reps</Text>
+                            <TextInput
+                              style={styles.input}
+                              placeholder={exercise.reps}
+                              placeholderTextColor="#666"
+                              keyboardType="numeric"
+                              value={set.reps}
+                              onChangeText={(val) => updateSet(exercise.id, setIdx, 'reps', val)}
+                              editable={!set.completed}
+                            />
+                          </View>
+                        </View>
+                        
+                        <Pressable onPress={() => toggleSetComplete(exercise.id, setIdx)}>
+                          <Ionicons
+                            name={set.completed ? 'checkmark-circle' : 'ellipse-outline'}
+                            size={32}
+                            color={set.completed ? '#4CAF50' : '#666'}
+                          />
+                        </Pressable>
+                      </View>
+                    ))}
                   </View>
-                  
-                  <Pressable onPress={() => toggleSetComplete(exercise.id, setIdx)}>
-                    <Ionicons
-                      name={set.completed ? 'checkmark-circle' : 'ellipse-outline'}
-                      size={32}
-                      color={set.completed ? '#4CAF50' : '#666'}
-                    />
-                  </Pressable>
-                </View>
-              ))}
+                );
+              })}
             </View>
           );
         })}
@@ -637,6 +701,9 @@ const styles = StyleSheet.create({
   backButton: {
     padding: 8,
   },
+  coachButton: {
+    padding: 8,
+  },
   headerTitle: {
     fontSize: 20,
     fontWeight: '700',
@@ -675,6 +742,16 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#999',
   },
+  sectionBlock: {
+    marginBottom: 8,
+  },
+  sectionHeaderText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFB74D',
+    marginBottom: 10,
+    paddingLeft: 4,
+  },
   exerciseCard: {
     backgroundColor: '#2a2a2a',
     borderRadius: 16,
@@ -698,6 +775,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#999',
     marginTop: 4,
+  },
+  exerciseNotes: {
+    fontSize: 12,
+    color: '#FFB74D',
+    marginTop: 6,
   },
   swapButton: {
     padding: 8,

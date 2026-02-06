@@ -16,12 +16,28 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
 import { auth, db } from '../firebase';
-import { doc, getDoc, setDoc, collection, addDoc, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
+import {
+  doc,
+  getDoc,
+  collection,
+  addDoc,
+  query,
+  orderBy,
+  limit,
+  onSnapshot,
+  updateDoc,
+  deleteDoc,
+  writeBatch,
+  getDocs,
+  serverTimestamp,
+  increment,
+} from 'firebase/firestore';
 import { chatWithCoach, AIMessage } from '../utils/ai/aiService';
 import Toast from 'react-native-toast-message';
 
@@ -31,55 +47,162 @@ interface ChatMessage extends AIMessage {
   isTyping?: boolean;
 }
 
+interface ChatThread {
+  id: string;
+  title: string;
+  lastMessage?: string;
+  messageCount?: number;
+  createdAt?: Date;
+  updatedAt?: Date;
+  context?: string;
+  isLegacyImport?: boolean;
+}
+
+type AIChatRoute = RouteProp<RootStackParamList, 'AIChat'>;
+
 const AIChatScreen = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const route = useRoute<AIChatRoute>();
+  const workoutContext = route.params?.context ? route.params.context : undefined;
+  const insets = useSafeAreaInsets();
+  const [threads, setThreads] = useState<ChatThread[]>([]);
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadingThreads, setLoadingThreads] = useState(true);
+  const [loadingMessages, setLoadingMessages] = useState(false);
   const [userProfile, setUserProfile] = useState<any>(null);
   const scrollViewRef = useRef<ScrollView>(null);
+  const contextThreadCreatedRef = useRef(false);
 
-  // Load user profile and chat history
+  // Load user profile and thread list
   useEffect(() => {
-    const loadData = async () => {
-      const uid = auth.currentUser?.uid;
-      if (!uid) return;
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
 
+    let unsubscribeThreads = () => {};
+    const loadData = async () => {
       try {
-        // Load user profile
         const profileDoc = await getDoc(doc(db, 'users', uid));
         if (profileDoc.exists()) {
           setUserProfile(profileDoc.data());
         }
 
-        // Load recent chat history (last 20 messages)
-        const chatQuery = query(
-          collection(db, 'users', uid, 'aiChats'),
-          orderBy('timestamp', 'desc'),
-          limit(20)
+        const threadsQuery = query(
+          collection(db, 'users', uid, 'aiChatThreads'),
+          orderBy('updatedAt', 'desc')
         );
 
-        const unsubscribe = onSnapshot(chatQuery, (snapshot) => {
-          const chatMessages: ChatMessage[] = snapshot.docs
-            .map(doc => ({
-              id: doc.id,
-              role: doc.data().role,
-              content: doc.data().content,
-              timestamp: doc.data().timestamp?.toDate() || new Date(),
-            }))
-            .reverse();
-
-          setMessages(chatMessages);
+        unsubscribeThreads = onSnapshot(threadsQuery, (snapshot) => {
+          const threadData: ChatThread[] = snapshot.docs.map(docSnap => ({
+            id: docSnap.id,
+            title: docSnap.data().title || 'Chat',
+            lastMessage: docSnap.data().lastMessage,
+            messageCount: docSnap.data().messageCount,
+            createdAt: docSnap.data().createdAt?.toDate?.(),
+            updatedAt: docSnap.data().updatedAt?.toDate?.(),
+            context: docSnap.data().context,
+            isLegacyImport: docSnap.data().isLegacyImport,
+          }));
+          setThreads(threadData);
+          setLoadingThreads(false);
         });
-
-        return () => unsubscribe();
       } catch (error) {
         console.error('Error loading chat data:', error);
+        setLoadingThreads(false);
       }
     };
 
     loadData();
+    return () => unsubscribeThreads();
   }, []);
+
+  // Auto-create a workout-context thread if provided
+  useEffect(() => {
+    if (!workoutContext || contextThreadCreatedRef.current || loadingThreads) return;
+    if (activeThreadId) return;
+    if (!auth.currentUser?.uid) return;
+
+    contextThreadCreatedRef.current = true;
+    createThread({
+      title: 'Workout Q&A',
+      context: workoutContext,
+    }).catch((error) => {
+      console.error('Error creating workout thread:', error);
+    });
+  }, [workoutContext, loadingThreads, activeThreadId]);
+
+  // Subscribe to messages for active thread
+  useEffect(() => {
+    const uid = auth.currentUser?.uid;
+    if (!uid || !activeThreadId) {
+      setMessages([]);
+      return;
+    }
+
+    setLoadingMessages(true);
+    const messagesQuery = query(
+      collection(db, 'users', uid, 'aiChatThreads', activeThreadId, 'messages'),
+      orderBy('timestamp', 'asc')
+    );
+
+    const unsubscribe = onSnapshot(messagesQuery, (snapshot) => {
+      const threadMessages: ChatMessage[] = snapshot.docs.map(docSnap => ({
+        id: docSnap.id,
+        role: docSnap.data().role,
+        content: docSnap.data().content,
+        timestamp: docSnap.data().timestamp?.toDate?.() || new Date(),
+      }));
+      setMessages(threadMessages);
+      setLoadingMessages(false);
+    });
+
+    return () => unsubscribe();
+  }, [activeThreadId]);
+
+  // One-time legacy import if no threads exist
+  useEffect(() => {
+    const uid = auth.currentUser?.uid;
+    if (!uid || loadingThreads) return;
+    if (threads.length > 0) return;
+
+    const importLegacy = async () => {
+      try {
+        const legacyQuery = query(
+          collection(db, 'users', uid, 'aiChats'),
+          orderBy('timestamp', 'asc'),
+          limit(50)
+        );
+        const legacySnap = await getDocs(legacyQuery);
+        if (legacySnap.empty) return;
+
+        const legacyThread = await addDoc(collection(db, 'users', uid, 'aiChatThreads'), {
+          title: 'Legacy Chat',
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          lastMessage: legacySnap.docs[legacySnap.docs.length - 1]?.data()?.content || '',
+          messageCount: legacySnap.size,
+          isLegacyImport: true,
+        });
+
+        const batch = writeBatch(db);
+        legacySnap.docs.forEach((docSnap) => {
+          const data = docSnap.data();
+          batch.set(doc(db, 'users', uid, 'aiChatThreads', legacyThread.id, 'messages', docSnap.id), {
+            role: data.role,
+            content: data.content,
+            timestamp: data.timestamp || new Date(),
+          });
+        });
+        await batch.commit();
+      } catch (error) {
+        console.error('Error importing legacy chat:', error);
+      }
+    };
+
+    importLegacy();
+  }, [threads, loadingThreads]);
 
   // Scroll to bottom when new messages arrive
   useEffect(() => {
@@ -87,6 +210,59 @@ const AIChatScreen = () => {
       scrollViewRef.current?.scrollToEnd({ animated: true });
     }, 100);
   }, [messages]);
+
+  const activeThread = threads.find(t => t.id === activeThreadId) || null;
+
+  const createThread = async (options?: { title?: string; context?: string }) => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+
+    const title = options?.title || 'New Chat';
+    const threadDoc = await addDoc(collection(db, 'users', uid, 'aiChatThreads'), {
+      title,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      lastMessage: '',
+      messageCount: 0,
+      context: options?.context || '',
+    });
+
+    setActiveThreadId(threadDoc.id);
+    return threadDoc.id;
+  };
+
+  const handleNewChat = async () => {
+    await createThread();
+  };
+
+  const handleSelectThread = (threadId: string) => {
+    setActiveThreadId(threadId);
+  };
+
+  const deleteThread = async (threadId: string) => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+
+    const threadRef = doc(db, 'users', uid, 'aiChatThreads', threadId);
+    const messagesRef = collection(db, 'users', uid, 'aiChatThreads', threadId, 'messages');
+    let hasMore = true;
+
+    while (hasMore) {
+      const msgSnap = await getDocs(query(messagesRef, orderBy('timestamp', 'asc'), limit(200)));
+      if (msgSnap.empty) {
+        hasMore = false;
+        break;
+      }
+      const batch = writeBatch(db);
+      msgSnap.docs.forEach((docSnap) => batch.delete(docSnap.ref));
+      await batch.commit();
+    }
+
+    await deleteDoc(threadRef);
+    if (activeThreadId === threadId) {
+      setActiveThreadId(null);
+    }
+  };
 
   const handleSend = async () => {
     if (!inputText.trim() || loading) return;
@@ -106,11 +282,34 @@ const AIChatScreen = () => {
     setLoading(true);
 
     try {
+      let threadId = activeThreadId;
+      if (!threadId) {
+        threadId = await createThread({
+          title: workoutContext ? 'Workout Q&A' : 'New Chat',
+          context: workoutContext,
+        });
+      }
+      if (!threadId) {
+        throw new Error('Unable to create chat thread');
+      }
+
+      const currentThread = threads.find(t => t.id === threadId);
+      const shouldUpdateTitle =
+        !currentThread?.title || currentThread.title === 'New Chat';
+      const nextTitle = shouldUpdateTitle ? summarizeTitle(userMessage) : currentThread?.title;
+
       // Add user message to Firestore
-      await addDoc(collection(db, 'users', uid, 'aiChats'), {
+      await addDoc(collection(db, 'users', uid, 'aiChatThreads', threadId, 'messages'), {
         role: 'user',
         content: userMessage,
         timestamp: new Date(),
+      });
+
+      await updateDoc(doc(db, 'users', uid, 'aiChatThreads', threadId), {
+        ...(shouldUpdateTitle ? { title: nextTitle } : {}),
+        lastMessage: userMessage,
+        updatedAt: serverTimestamp(),
+        messageCount: increment(1),
       });
 
       // Get conversation history (last 10 messages for context)
@@ -118,18 +317,31 @@ const AIChatScreen = () => {
         .slice(-10)
         .map(m => ({ role: m.role, content: m.content }));
 
+      const threadContext = threads.find(t => t.id === threadId)?.context || workoutContext;
+
       // Get AI response
-      const aiResponse = await chatWithCoach(userMessage, conversationHistory, {
-        name: userProfile?.fullName,
-        goals: userProfile?.goals,
-        experience: userProfile?.experienceLevel,
-      });
+      const aiResponse = await chatWithCoach(
+        userMessage,
+        conversationHistory,
+        {
+          name: userProfile?.fullName,
+          goals: userProfile?.goals,
+          experience: userProfile?.experienceLevel,
+        },
+        threadContext
+      );
 
       // Add AI response to Firestore
-      await addDoc(collection(db, 'users', uid, 'aiChats'), {
+      await addDoc(collection(db, 'users', uid, 'aiChatThreads', threadId, 'messages'), {
         role: 'assistant',
         content: aiResponse,
         timestamp: new Date(),
+      });
+
+      await updateDoc(doc(db, 'users', uid, 'aiChatThreads', threadId), {
+        lastMessage: aiResponse,
+        updatedAt: serverTimestamp(),
+        messageCount: increment(1),
       });
 
     } catch (error) {
@@ -146,127 +358,228 @@ const AIChatScreen = () => {
   };
 
   const quickPrompts = [
-    '💪 Suggest a workout for today',
-    '🍽️ What should I eat for lunch?',
-    '📊 Review my progress',
-    '🤔 I have a question about form',
-    '🎯 Help me set better goals',
-  ];
+    { label: 'Generate Quick Workout', type: 'action', action: 'quick_workout' },
+    { label: 'Ask for guidance on today’s workout', type: 'message' },
+    { label: 'Ask about lunch ideas', type: 'message' },
+    { label: 'Review my progress', type: 'message' },
+    { label: 'I have a question about form', type: 'message' },
+    { label: 'Help me set better goals', type: 'message' },
+  ] as const;
+
+  const formatThreadTime = (date?: Date) => {
+    if (!date) return '';
+    return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  };
+
+  const summarizeTitle = (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return 'New Chat';
+    const cleaned = trimmed.replace(/\s+/g, ' ');
+    const words = cleaned.split(' ');
+    const maxWords = 6;
+    const title = words.slice(0, maxWords).join(' ');
+    return title.length > 32 ? `${title.slice(0, 32)}…` : title;
+  };
+
+  const handleQuickPrompt = (prompt: typeof quickPrompts[number]) => {
+    if (prompt.type === 'action' && prompt.action === 'quick_workout') {
+      navigation.navigate('AppDrawer', {
+        screen: 'MainTabs',
+        params: { screen: 'Workout', params: { openQuickWorkout: true } },
+      });
+      return;
+    }
+
+    setInputText(prompt.label);
+  };
 
   return (
     <LinearGradient colors={['#0f0f0f', '#1a1a1a']} style={styles.container}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
-        keyboardVerticalOffset={90}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
         {/* Header */}
         <View style={styles.header}>
-          <Pressable onPress={() => navigation.goBack()} style={styles.backButton}>
+          <Pressable
+            onPress={() => {
+              if (activeThreadId) {
+                setActiveThreadId(null);
+              } else {
+                navigation.goBack();
+              }
+            }}
+            style={styles.backButton}
+          >
             <Ionicons name="arrow-back" size={24} color="#fff" />
           </Pressable>
           <View style={styles.headerTitleContainer}>
-            <Text style={styles.headerTitle}>🤖 AI Coach</Text>
-            <Text style={styles.headerSubtitle}>Powered by advanced AI</Text>
+            <Text style={styles.headerTitle}>
+              {activeThread ? activeThread.title : '🤖 AI Coach'}
+            </Text>
+            <Text style={styles.headerSubtitle}>
+              {activeThread ? 'Workout-aware coaching' : 'Powered by advanced AI'}
+            </Text>
           </View>
-          <View style={styles.headerSpacer} />
-        </View>
-
-        {/* Messages */}
-        <ScrollView
-          ref={scrollViewRef}
-          style={styles.messagesContainer}
-          contentContainerStyle={styles.messagesContent}
-        >
-          {messages.length === 0 && (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyStateIcon}>👋</Text>
-              <Text style={styles.emptyStateTitle}>Hi! I'm your AI Coach</Text>
-              <Text style={styles.emptyStateText}>
-                Ask me anything about fitness, nutrition, or training advice.
-                I'm here to help you reach your goals!
-              </Text>
-
-              <Text style={styles.quickPromptsTitle}>Quick Start:</Text>
-              {quickPrompts.map((prompt, index) => (
-                <Pressable
-                  key={index}
-                  style={styles.quickPromptButton}
-                  onPress={() => {
-                    setInputText(prompt.substring(2).trim());
-                  }}
-                >
-                  <Text style={styles.quickPromptText}>{prompt}</Text>
-                </Pressable>
-              ))}
-            </View>
-          )}
-
-          {messages.map((message) => (
-            <View
-              key={message.id}
-              style={[
-                styles.messageBubble,
-                message.role === 'user' ? styles.userMessage : styles.aiMessage,
-              ]}
-            >
-              {message.role === 'assistant' && (
-                <View style={styles.aiIcon}>
-                  <Text style={styles.aiIconText}>🤖</Text>
-                </View>
-              )}
-              <View style={styles.messageContent}>
-                <Text
-                  style={[
-                    styles.messageText,
-                    message.role === 'user' ? styles.userMessageText : styles.aiMessageText,
-                  ]}
-                >
-                  {message.content}
-                </Text>
-                <Text style={styles.messageTime}>
-                  {message.timestamp.toLocaleTimeString([], {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                </Text>
-              </View>
-            </View>
-          ))}
-
-          {loading && (
-            <View style={[styles.messageBubble, styles.aiMessage]}>
-              <View style={styles.aiIcon}>
-                <Text style={styles.aiIconText}>🤖</Text>
-              </View>
-              <View style={styles.typingIndicator}>
-                <ActivityIndicator color="#FF3C38" size="small" />
-                <Text style={styles.typingText}>Thinking...</Text>
-              </View>
-            </View>
-          )}
-        </ScrollView>
-
-        {/* Input */}
-        <View style={styles.inputContainer}>
-          <TextInput
-            style={styles.input}
-            value={inputText}
-            onChangeText={setInputText}
-            placeholder="Ask me anything..."
-            placeholderTextColor="#666"
-            multiline
-            maxLength={500}
-            editable={!loading}
-          />
-          <Pressable
-            style={[styles.sendButton, (!inputText.trim() || loading) && styles.sendButtonDisabled]}
-            onPress={handleSend}
-            disabled={!inputText.trim() || loading}
-          >
-            <Ionicons name="send" size={20} color="#fff" />
+          <Pressable onPress={handleNewChat} style={styles.newChatButton}>
+            <Ionicons name="add" size={22} color="#fff" />
           </Pressable>
         </View>
+
+        {!activeThreadId ? (
+          <ScrollView style={styles.threadsContainer} contentContainerStyle={styles.threadsContent}>
+            {loadingThreads ? (
+              <View style={styles.loadingState}>
+                <ActivityIndicator color="#FF3C38" size="small" />
+                <Text style={styles.loadingText}>Loading chats...</Text>
+              </View>
+            ) : threads.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyStateIcon}>🧠</Text>
+                <Text style={styles.emptyStateTitle}>Start a new coach chat</Text>
+                <Text style={styles.emptyStateText}>
+                  Save threads by topic so you can come back to them later.
+                </Text>
+                <Pressable style={styles.primaryActionButton} onPress={handleNewChat}>
+                  <Text style={styles.primaryActionText}>New Chat</Text>
+                </Pressable>
+              </View>
+            ) : (
+              threads.map((thread) => (
+                <Pressable
+                  key={thread.id}
+                  style={styles.threadCard}
+                  onPress={() => handleSelectThread(thread.id)}
+                >
+                  <View style={styles.threadInfo}>
+                    <Text style={styles.threadTitle}>{thread.title}</Text>
+                    <Text style={styles.threadPreview} numberOfLines={2}>
+                      {thread.lastMessage || 'No messages yet'}
+                    </Text>
+                    <Text style={styles.threadMeta}>
+                      {thread.messageCount || 0} messages
+                      {thread.updatedAt ? ` • ${formatThreadTime(thread.updatedAt)}` : ''}
+                    </Text>
+                  </View>
+                  <Pressable
+                    onPress={(event) => {
+                      event.stopPropagation?.();
+                      deleteThread(thread.id);
+                    }}
+                    style={styles.threadDelete}
+                  >
+                    <Ionicons name="trash-outline" size={20} color="#FF3C38" />
+                  </Pressable>
+                </Pressable>
+              ))
+            )}
+          </ScrollView>
+        ) : (
+          <>
+            {/* Messages */}
+            <ScrollView
+              ref={scrollViewRef}
+              style={styles.messagesContainer}
+              contentContainerStyle={styles.messagesContent}
+            >
+              {loadingMessages && (
+                <View style={styles.loadingState}>
+                  <ActivityIndicator color="#FF3C38" size="small" />
+                  <Text style={styles.loadingText}>Loading messages...</Text>
+                </View>
+              )}
+
+              {messages.length === 0 && !loadingMessages && (
+                <View style={styles.emptyState}>
+                  <Text style={styles.emptyStateIcon}>👋</Text>
+                  <Text style={styles.emptyStateTitle}>Ask your coach</Text>
+                  <Text style={styles.emptyStateText}>
+                    Focus on execution, intent, and how this supports fireground readiness.
+                  </Text>
+
+                  <Text style={styles.quickPromptsTitle}>Quick Start:</Text>
+                  {quickPrompts.map((prompt, index) => (
+                    <Pressable
+                      key={index}
+                      style={styles.quickPromptButton}
+                      onPress={() => {
+                        handleQuickPrompt(prompt);
+                      }}
+                    >
+                      <Text style={styles.quickPromptText}>{prompt.label}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+
+              {messages.map((message) => (
+                <View
+                  key={message.id}
+                  style={[
+                    styles.messageBubble,
+                    message.role === 'user' ? styles.userMessage : styles.aiMessage,
+                  ]}
+                >
+                  {message.role === 'assistant' && (
+                    <View style={styles.aiIcon}>
+                      <Text style={styles.aiIconText}>🤖</Text>
+                    </View>
+                  )}
+                  <View style={styles.messageContent}>
+                    <Text
+                      style={[
+                        styles.messageText,
+                        message.role === 'user' ? styles.userMessageText : styles.aiMessageText,
+                      ]}
+                    >
+                      {message.content}
+                    </Text>
+                    <Text style={styles.messageTime}>
+                      {message.timestamp.toLocaleTimeString([], {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+
+              {loading && (
+                <View style={[styles.messageBubble, styles.aiMessage]}>
+                  <View style={styles.aiIcon}>
+                    <Text style={styles.aiIconText}>🤖</Text>
+                  </View>
+                  <View style={styles.typingIndicator}>
+                    <ActivityIndicator color="#FF3C38" size="small" />
+                    <Text style={styles.typingText}>Thinking...</Text>
+                  </View>
+                </View>
+              )}
+            </ScrollView>
+
+            {/* Input */}
+            <View style={[styles.inputContainer, { paddingBottom: Math.max(12, insets.bottom) }]}>
+              <TextInput
+                style={styles.input}
+                value={inputText}
+                onChangeText={setInputText}
+                placeholder="Ask me anything..."
+                placeholderTextColor="#666"
+                multiline
+                maxLength={500}
+                editable={!loading}
+              />
+              <Pressable
+                style={[styles.sendButton, (!inputText.trim() || loading) && styles.sendButtonDisabled]}
+                onPress={handleSend}
+                disabled={!inputText.trim() || loading}
+              >
+                <Ionicons name="send" size={20} color="#fff" />
+              </Pressable>
+            </View>
+          </>
+        )}
       </KeyboardAvoidingView>
     </LinearGradient>
   );
@@ -292,6 +605,10 @@ const styles = StyleSheet.create({
   backButton: {
     width: 40,
   },
+  newChatButton: {
+    width: 40,
+    alignItems: 'flex-end',
+  },
   headerTitleContainer: {
     flex: 1,
     alignItems: 'center',
@@ -309,11 +626,49 @@ const styles = StyleSheet.create({
   headerSpacer: {
     width: 40,
   },
+  threadsContainer: {
+    flex: 1,
+  },
+  threadsContent: {
+    padding: 16,
+    gap: 12,
+  },
+  threadCard: {
+    flexDirection: 'row',
+    gap: 12,
+    backgroundColor: '#1f1f1f',
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  threadInfo: {
+    flex: 1,
+    gap: 6,
+  },
+  threadTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  threadPreview: {
+    fontSize: 13,
+    color: '#bbb',
+  },
+  threadMeta: {
+    fontSize: 11,
+    color: '#777',
+  },
+  threadDelete: {
+    padding: 8,
+    alignSelf: 'center',
+  },
   messagesContainer: {
     flex: 1,
   },
   messagesContent: {
     padding: 16,
+    flexGrow: 1,
   },
   emptyState: {
     alignItems: 'center',
@@ -335,6 +690,26 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 32,
     paddingHorizontal: 32,
+  },
+  primaryActionButton: {
+    backgroundColor: '#FF3C38',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 24,
+  },
+  primaryActionText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  loadingState: {
+    paddingVertical: 24,
+    alignItems: 'center',
+    gap: 10,
+  },
+  loadingText: {
+    color: '#aaa',
+    fontSize: 14,
   },
   quickPromptsTitle: {
     fontSize: 14,

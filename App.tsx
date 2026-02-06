@@ -46,7 +46,7 @@ export type TabParamList = {
   Home: undefined;
   Dashboard: undefined;
   MealPlan: undefined;
-  Workout: undefined;
+  Workout: { openQuickWorkout?: boolean };
   Settings: undefined;
 };
 
@@ -79,6 +79,8 @@ export type RootStackParamList = {
       intensity: string;
       notes?: string;
       targetHeartRate?: string;
+      warmup?: Array<string | { name: string; notes?: string }>;
+      cooldown?: Array<string | { name: string; notes?: string }>;
     };
     weekNumber: number;
   };
@@ -113,7 +115,7 @@ export type RootStackParamList = {
   goalType: 'maintain' | 'fatloss' | 'muscle';
   name: string;
 };
-  AIChat: undefined;
+  AIChat: { context?: string };
 };
 
 
@@ -211,10 +213,7 @@ const AppNavigator = () => {
       name="AIChat" 
       component={AIChatScreen}
       options={{
-        headerShown: true,
-        title: 'AI Coach',
-        headerStyle: { backgroundColor: '#121212' },
-        headerTintColor: '#fff',
+        headerShown: false,
       }}
     />
   </>

@@ -31,14 +31,76 @@ const isAxiosLikeError = (error: unknown): error is { response?: { status?: numb
 
 // ============= TYPES =============
 export interface WorkoutRecommendation {
-  warmup: string[];
-  exercises: string[];
-  cooldown: string[];
+  warmup: Array<string | { name: string; sets?: number; reps_or_time?: string; rest?: number; notes?: string }>;
+  exercises: Array<string | { name: string; sets?: number; reps_or_time?: string; rest?: number; notes?: string }>;
+  cooldown: Array<string | { name: string; sets?: number; reps_or_time?: string; rest?: number; notes?: string }>;
   rationale: string;
   estimatedDuration: number;
   difficultyScore: number;
   focusAreas: string[];
+  interval?: {
+    rounds: number;
+    workSec: number;
+    restSec: number;
+    transitionSec?: number;
+    format?: 'circuit' | 'single';
+  };
+  cardio?: {
+    type: string;
+    duration: number;
+    intensity: string;
+    notes?: string;
+    targetHeartRate?: string;
+  };
 }
+
+const normalizeWorkoutRecommendation = (
+  recommendation: WorkoutRecommendation,
+  userContext: WorkoutRecommendationContext
+): WorkoutRecommendation => {
+  const style = (userContext.trainingStyle || '').toLowerCase();
+  const recAny = recommendation as any;
+  const recStyle = (recAny?._trainingStyle || '').toLowerCase();
+  const isEndurance = style.includes('endurance') || recStyle.includes('endurance') || recAny?._isEndurance === true;
+  const targetDuration =
+    userContext.duration ??
+    recommendation.cardio?.duration ??
+    recommendation.estimatedDuration ??
+    30;
+
+  const safeWarmup = Array.isArray(recommendation.warmup) ? recommendation.warmup : [];
+  const safeCooldown = Array.isArray(recommendation.cooldown) ? recommendation.cooldown : [];
+  const safeExercises = Array.isArray(recommendation.exercises) ? recommendation.exercises : [];
+
+  if (isEndurance) {
+    const cardio = recommendation.cardio || {
+      type: 'Run',
+      duration: targetDuration,
+      intensity: 'Zone 2',
+      notes: 'Steady-state, nasal breathing if possible',
+    };
+    return {
+      ...recommendation,
+      warmup: safeWarmup,
+      exercises: [],
+      cooldown: safeCooldown,
+      interval: undefined,
+      cardio: {
+        ...cardio,
+        duration: cardio.duration ?? targetDuration,
+      },
+      estimatedDuration: cardio.duration ?? targetDuration,
+    };
+  }
+
+  return {
+    ...recommendation,
+    warmup: safeWarmup,
+    exercises: safeExercises,
+    cooldown: safeCooldown,
+    cardio: undefined,
+  };
+};
 
 export interface PeriodizedProgram {
   programName: string;
@@ -88,6 +150,12 @@ export interface PeriodizedProgram {
         intensity: string; // "Easy", "Moderate", "Hard", "Intervals", "Zone 2"
         notes?: string; // "5min warmup, 8x400m @ 5K pace, 2min rest"
         targetHeartRate?: string; // "140-150 bpm" or "Zone 2"
+        circuit?: {
+          rounds: number;
+          workSec: number;
+          restSec: number;
+          exercises: string[];
+        };
       }>;
     }>;
   };
@@ -159,7 +227,7 @@ export async function getWorkoutRecommendation(
     [
       { 
         role: 'system', 
-        content: 'You are a TSAC-F certified tactical strength coach with 10+ years designing firefighter fitness programs. You understand occupational demands, CPAT testing, injury prevention, and functional fitness for structural firefighting. Create varied, professional workouts with real-world application to fireground operations.' 
+        content: 'You are a TSAC-F certified tactical strength coach with 10+ years designing firefighter fitness programs. You understand occupational demands, CPAT testing, injury prevention, and functional fitness for structural firefighting. Create varied, professional workouts with real-world application to fireground operations. Return ONLY valid JSON.' 
       },
       { role: 'user', content: prompt },
     ],
@@ -167,7 +235,29 @@ export async function getWorkoutRecommendation(
     { temperature: 0.9, maxTokens: 4000 } // Higher temperature for more variety
   );
 
-  return parseCleanJsonResponse<WorkoutRecommendation>(response.content);
+  try {
+    return normalizeWorkoutRecommendation(
+      parseCleanJsonResponse<WorkoutRecommendation>(response.content),
+      userContext
+    );
+  } catch (error) {
+    // Retry once with a strict repair prompt
+    const repair = await sendAIMessage(
+      [
+        {
+          role: 'system',
+          content: 'Fix the following into strictly valid JSON. Output ONLY the JSON with no extra text.',
+        },
+        { role: 'user', content: response.content },
+      ],
+      'gemini',
+      { temperature: 0.2, maxTokens: 2000 }
+    );
+    return normalizeWorkoutRecommendation(
+      parseCleanJsonResponse<WorkoutRecommendation>(repair.content),
+      userContext
+    );
+  }
 }
 
 /**
@@ -269,7 +359,7 @@ PROGRAM MUST INCLUDE (Every Week):
 
   // Cardio prompt addition
   const cardioPrompt = programContext.includeCardio 
-    ? `\n\nCARDIO: Include 2-3 cardio sessions per week. Use cardioSchedule with frequency, type (Run/Bike/Row/HIIT), duration, intensity (Easy/Moderate/Hard/Intervals/Zone 2).` 
+    ? `\n\nCARDIO: Include 2-3 cardio sessions per week. Use cardioSchedule with frequency, type (Run/Bike/Row/HIIT), duration, intensity (Easy/Moderate/Hard/Intervals/Zone 2). If type is HIIT/circuit/intervals, include a "circuit" object with rounds, workSec, restSec, and a list of 4-6 exercises.` 
     : '';
 
   console.log('🏃 Cardio in aiService:', programContext.includeCardio);
@@ -423,7 +513,7 @@ RETURN FORMAT - Valid JSON Only:
         "weekNumber": 1,
         "sessions": [
           {"dayOfWeek": "Monday", "type": "Run", "duration": 20, "intensity": "Easy", "notes": "Recovery pace"},
-          {"dayOfWeek": "Wednesday", "type": "HIIT", "duration": 15, "intensity": "Intervals", "notes": "8×30s/90s"},
+          {"dayOfWeek": "Wednesday", "type": "HIIT", "duration": 15, "intensity": "Intervals", "notes": "8 rounds: 30s work/90s rest", "circuit": {"rounds": 8, "workSec": 30, "restSec": 90, "exercises": ["Burpees", "Kettlebell Swings", "Mountain Climbers", "Jump Rope"]}},
           {"dayOfWeek": "Friday", "type": "Row", "duration": 25, "intensity": "Zone 2", "notes": "Steady state"}
         ]
       },
@@ -625,7 +715,8 @@ export async function chatWithCoach(
     name?: string;
     goals?: string[];
     experience?: string;
-  }
+  },
+  context?: string
 ): Promise<string> {
   try {
     console.log('💬 chatWithCoach called with:', { userMessage, historyLength: conversationHistory.length });
@@ -635,6 +726,7 @@ Your name is "Coach AI" and you provide evidence-based, practical advice.
 ${userProfile?.name ? `You're talking to ${userProfile.name}.` : ''}
 ${userProfile?.goals ? `Their goals are: ${userProfile.goals.join(', ')}` : ''}
 ${userProfile?.experience ? `Experience level: ${userProfile.experience}` : ''}
+${context ? `Current workout context:\n${context}\nUse this to answer workout-specific questions accurately.` : ''}
 
 Be encouraging, knowledgeable, and concise. Focus on actionable advice.`;
 
