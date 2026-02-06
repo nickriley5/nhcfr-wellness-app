@@ -10,40 +10,39 @@ import {
 import LinearGradient from 'react-native-linear-gradient';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import Video from 'react-native-video';
-import WebView from 'react-native-webview';
+import YoutubePlayer from 'react-native-youtube-iframe';
 import { resolveExerciseDetails, getRPEColor, getRPEDescription, getExerciseVideoUrl } from '../../utils/exerciseUtils';
 import type { ExerciseBlock } from '../../types/Exercise';
 
 const { height: screenHeight } = Dimensions.get('window');
 
 // Utility function to format exercise names (convert underscores to spaces and capitalize)
-const formatExerciseName = (id: string): string => {
-  if (!id) return 'Unknown Exercise';
-  return id
+const formatExerciseName = (label: string): string => {
+  if (!label) {return 'Unknown Exercise';}
+  return label
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (c) => c.toUpperCase()); // capitalize each word
 };
 
-// Helper to check if URL is YouTube and convert to embed format
-const getVideoConfig = (videoUrl: string) => {
-  console.log('🎥 TomorrowPreview - Processing video URL:', videoUrl);
-  const isYouTube = videoUrl.includes('youtube.com') || videoUrl.includes('youtu.be');
-  console.log('🎥 Is YouTube:', isYouTube);
-  
-  if (isYouTube) {
-    let videoId = '';
-    if (videoUrl.includes('youtube.com/watch?v=')) {
-      videoId = videoUrl.split('v=')[1]?.split('&')[0];
-    } else if (videoUrl.includes('youtu.be/')) {
-      videoId = videoUrl.split('youtu.be/')[1]?.split('?')[0];
-    }
-    const embedUrl = `https://www.youtube.com/embed/${videoId}?playsinline=1&controls=1`;
-    console.log('🎥 YouTube Video ID:', videoId);
-    console.log('🎥 Embed URL:', embedUrl);
-    return { isYouTube: true, url: embedUrl };
-  }
-  
-  return { isYouTube: false, url: videoUrl };
+const getExerciseKey = (exerciseBlock: ExerciseBlock): string =>
+  (exerciseBlock as any).id ||
+  (exerciseBlock as any).exerciseId ||
+  (exerciseBlock as any).name ||
+  '';
+
+const getYoutubeVideoId = (url: string): string | null => {
+  if (!url) return null;
+
+  const match1 = url.match(/youtube\.com\/watch\?v=([^&]+)/);
+  if (match1) return match1[1];
+
+  const match2 = url.match(/youtu\.be\/([^?]+)/);
+  if (match2) return match2[1];
+
+  const match3 = url.match(/youtube\.com\/embed\/([^?]+)/);
+  if (match3) return match3[1];
+
+  return null;
 };
 
 interface TomorrowInfo {
@@ -78,13 +77,13 @@ export const TomorrowPreviewModal: React.FC<TomorrowPreviewModalProps> = ({
   // Track which exercise videos are expanded
   const [expandedVideos, setExpandedVideos] = useState<Set<string>>(new Set());
 
-  const toggleVideo = (exerciseId: string) => {
+  const toggleVideo = (exerciseKey: string) => {
     setExpandedVideos(prev => {
       const newSet = new Set(prev);
-      if (newSet.has(exerciseId)) {
-        newSet.delete(exerciseId);
+      if (newSet.has(exerciseKey)) {
+        newSet.delete(exerciseKey);
       } else {
-        newSet.add(exerciseId);
+        newSet.add(exerciseKey);
       }
       return newSet;
     });
@@ -176,13 +175,15 @@ export const TomorrowPreviewModal: React.FC<TomorrowPreviewModalProps> = ({
                 <Ionicons name="flash-outline" size={16} color="#ffa726" /> Warm-up
               </Text>
               {warmup.map((exerciseBlock: ExerciseBlock, index: number) => {
-                const exercise = resolveExerciseDetails(exerciseBlock.id);
+                const exerciseKey = getExerciseKey(exerciseBlock);
+                const exercise = resolveExerciseDetails(exerciseKey);
+                const videoKey = exercise?.id || exerciseKey;
                 return (
                   <View key={index} style={styles.exerciseCard}>
                     <View style={styles.exerciseHeader}>
                       <View style={styles.exerciseInfo}>
                         <Text style={styles.exerciseName}>
-                          {exercise?.name || formatExerciseName(exerciseBlock.id)}
+                          {exercise?.name || formatExerciseName(exerciseKey)}
                         </Text>
                         <Text style={styles.exerciseDetails}>
                           {exerciseBlock.sets} sets • {exerciseBlock.repsOrDuration}
@@ -203,32 +204,28 @@ export const TomorrowPreviewModal: React.FC<TomorrowPreviewModalProps> = ({
                     )}
                     {exercise && exercise.videoUrl && exercise.videoUrl.trim() !== '' ? (
                       <View style={styles.exerciseVideoContainer}>
-                        {expandedVideos.has(exercise.id) ? (
+                        {expandedVideos.has(videoKey) ? (
                           <View style={styles.videoPlayerContainer}>
                             {(() => {
-                              const videoConfig = getVideoConfig(getExerciseVideoUrl(exercise));
-                              return videoConfig.isYouTube ? (
-                                <WebView
-                                  source={{ uri: videoConfig.url }}
-                                  style={styles.videoPlayer}
-                                  allowsInlineMediaPlayback={true}
-                                  mediaPlaybackRequiresUserAction={false}
-                                />
+                              const url = getExerciseVideoUrl(exercise);
+                              const youtubeId = getYoutubeVideoId(url);
+                              return youtubeId ? (
+                                <YoutubePlayer height={200} videoId={youtubeId} play={false} />
                               ) : (
                                 <Video
-                                  source={{ uri: videoConfig.url }}
+                                  source={{ uri: url }}
                                   style={styles.videoPlayer}
                                   resizeMode="contain"
                                   controls={true}
                                   paused={false}
                                   repeat={false}
-                                  onEnd={() => toggleVideo(exercise.id)}
+                                  onEnd={() => toggleVideo(videoKey)}
                                 />
                               );
                             })()}
                             <Pressable
                               style={styles.hideVideoButton}
-                              onPress={() => toggleVideo(exercise.id)}
+                              onPress={() => toggleVideo(videoKey)}
                             >
                               <Text style={styles.hideVideoText}>Hide Video</Text>
                               <Ionicons name="close" size={16} color="#fff" style={styles.closeIcon} />
@@ -237,7 +234,7 @@ export const TomorrowPreviewModal: React.FC<TomorrowPreviewModalProps> = ({
                         ) : (
                           <Pressable
                             style={styles.viewExerciseButton}
-                            onPress={() => toggleVideo(exercise.id)}
+                            onPress={() => toggleVideo(videoKey)}
                           >
                             <Ionicons name="play-circle-outline" size={20} color="#fff" />
                             <Text style={styles.viewExerciseText}>View Exercise</Text>
@@ -261,13 +258,15 @@ export const TomorrowPreviewModal: React.FC<TomorrowPreviewModalProps> = ({
               <Ionicons name="barbell-outline" size={16} color="#33d6a6" /> Main Exercises
             </Text>
             {exercises.map((exerciseBlock: ExerciseBlock, index: number) => {
-              const exercise = resolveExerciseDetails(exerciseBlock.id);
+              const exerciseKey = getExerciseKey(exerciseBlock);
+              const exercise = resolveExerciseDetails(exerciseKey);
+              const videoKey = exercise?.id || exerciseKey;
               return (
                 <View key={index} style={styles.exerciseCard}>
                   <View style={styles.exerciseHeader}>
                     <View style={styles.exerciseInfo}>
                       <Text style={styles.exerciseName}>
-                        {exercise?.name || formatExerciseName(exerciseBlock.id)}
+                        {exercise?.name || formatExerciseName(exerciseKey)}
                       </Text>
                       <Text style={styles.exerciseDetails}>
                         {exerciseBlock.sets} sets • {exerciseBlock.repsOrDuration}
@@ -293,32 +292,28 @@ export const TomorrowPreviewModal: React.FC<TomorrowPreviewModalProps> = ({
                   )}
                   {exercise && exercise.videoUrl && exercise.videoUrl.trim() !== '' ? (
                     <View style={styles.exerciseVideoContainer}>
-                      {expandedVideos.has(exercise.id) ? (
+                      {expandedVideos.has(videoKey) ? (
                         <View style={styles.videoPlayerContainer}>
                           {(() => {
-                            const videoConfig = getVideoConfig(getExerciseVideoUrl(exercise));
-                            return videoConfig.isYouTube ? (
-                              <WebView
-                                source={{ uri: videoConfig.url }}
-                                style={styles.videoPlayer}
-                                allowsInlineMediaPlayback={true}
-                                mediaPlaybackRequiresUserAction={false}
-                              />
+                            const url = getExerciseVideoUrl(exercise);
+                            const youtubeId = getYoutubeVideoId(url);
+                            return youtubeId ? (
+                              <YoutubePlayer height={200} videoId={youtubeId} play={false} />
                             ) : (
                               <Video
-                                source={{ uri: videoConfig.url }}
+                                source={{ uri: url }}
                                 style={styles.videoPlayer}
                                 resizeMode="contain"
                                 controls={true}
                                 paused={false}
                                 repeat={false}
-                                onEnd={() => toggleVideo(exercise.id)}
+                                onEnd={() => toggleVideo(videoKey)}
                               />
                             );
                           })()}
                           <Pressable
                             style={styles.hideVideoButton}
-                            onPress={() => toggleVideo(exercise.id)}
+                            onPress={() => toggleVideo(videoKey)}
                           >
                             <Text style={styles.hideVideoText}>Hide Video</Text>
                             <Ionicons name="close" size={16} color="#fff" style={styles.closeIcon} />
@@ -327,7 +322,7 @@ export const TomorrowPreviewModal: React.FC<TomorrowPreviewModalProps> = ({
                       ) : (
                         <Pressable
                           style={styles.viewExerciseButton}
-                          onPress={() => toggleVideo(exercise.id)}
+                          onPress={() => toggleVideo(videoKey)}
                         >
                           <Ionicons name="play-circle-outline" size={20} color="#fff" />
                           <Text style={styles.viewExerciseText}>View Exercise</Text>
@@ -357,13 +352,14 @@ export const TomorrowPreviewModal: React.FC<TomorrowPreviewModalProps> = ({
                 <Ionicons name="leaf-outline" size={16} color="#4fc3f7" /> Cool-down
               </Text>
               {cooldown.map((exerciseBlock: ExerciseBlock, index: number) => {
-                const exercise = resolveExerciseDetails(exerciseBlock.id);
+                const exerciseKey = getExerciseKey(exerciseBlock);
+                const exercise = resolveExerciseDetails(exerciseKey);
                 return (
                   <View key={index} style={styles.exerciseCard}>
                     <View style={styles.exerciseHeader}>
                       <View style={styles.exerciseInfo}>
                         <Text style={styles.exerciseName}>
-                          {exercise?.name || formatExerciseName(exerciseBlock.id)}
+                          {exercise?.name || formatExerciseName(exerciseKey)}
                         </Text>
                         <Text style={styles.exerciseDetails}>
                           {exerciseBlock.sets} sets • {exerciseBlock.repsOrDuration}
@@ -614,7 +610,8 @@ const styles = {
     position: 'relative' as const,
     marginTop: 8,
     borderRadius: 8,
-    overflow: 'hidden' as const,
+    backgroundColor: '#1a1a1a',
+    padding: 8,
   },
   exerciseVideo: {
     width: '100%' as const,
@@ -744,6 +741,7 @@ const styles = {
     width: '100%' as const,
     height: 200,
     backgroundColor: '#000',
+    borderRadius: 8,
   },
   hideVideoButton: {
     position: 'absolute' as const,

@@ -73,6 +73,10 @@ const PRTrackerScreen: React.FC = () => {
             logDate = 'Recent';
           }
 
+          if (!Array.isArray(log.exercises)) {
+            return;
+          }
+
           log.exercises.forEach(ex => {
             ex.sets.forEach(set => {
               const weight = parseFloat(set.weight);

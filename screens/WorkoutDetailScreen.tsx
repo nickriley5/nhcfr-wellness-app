@@ -22,6 +22,7 @@ import YoutubePlayer from 'react-native-youtube-iframe';
 import { resolveExercise } from '../utils/exerciseMatching';
 import { exercises } from '../data/exercises';
 import type { Exercise } from '../types/Exercise';
+import PRCelebration from '../components/PRCelebration';
 
 type WorkoutDetailRoute = RouteProp<RootStackParamList, 'WorkoutDetail'>;
 
@@ -59,6 +60,8 @@ const WorkoutDetailScreen: React.FC = () => {
   const [workoutStartTime] = useState(Date.now());
   const [notes, setNotes] = useState('');
   const [feeling, setFeeling] = useState<'easy' | 'moderate' | 'hard' | 'crushed' | null>(null);
+  const [showPR, setShowPR] = useState(false);
+  const [prMsgs, setPrMsgs] = useState<string[]>([]);
   
   const restIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -280,20 +283,76 @@ const WorkoutDetailScreen: React.FC = () => {
         workoutType: 'strength',
       };
 
+      // ---- PR detection (compare against previous logs) ----
+      const currentMaxByExercise: Record<string, { maxWeight: number; reps: number }> = {};
+      exerciseList.forEach(ex => {
+        const sets = workoutSets[ex.id] || [];
+        sets.forEach(set => {
+          if (!set.completed) {return;}
+          const weight = Number(set.weight);
+          const reps = Number(set.reps);
+          if (!Number.isFinite(weight)) {return;}
+          const prev = currentMaxByExercise[ex.name];
+          if (!prev || weight > prev.maxWeight) {
+            currentMaxByExercise[ex.name] = { maxWeight: weight, reps: Number.isFinite(reps) ? reps : 0 };
+          }
+        });
+      });
+
+      const previousMaxByExercise: Record<string, number> = {};
+      const historySnap = await getDocs(
+        query(
+          collection(db, 'users', uid, 'workoutLogs'),
+          orderBy('completedAt', 'desc'),
+          limit(20)
+        )
+      );
+      historySnap.forEach(docSnap => {
+        const log = docSnap.data() as any;
+        if (!Array.isArray(log.exercises)) {return;}
+        log.exercises.forEach((ex: any) => {
+          if (!Array.isArray(ex.sets)) {return;}
+          ex.sets.forEach((set: any) => {
+            const weight = Number(set.weight);
+            if (!Number.isFinite(weight)) {return;}
+            if (!previousMaxByExercise[ex.name] || weight > previousMaxByExercise[ex.name]) {
+              previousMaxByExercise[ex.name] = weight;
+            }
+          });
+        });
+      });
+
+      const newPRs: string[] = [];
+      Object.entries(currentMaxByExercise).forEach(([name, data]) => {
+        const prevMax = previousMaxByExercise[name] ?? 0;
+        if (data.maxWeight > prevMax) {
+          const repsText = data.reps ? ` x ${data.reps}` : '';
+          newPRs.push(`${name}: ${data.maxWeight} lbs${repsText}`);
+        }
+      });
+
       // Save to workout logs (matches WorkoutHistoryScreen collection name)
       const historyRef = doc(collection(db, 'users', uid, 'workoutLogs'));
       await setDoc(historyRef, workoutData);
       
       console.log('✅ Workout saved to workoutLogs collection:', workoutData.dayTitle);
 
-      Toast.show({
-        type: 'success',
-        text1: '🎉 Workout Complete!',
-        text2: `${duration} minutes • ${exerciseList.length} exercises`,
-        visibilityTime: 3000,
-      });
-
-      navigation.goBack();
+      if (newPRs.length > 0) {
+        setPrMsgs(newPRs);
+        setShowPR(true);
+        setTimeout(() => {
+          setShowPR(false);
+          navigation.goBack();
+        }, 3200);
+      } else {
+        Toast.show({
+          type: 'success',
+          text1: '🎉 Workout Complete!',
+          text2: `${duration} minutes • ${exerciseList.length} exercises`,
+          visibilityTime: 3000,
+        });
+        navigation.goBack();
+      }
     } catch (error) {
       console.error('Error saving workout:', error);
       Toast.show({
@@ -510,6 +569,10 @@ const WorkoutDetailScreen: React.FC = () => {
           <Text style={styles.completeButtonText}>Complete Workout</Text>
         </Pressable>
       </ScrollView>
+
+      {showPR && (
+        <PRCelebration visible={showPR} messages={prMsgs} onClose={() => setShowPR(false)} />
+      )}
 
       {/* SWAP MODAL */}
       <Modal
