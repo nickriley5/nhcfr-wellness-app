@@ -17,6 +17,18 @@ import { format } from 'date-fns';
 
 type MacroRow = { eaten: number; goal?: number; remaining?: number };
 
+const logSafeError = (label: string, err: unknown) => {
+  if (err instanceof Error) {
+    console.error(label, err.message);
+    return;
+  }
+  try {
+    console.error(label, JSON.parse(JSON.stringify(err)));
+  } catch {
+    console.error(label, String(err));
+  }
+};
+
 function sumMealsForToday(meals: any[]) {
   const totals = { calories: 0, protein: 0, carbs: 0, fat: 0 };
 
@@ -368,7 +380,7 @@ export function useDashboardData(view: 'week' | 'month' | 'all', bump: number = 
 
         setExerciseLibrary(libSnap.docs.map((d) => d.data() as Exercise));
       } catch (error) {
-        console.error('Error in fetchAll:', error);
+        logSafeError('Error in fetchAll:', error);
         // Reset state on error
         setProgramExists(false);
         setTodayInfo(null);
@@ -469,7 +481,7 @@ export function useDashboardData(view: 'week' | 'month' | 'all', bump: number = 
           // Silently handle permission errors (e.g., after logout)
           console.log('🔒 Dashboard meal listener - Error caught:', error.code);
           if (error.code !== 'permission-denied') {
-            console.error('Dashboard meal listener - Unexpected error:', error);
+            logSafeError('Dashboard meal listener - Unexpected error:', error);
           }
         }
       );

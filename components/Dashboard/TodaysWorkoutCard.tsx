@@ -327,7 +327,7 @@ export default function TodaysWorkoutCard({
           </Text>
           <Pressable
             style={[dashboardStyles.btn, dashboardStyles.btnPrimary]}
-            onPress={() => navigation.navigate('ProgramList')}
+            onPress={() => navigation.navigate('Workout')}
           >
             <Text style={dashboardStyles.btnPrimaryText}>Choose Program</Text>
           </Pressable>

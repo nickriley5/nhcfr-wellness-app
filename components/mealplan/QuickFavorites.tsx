@@ -20,12 +20,34 @@ import DescribeMealModal from './DescribeMealModal';
 interface QuickFood {
   id: string;
   name: string;
-  emoji: string;
   calories: number;
   protein: number;
   carbs: number;
   fat: number;
   category: 'recent' | 'favorites';
+  favoriteType?: 'quick_food' | 'ai_contextual_meal';
+  mode?: 'pantry' | 'eat_out';
+  sourceName?: string;
+  ingredients?: string[];
+  instructions?: string[];
+  orderDetails?: string[];
+  optionalAddOns?: string[];
+  whyItFits?: string;
+  fallback?: string;
+  prepMinutes?: number;
+  estimatedMacros?: {
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+  };
+  macroFit?: {
+    withinTolerance: boolean;
+    deltaCalories: number;
+    deltaProtein: number;
+    deltaCarbs: number;
+    deltaFat: number;
+  };
   lastUsed?: Date;
   timesLogged?: number;
 }
@@ -44,10 +66,11 @@ const QuickFavoritesModal: React.FC<Props> = ({ visible, onClose, onFoodLogged, 
   const [loadingRecent, setLoadingRecent] = useState(false);
   const [favoriteMeals, setFavoriteMeals] = useState<QuickFood[]>([]);
   const [showDescribeModal, setShowDescribeModal] = useState(false);
+  const [selectedAIFavorite, setSelectedAIFavorite] = useState<QuickFood | null>(null);
 
   const categories = [
-    { id: 'recent', name: 'Recent', emoji: '🕒', description: 'Your last 10 logged meals' },
-    { id: 'favorites', name: 'Saved Meals', emoji: '⭐', description: 'Meals you’ve saved to reuse' },
+    { id: 'recent', name: 'Recent', description: 'Your last 10 logged meals' },
+    { id: 'favorites', name: 'Saved Meals', description: 'Meals you have saved to reuse' },
   ] as const;
 
   // Load recent meals when modal opens and recent tab is selected
@@ -86,7 +109,6 @@ const QuickFavoritesModal: React.FC<Props> = ({ visible, onClose, onFoodLogged, 
           recent.push({
             id: `recent-${dateKey}-${index}`,
             name: data.name || 'Unnamed Meal',
-            emoji: data.mealEmoji || '🍽️',
             calories: data.calories || 0,
             protein: data.protein || 0,
             carbs: data.carbs || 0,
@@ -125,12 +147,23 @@ const QuickFavoritesModal: React.FC<Props> = ({ visible, onClose, onFoodLogged, 
         return {
           id: doc.id,
           name: data.name || 'Unnamed Meal',
-          emoji: data.mealEmoji || data.emoji || '🍽️',
           calories: data.calories || 0,
           protein: data.protein || 0,
           carbs: data.carbs || 0,
           fat: data.fat || 0,
           category: 'favorites',
+          favoriteType: data.favoriteType || 'quick_food',
+          mode: data.mode,
+          sourceName: data.sourceName || '',
+          ingredients: Array.isArray(data.ingredients) ? data.ingredients.map(String) : [],
+          instructions: Array.isArray(data.instructions) ? data.instructions.map(String) : [],
+          orderDetails: Array.isArray(data.orderDetails) ? data.orderDetails.map(String) : [],
+          optionalAddOns: Array.isArray(data.optionalAddOns) ? data.optionalAddOns.map(String) : [],
+          whyItFits: data.whyItFits || '',
+          fallback: data.fallback || '',
+          prepMinutes: Number(data.prepMinutes) || 0,
+          estimatedMacros: data.estimatedMacros || undefined,
+          macroFit: data.macroFit || undefined,
         };
       });
 
@@ -158,14 +191,31 @@ const QuickFavoritesModal: React.FC<Props> = ({ visible, onClose, onFoodLogged, 
       const mealLogRef = collection(db, `users/${uid}/mealLogs/${targetDate}/meals`);
 
       await addDoc(mealLogRef, {
-        name: `${food.emoji} ${food.name}`,
+        name: food.name,
         calories: food.calories,
         protein: food.protein,
         carbs: food.carbs,
         fat: food.fat,
-        source: food.category === 'recent' ? 'QUICK_RECENT' : 'QUICK_FAVORITE',
+        source:
+          food.category === 'recent'
+            ? 'QUICK_RECENT'
+            : food.favoriteType === 'ai_contextual_meal'
+            ? 'AI_CONTEXTUAL_FAVORITE'
+            : 'QUICK_FAVORITE',
+        favoriteType: food.favoriteType || undefined,
+        generatedFromMode: food.mode || undefined,
+        generatedSource: food.sourceName || undefined,
+        ingredients: food.ingredients || [],
+        instructions: food.instructions || [],
+        orderDetails: food.orderDetails || [],
+        optionalAddOns: food.optionalAddOns || [],
+        whyItFits: food.whyItFits || undefined,
+        fallback: food.fallback || undefined,
+        prepMinutes: food.prepMinutes || undefined,
+        estimatedMacros: food.estimatedMacros || undefined,
+        macroFit: food.macroFit || undefined,
         mealType: mealContext?.mealType?.id || 'unknown',
-        mealEmoji: mealContext?.mealType?.emoji || '🍽️',
+        mealEmoji: mealContext?.mealType?.emoji || '',
         plannedDate: mealContext?.date || format(new Date(), 'yyyy-MM-dd'),
         plannedTime: mealContext?.time || format(new Date(), 'HH:mm'),
         loggedAt: new Date(),
@@ -194,19 +244,33 @@ const QuickFavoritesModal: React.FC<Props> = ({ visible, onClose, onFoodLogged, 
     }
   };
 
+  const handleFoodPress = (food: QuickFood) => {
+    if (food.category === 'favorites' && food.favoriteType === 'ai_contextual_meal') {
+      setSelectedAIFavorite(food);
+      return;
+    }
+    logQuickFood(food);
+  };
+
   const renderFoodItem = ({ item }: { item: QuickFood }) => (
     <Pressable
       style={[styles.foodItem, loggingFood === item.id && styles.loggingFood]}
-      onPress={() => logQuickFood(item)}
+      onPress={() => handleFoodPress(item)}
       disabled={loggingFood === item.id}
     >
       <View style={styles.foodContent}>
-        <Text style={styles.foodEmoji}>{item.emoji}</Text>
         <View style={styles.foodInfo}>
           <Text style={styles.foodName}>{item.name}</Text>
           <Text style={styles.foodMacros}>
             {item.calories} cal • {item.protein}g P • {item.carbs}g C • {item.fat}g F
           </Text>
+          {item.favoriteType === 'ai_contextual_meal' ? (
+            <Text style={styles.favoriteDetail}>
+              Saved AI plan
+              {item.mode ? ` • ${item.mode === 'eat_out' ? 'Eat Out' : 'Pantry'}` : ''}
+              {item.sourceName ? ` • ${item.sourceName}` : ''}
+            </Text>
+          ) : null}
           {item.lastUsed && (
             <Text style={styles.lastUsed}>
               Last logged: {format(item.lastUsed, 'MMM d')}
@@ -215,9 +279,7 @@ const QuickFavoritesModal: React.FC<Props> = ({ visible, onClose, onFoodLogged, 
         </View>
         {loggingFood === item.id ? (
           <ActivityIndicator size="small" color="#4FC3F7" />
-        ) : (
-          <Ionicons name="add-circle" size={24} color="#4FC3F7" />
-        )}
+        ) : null}
       </View>
     </Pressable>
   );
@@ -239,7 +301,6 @@ const QuickFavoritesModal: React.FC<Props> = ({ visible, onClose, onFoodLogged, 
 
     return (
       <View style={styles.emptyState}>
-        <Text style={styles.emptyEmoji}>{selectedCategory === 'recent' ? '🕒' : '⭐'}</Text>
         <Text style={styles.emptyText}>
           {emptyMessages[selectedCategory]}
         </Text>
@@ -260,9 +321,9 @@ const QuickFavoritesModal: React.FC<Props> = ({ visible, onClose, onFoodLogged, 
         mealContext.date === format(new Date(), 'yyyy-MM-dd')
           ? "today's"
           : format(new Date(mealContext.date), 'MMM d');
-      return `💡 Tap any food to add it to ${dateText} ${mealLabel.toLowerCase()}`;
+      return `Tap any food to add it to ${dateText} ${mealLabel.toLowerCase()}`;
     }
-    return '💡 Tap any food to instantly add it to your log';
+    return 'Tap any food to instantly add it to your log';
   };
 
   return (
@@ -271,7 +332,7 @@ const QuickFavoritesModal: React.FC<Props> = ({ visible, onClose, onFoodLogged, 
         <View style={styles.modalContainer}>
           {/* Header */}
           <View style={styles.headerRow}>
-            <Text style={styles.modalTitle}>🍽️ Add a Meal</Text>
+            <Text style={styles.modalTitle}>Add a Meal</Text>
             <Pressable onPress={onClose}>
               <Ionicons name="close" size={24} color="#fff" />
             </Pressable>
@@ -281,7 +342,7 @@ const QuickFavoritesModal: React.FC<Props> = ({ visible, onClose, onFoodLogged, 
           {mealContext?.mealType && (
             <View style={styles.mealContextCard}>
               <Text style={styles.mealContextText}>
-                {mealContext.mealType.emoji} Adding to {mealContext.mealType.label}
+                Adding to {mealContext.mealType.label}
               </Text>
               <Text style={styles.mealContextTime}>
                 {mealContext.date === format(new Date(), 'yyyy-MM-dd')
@@ -302,7 +363,6 @@ const QuickFavoritesModal: React.FC<Props> = ({ visible, onClose, onFoodLogged, 
                 ]}
                 onPress={() => setSelectedCategory(category.id)}
               >
-                <Text style={styles.categoryEmoji}>{category.emoji}</Text>
                 <Text
                   style={[
                     styles.categoryText,
@@ -326,7 +386,6 @@ const QuickFavoritesModal: React.FC<Props> = ({ visible, onClose, onFoodLogged, 
               style={styles.addFoodButton}
               onPress={() => setShowDescribeModal(true)}
             >
-              <Ionicons name="add" size={20} color="#fff" />
               <Text style={styles.addFoodText}>Add a Custom Food</Text>
             </Pressable>
           )}
@@ -360,7 +419,6 @@ const QuickFavoritesModal: React.FC<Props> = ({ visible, onClose, onFoodLogged, 
           try {
             await addDoc(collection(db, `users/${uid}/favorites`), {
               name: parsedMeal.name,
-              emoji: parsedMeal.emoji || '🍽️',
               calories: parsedMeal.calories,
               protein: parsedMeal.protein,
               carbs: parsedMeal.carbs,
@@ -388,6 +446,80 @@ const QuickFavoritesModal: React.FC<Props> = ({ visible, onClose, onFoodLogged, 
           }
         }}
       />
+
+      <Modal visible={!!selectedAIFavorite} transparent animationType="fade" onRequestClose={() => setSelectedAIFavorite(null)}>
+        <View style={styles.detailOverlay}>
+          <View style={styles.detailContainer}>
+            <View style={styles.detailHeader}>
+              <Text style={styles.detailTitle}>{selectedAIFavorite?.name || 'Saved AI Meal'}</Text>
+              <Pressable onPress={() => setSelectedAIFavorite(null)}>
+                <Ionicons name="close" size={22} color="#fff" />
+              </Pressable>
+            </View>
+            <ScrollView>
+              {selectedAIFavorite?.sourceName ? (
+                <Text style={styles.detailMeta}>Source: {selectedAIFavorite.sourceName}</Text>
+              ) : null}
+              <Text style={styles.detailMeta}>
+                {selectedAIFavorite?.calories || 0} cal • {selectedAIFavorite?.protein || 0}g P •{' '}
+                {selectedAIFavorite?.carbs || 0}g C • {selectedAIFavorite?.fat || 0}g F
+              </Text>
+
+              {selectedAIFavorite?.orderDetails?.length ? (
+                <View style={styles.detailSection}>
+                  <Text style={styles.detailSectionTitle}>How to Order</Text>
+                  {selectedAIFavorite.orderDetails.map((item, index) => (
+                    <Text key={`order-${index}`} style={styles.detailLine}>• {item}</Text>
+                  ))}
+                </View>
+              ) : null}
+
+              {selectedAIFavorite?.ingredients?.length ? (
+                <View style={styles.detailSection}>
+                  <Text style={styles.detailSectionTitle}>Ingredients</Text>
+                  {selectedAIFavorite.ingredients.map((item, index) => (
+                    <Text key={`ingredient-${index}`} style={styles.detailLine}>• {item}</Text>
+                  ))}
+                </View>
+              ) : null}
+
+              {selectedAIFavorite?.instructions?.length ? (
+                <View style={styles.detailSection}>
+                  <Text style={styles.detailSectionTitle}>Instructions</Text>
+                  {selectedAIFavorite.instructions.map((item, index) => (
+                    <Text key={`instruction-${index}`} style={styles.detailLine}>{index + 1}. {item}</Text>
+                  ))}
+                </View>
+              ) : null}
+
+              {selectedAIFavorite?.whyItFits ? (
+                <View style={styles.detailSection}>
+                  <Text style={styles.detailSectionTitle}>Why This Fits</Text>
+                  <Text style={styles.detailParagraph}>{selectedAIFavorite.whyItFits}</Text>
+                </View>
+              ) : null}
+
+              {selectedAIFavorite?.fallback ? (
+                <View style={styles.detailSection}>
+                  <Text style={styles.detailSectionTitle}>Fallback</Text>
+                  <Text style={styles.detailParagraph}>{selectedAIFavorite.fallback}</Text>
+                </View>
+              ) : null}
+            </ScrollView>
+
+            <Pressable
+              style={styles.detailLogButton}
+              onPress={async () => {
+                if (!selectedAIFavorite) { return; }
+                await logQuickFood(selectedAIFavorite);
+                setSelectedAIFavorite(null);
+              }}
+            >
+              <Text style={styles.detailLogButtonText}>Log This Meal</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </Modal>
   );
 };
@@ -508,6 +640,72 @@ const styles = StyleSheet.create({
     color: '#666',
     fontSize: 11,
     marginTop: 2,
+  },
+  favoriteDetail: {
+    color: '#8abfd6',
+    fontSize: 11,
+    marginTop: 3,
+  },
+  detailOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.86)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  detailContainer: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 14,
+    padding: 16,
+    maxHeight: '85%',
+  },
+  detailHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  detailTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+    flex: 1,
+    marginRight: 8,
+  },
+  detailMeta: {
+    color: '#aeb4ba',
+    fontSize: 12,
+    marginBottom: 6,
+  },
+  detailSection: {
+    marginTop: 10,
+  },
+  detailSectionTitle: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  detailLine: {
+    color: '#c8ced6',
+    fontSize: 13,
+    marginBottom: 4,
+  },
+  detailParagraph: {
+    color: '#c8ced6',
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  detailLogButton: {
+    marginTop: 12,
+    backgroundColor: '#4FC3F7',
+    borderRadius: 10,
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  detailLogButtonText: {
+    color: '#000',
+    fontWeight: '700',
+    fontSize: 14,
   },
   emptyState: {
     alignItems: 'center',

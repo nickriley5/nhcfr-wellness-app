@@ -605,6 +605,27 @@ const crossValidateResults = (results: MealMacroResult[]): MealMacroResult => {
   return bestResult;
 };
 
+const countLikelyIngredients = (query: string): number => {
+  const normalized = query.toLowerCase();
+  const splits = normalized
+    .split(/\band\b|,|\+| with |\bon the side\b|\balso\b/)
+    .map(s => s.trim())
+    .filter(Boolean);
+  return splits.length;
+};
+
+const isImplausibleForComplexMeal = (result: MealMacroResult, query: string): boolean => {
+  const ingredientCount = countLikelyIngredients(query);
+  const hasWeightOrVolume = /\b\d+(\.\d+)?\s?(g|gram|grams|oz|ounce|ounces|lb|lbs|pound|pounds|cup|cups)\b/i.test(query);
+  const likelyComplex = ingredientCount >= 3 || hasWeightOrVolume;
+
+  if (!likelyComplex) {return false;}
+
+  const veryLowEnergy = result.calories < 180;
+  const tooFewItems = !Array.isArray(result.items) || result.items.length <= 1;
+  return veryLowEnergy && tooFewItems;
+};
+
 /* ✅ SMART ROUTING - Gemini-First with Free API Fallbacks */
 export const describeMeal = async (query: string): Promise<MealMacroResult> => {
   console.log('🚀 Smart meal analysis (Gemini-powered) for:', query);
@@ -662,8 +683,13 @@ export const describeMeal = async (query: string): Promise<MealMacroResult> => {
   if (results.length === 0) {
     console.log('🔄 Using FatSecret database');
     const fatSecretResult = await fetchFromFatSecret(query);
-    if (fatSecretResult && fatSecretResult.calories > 0) {
+    if (fatSecretResult && fatSecretResult.calories > 0 && !isImplausibleForComplexMeal(fatSecretResult, query)) {
       results.push(fatSecretResult);
+    } else if (fatSecretResult) {
+      console.log('⚠️ FatSecret fallback rejected by plausibility gate for complex meal:', {
+        calories: fatSecretResult.calories,
+        items: fatSecretResult.items?.length ?? 0,
+      });
     }
   }
 

@@ -326,6 +326,11 @@ const AIWorkoutAssistant: React.FC<Props> = ({ visible, onClose, onApplyRecommen
                     <Text style={styles.generateButtonText}>⚡ Generate Workout</Text>
                   )}
                 </Pressable>
+                {loading ? (
+                  <Text style={styles.loadingHint}>
+                    AI is building your session. This may take up to 30-45 seconds.
+                  </Text>
+                ) : null}
               </View>
             )}
 
@@ -521,6 +526,12 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  loadingHint: {
+    color: '#9aa0a6',
+    fontSize: 12,
+    marginTop: 10,
+    textAlign: 'center',
   },
   // Preference styles
   preferenceSection: {

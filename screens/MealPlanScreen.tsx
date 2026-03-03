@@ -33,7 +33,6 @@ import MealCard from '../components/mealplan/MealCard';
 import LogFoodButton from '../components/mealplan/LogFoodButton';
 import MealLoggingModal, { MealContext } from '../components/mealplan/MealLoggingModal';
 import DescribeMealModal from '../components/mealplan/DescribeMealModal';
-import CameraModal from '../components/mealplan/CameraModal';
 import QuickFavoritesModal from '../components/mealplan/QuickFavorites';
 import MealEditModal from '../components/mealplan/MealEditModal';
 import { calculateItemMacros, sumMacros, validateMealAccuracy } from '../utils/precisionMath';
@@ -77,7 +76,7 @@ interface MealCardProps {
   foodItems?: FoodItem[];
   originalDescription?: string;
   mealType?: string;       // e.g., 'breakfast' | 'snack' | 'lunch' | 'dinner' | ...
-  mealEmoji?: string;      // e.g., '🍳'
+  mealEmoji?: string;
   plannedTime?: string;    // 'HH:mm'
 }
 
@@ -96,12 +95,10 @@ const MealPlanScreen: React.FC = () => {
   const [showMealLoggingModal, setShowMealLoggingModal] = useState(false);
   const [showDescribeModal, setShowDescribeModal] = useState(false);
   const [showQuickFavoritesModal, setShowQuickFavoritesModal] = useState(false);
-  const [showCameraModal, setShowCameraModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showAIMealPlanner, setShowAIMealPlanner] = useState(false);
 
-  // ✅ CAMERA & PHOTO STATES
-  const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
+  // ✅ PHOTO STATE
   const [pendingPhotoUri, setPendingPhotoUri] = useState<string | null>(null);
 
   // ✅ MEAL CONTEXT STATE
@@ -241,7 +238,7 @@ const MealPlanScreen: React.FC = () => {
             foodItems: data.foodItems || [],
             originalDescription: data.originalDescription || '',
             mealType: data.mealType || 'unknown',
-            mealEmoji: data.mealEmoji || '🍽️',
+            mealEmoji: data.mealEmoji || '',
             plannedTime: data.plannedTime || null,
           };
         });
@@ -288,8 +285,8 @@ const MealPlanScreen: React.FC = () => {
         return;
       }
       if (response.assets && response.assets[0]?.uri) {
-        setSelectedImageUri(response.assets[0].uri);
-        setShowCameraModal(true);
+        setPendingPhotoUri(response.assets[0].uri);
+        setShowDescribeModal(true);
       }
     });
   };
@@ -303,8 +300,8 @@ const MealPlanScreen: React.FC = () => {
         return;
       }
       if (response.assets && response.assets[0]?.uri) {
-        setSelectedImageUri(response.assets[0].uri);
-        setShowCameraModal(true);
+        setPendingPhotoUri(response.assets[0].uri);
+        setShowDescribeModal(true);
       }
     });
   };
@@ -324,15 +321,6 @@ const MealPlanScreen: React.FC = () => {
   const handleOpenQuickAdd = (mealContext: MealContext) => {
     setCurrentMealContext(mealContext);
     setShowQuickFavoritesModal(true);
-  };
-
-  const handleCameraModalComplete = (meal: any) => {
-    if (meal.source === 'OPEN_DESCRIBE_MODAL') {
-      setPendingPhotoUri(meal.photoUri);
-      setShowCameraModal(false);
-      setSelectedImageUri(null);
-      setTimeout(() => setShowDescribeModal(true), 300);
-    }
   };
 
   const handleFoodLogged = () => {};
@@ -368,6 +356,14 @@ const prettyTime = (time?: string | null) => {
   } catch {
     return time;
   }
+};
+
+const getCurrentPlannerMealType = (): 'breakfast' | 'lunch' | 'dinner' | 'snack' => {
+  const hour = new Date().getHours();
+  if (hour < 10) {return 'breakfast';}
+  if (hour < 14) {return 'lunch';}
+  if (hour < 18) {return 'snack';}
+  return 'dinner';
 };
 
 
@@ -701,7 +697,6 @@ const prettyTime = (time?: string | null) => {
     showMealLoggingModal,
     showDescribeModal,
     showQuickFavoritesModal,
-    showCameraModal,
     showEditModal,
   });
 
@@ -738,7 +733,6 @@ const prettyTime = (time?: string | null) => {
     return (
       <LinearGradient colors={['#0f0f0f', '#1a1a1a']} style={styles.container}>
         <View style={styles.emptyStateContainer}>
-          <Text style={styles.emptyStateIcon}>🍽️</Text>
           <Text style={styles.emptyStateTitle}>No Meal Plan Yet</Text>
           <Text style={styles.emptyStateText}>
             Create your personalized meal plan to start tracking your nutrition and reach your goals
@@ -805,13 +799,13 @@ const prettyTime = (time?: string | null) => {
           <MacroCard key="macro-fat" label="Fat" logged={totals.fat} target={mealPlan.fatGrams} unit="g" variant="fat" />
         </View>
 
-        <DashboardButton text="📊 View Full Plan" variant="blue" onPress={goToMacroOverview} />
+        <DashboardButton text="View Full Plan" variant="blue" onPress={goToMacroOverview} />
 
         <Text style={styles.subheading}>Today's Meals</Text>
 
         {loggedMeals.length === 0 ? (
           <View style={styles.emptyMealsContainer}>
-            <Text style={styles.emptyMealsEmoji}>🍽️</Text>
+            <Text style={styles.emptyMealsEmoji}>Meal Log</Text>
             <Text style={styles.emptyMealsText}>No meals logged yet.</Text>
             <Text style={styles.emptyMealsSubtext}>Start tracking your nutrition to reach your goals</Text>
             <DashboardButton text="Log Your First Meal" variant="green" onPress={() => setShowMealLoggingModal(true)} />
@@ -820,7 +814,7 @@ const prettyTime = (time?: string | null) => {
           loggedMeals.map((meal: MealCardProps) => (
             <View key={meal.id} style={styles.mealBlock}>
               <Text style={styles.mealMeta}>
-                {meal.mealEmoji || '�🍽️'} {prettyMealLabel(meal.mealType)}
+                {prettyMealLabel(meal.mealType)}
                 {meal.plannedTime ? ` • ${prettyTime(meal.plannedTime)}` : ''}
               </Text>
 
@@ -834,16 +828,15 @@ const prettyTime = (time?: string | null) => {
       <View style={styles.floatingButtonContainer}>
         <View style={{ flex: 1 }}>
           <LogFoodButton onPress={() => {
-            console.log('🍽️ Log Food button pressed');
-            console.log('🍽️ Current modal states:', {
+            console.log('Log Food button pressed');
+            console.log('Current modal states:', {
               showMealLoggingModal,
               showDescribeModal,
               showQuickFavoritesModal,
-              showCameraModal,
               showEditModal
             });
             setShowMealLoggingModal(true);
-            console.log('🍽️ Set showMealLoggingModal to true');
+            console.log('Set showMealLoggingModal to true');
           }} />
         </View>
         <Pressable
@@ -856,12 +849,11 @@ const prettyTime = (time?: string | null) => {
 
       {/* ✅ MODALS - Only render one at a time to prevent crashes */}
       {(() => {
-        const shouldShow = showMealLoggingModal && !showDescribeModal && !showQuickFavoritesModal && !showCameraModal && !showEditModal;
-        console.log('🍽️ MealLoggingModal render check:', {
+        const shouldShow = showMealLoggingModal && !showDescribeModal && !showQuickFavoritesModal && !showEditModal;
+        console.log('MealLoggingModal render check:', {
           showMealLoggingModal,
           showDescribeModal,
           showQuickFavoritesModal,
-          showCameraModal,
           showEditModal,
           shouldShow
         });
@@ -869,7 +861,7 @@ const prettyTime = (time?: string | null) => {
           <MealLoggingModal
             visible={true}
             onClose={() => {
-              console.log('🍽️ Closing MealLoggingModal');
+              console.log('Closing MealLoggingModal');
               setShowMealLoggingModal(false);
             }}
             onOpenDescribeModal={handleOpenDescribeModal}
@@ -912,19 +904,6 @@ const prettyTime = (time?: string | null) => {
       />
       )}
 
-      {showCameraModal && (
-      <CameraModal
-        visible={true}
-        onClose={() => {
-          setShowCameraModal(false);
-          setSelectedImageUri(null);
-          setCurrentMealContext(null);
-        }}
-        imageUri={selectedImageUri}
-        onMealLogged={handleCameraModalComplete}
-      />
-      )}
-
       {showEditModal && (
       <MealEditModal
         visible={true}
@@ -957,7 +936,7 @@ const prettyTime = (time?: string | null) => {
       <AIMealPlanner
         visible={showAIMealPlanner}
         onClose={() => setShowAIMealPlanner(false)}
-        mealType="lunch"
+        mealType={getCurrentPlannerMealType()}
       />
     </LinearGradient>
   );

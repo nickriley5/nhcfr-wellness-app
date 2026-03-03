@@ -127,7 +127,7 @@ const DescribeMealModal: React.FC<Props> = ({
 
   onMealParsed({
     name: mealName,
-    emoji: '🍽️',
+    emoji: '',
     calories: totals.calories,
     protein: totals.protein,
     carbs: totals.carbs,
@@ -192,7 +192,7 @@ const DescribeMealModal: React.FC<Props> = ({
 
       // 🔥 NEW: If there's a photo, use Gemini Vision AI
       if (pendingPhotoUri) {
-        console.log('📸 Analyzing meal from photo with Gemini Vision...');
+        console.log('Analyzing meal from photo with Gemini Vision...');
         
         // Convert image to base64
         const base64 = await FileSystem.readAsStringAsync(pendingPhotoUri, {
@@ -227,8 +227,35 @@ const DescribeMealModal: React.FC<Props> = ({
 
         console.log('✅ Photo analysis complete:', result);
       } else {
-        // Original text-based analysis
-        result = await describeMeal(query);
+        // AI-first text analysis (same path family as photo analysis), with fallback to existing nutrition pipeline.
+        try {
+          console.log('🤖 Analyzing meal from text with Gemini AI...');
+          const geminiResult = await analyzeMeal({
+            text: query.trim(),
+          });
+
+          result = {
+            calories: geminiResult.totalMacros.calories,
+            protein: geminiResult.totalMacros.protein,
+            carbs: geminiResult.totalMacros.carbs,
+            fat: geminiResult.totalMacros.fat,
+            source: geminiResult.source.toUpperCase(),
+            items: geminiResult.items.map(item => `${item.quantity} ${item.name}`),
+            confidence: geminiResult.confidence,
+            validationFlags: geminiResult.warnings,
+            itemMacros: geminiResult.items.map(item => ({
+              calories: item.calories,
+              protein: item.protein,
+              carbs: item.carbs,
+              fat: item.fat,
+            })),
+          };
+
+          console.log('✅ Text analysis complete (Gemini):', result);
+        } catch (aiError) {
+          console.warn('⚠️ Gemini text analysis failed, falling back to nutrition service:', aiError);
+          result = await describeMeal(query);
+        }
       }
 
       setLastResult(result);
@@ -338,21 +365,21 @@ const DescribeMealModal: React.FC<Props> = ({
       if (result.confidence >= 85) {
         Toast.show({
           type: 'success',
-          text1: '🎯 High Accuracy',
+          text1: 'High Accuracy',
           text2: `${result.confidence}% confidence - excellent match!`,
           position: 'bottom',
         });
       } else if (result.confidence >= 75) {
         Toast.show({
           type: 'info',
-          text1: '👍 Good Match',
+          text1: 'Good Match',
           text2: `${result.confidence}% confidence - please review portions`,
           position: 'bottom',
         });
       } else if (result.confidence >= 50) {
         Toast.show({
           type: 'warning',
-          text1: '⚠️ Please Review',
+          text1: 'Please Review',
           text2: `${result.confidence}% confidence - double-check the details`,
           position: 'bottom',
         });
@@ -364,7 +391,7 @@ const DescribeMealModal: React.FC<Props> = ({
 
         Toast.show({
           type: 'error',
-          text1: '🚨 Accuracy Warning',
+          text1: 'Accuracy Warning',
           text2: validationMessage,
           position: 'bottom',
           visibilityTime: 6000,
@@ -424,7 +451,7 @@ const DescribeMealModal: React.FC<Props> = ({
           validationFlags: lastResult?.validationFlags || [],
           analysisSource: lastResult?.source || 'UNKNOWN',
           mealType: mealContext?.mealType?.id || 'unknown',
-          mealEmoji: mealContext?.mealType?.emoji || '🍽️',
+          mealEmoji: mealContext?.mealType?.emoji || '',
           plannedDate: mealContext?.date || format(new Date(), 'yyyy-MM-dd'),
           plannedTime: mealContext?.time || format(new Date(), 'HH:mm'),
           loggedAt: new Date(),
@@ -531,11 +558,11 @@ const DescribeMealModal: React.FC<Props> = ({
               <Text style={styles.modalTitle}>
                 {isReDescribe
                   ? showResults
-                    ? '🔄 Re-describe • Review'
-                    : '🔄 Re-describe Meal'
+                    ? 'Re-describe • Review'
+                    : 'Re-describe Meal'
                   : showResults
-                  ? '🔍 Review Your Meal'
-                  : '📝 Describe Your Meal'}
+                  ? 'Review Your Meal'
+                  : 'Describe Your Meal'}
               </Text>
               <Pressable onPress={handleClose}>
                 <Ionicons name="close" size={24} color="#fff" />
@@ -545,9 +572,7 @@ const DescribeMealModal: React.FC<Props> = ({
             {/* Context */}
             {mealContext?.mealType && (
               <View style={styles.contextCard}>
-                <Text style={styles.contextText}>
-                  {mealContext.mealType.emoji} {mealContext.mealType.label}
-                </Text>
+                <Text style={styles.contextText}>{mealContext.mealType.label}</Text>
                 <Text style={styles.contextSubtext}>Using professional nutrition analysis</Text>
               </View>
             )}
@@ -560,7 +585,7 @@ const DescribeMealModal: React.FC<Props> = ({
                     <Image source={{ uri: pendingPhotoUri }} style={styles.photoImage} />
                     <View style={styles.photoOverlay}>
                       <Ionicons name="camera" size={24} color="#fff" />
-                      <Text style={styles.photoText}>📸 Photo will be analyzed with AI</Text>
+                      <Text style={styles.photoText}>Photo will be analyzed with AI</Text>
                     </View>
                   </View>
                 )}
@@ -580,7 +605,7 @@ const DescribeMealModal: React.FC<Props> = ({
 
                 {!loading && !pendingPhotoUri && (
                   <View style={styles.suggestionsContainer}>
-                    <Text style={styles.suggestionsTitle}>💡 Quick suggestions:</Text>
+                    <Text style={styles.suggestionsTitle}>Quick suggestions:</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.suggestionsScroll}>
                       {suggestions.map((s, i) => (
                         <Pressable key={i} style={styles.suggestionChip} onPress={() => setQuery(s)}>
@@ -612,7 +637,7 @@ const DescribeMealModal: React.FC<Props> = ({
                         ? 'Analyzing photo with Gemini Vision AI...'
                         : 'Analyzing with Gemini AI...'
                       : pendingPhotoUri
-                      ? '📸 Analyze Photo'
+                      ? 'Analyze Photo'
                       : 'Analyze Meal'}
                   </Text>
                 </Pressable>
@@ -622,8 +647,11 @@ const DescribeMealModal: React.FC<Props> = ({
                     <ActivityIndicator color="#4FC3F7" size="large" />
                     <Text style={styles.loadingText}>
                       {pendingPhotoUri
-                        ? '🤖 Gemini Vision AI analyzing your photo...'
-                        : '🤖 Gemini AI analyzing nutrition data...'}
+                        ? 'Gemini Vision AI analyzing your photo...'
+                        : 'Gemini AI analyzing nutrition data...'}
+                    </Text>
+                    <Text style={styles.loadingHint}>
+                      This usually takes 10-30 seconds depending on complexity.
                     </Text>
                   </View>
                 )}
@@ -652,16 +680,16 @@ const DescribeMealModal: React.FC<Props> = ({
                     <View style={styles.confidenceHeader}>
                       <Text style={styles.confidenceTitle}>
                         {lastResult.confidence >= 85  // Raised from 80
-                          ? '🎯 High Accuracy'
+                          ? 'High Accuracy'
                           : lastResult.confidence >= 75  // Raised from 60
-                          ? '👍 Good Match'
-                          : '⚠️ Please Review'}
+                          ? 'Good Match'
+                          : 'Please Review'}
                       </Text>
                       <Text style={styles.confidenceScore}>{lastResult.confidence}%</Text>
                     </View>
                     <Text style={styles.confidenceSource}>Source: {String(lastResult.source)}</Text>
                     {!!lastResult.validationFlags?.length && (
-                      <Text style={styles.validationFlags}>💡 {String(lastResult.validationFlags[0])}</Text>
+                      <Text style={styles.validationFlags}>{String(lastResult.validationFlags[0])}</Text>
                     )}
                   </View>
                 )}
@@ -686,7 +714,7 @@ const DescribeMealModal: React.FC<Props> = ({
 
                 {/* Current Totals Summary */}
                 <View style={styles.totalsSummary}>
-                  <Text style={styles.totalsSummaryTitle}>📊 Current Totals</Text>
+                  <Text style={styles.totalsSummaryTitle}>Current Totals</Text>
                   <View style={styles.totalsRow}>
                     <View style={styles.totalItem}>
                       <Text style={styles.totalValue}>{afterTotals.calories}</Text>
@@ -705,7 +733,7 @@ const DescribeMealModal: React.FC<Props> = ({
                       <Text style={styles.totalLabel}>Fat</Text>
                     </View>
                   </View>
-                  <Text style={styles.totalsNote}>💡 Updates as you adjust quantities above</Text>
+                  <Text style={styles.totalsNote}>Updates as you adjust quantities above</Text>
                 </View>
 
                 {/* Actions */}
@@ -807,6 +835,7 @@ const styles = StyleSheet.create({
 
   loadingContainer: { alignItems: 'center', marginTop: 16 },
   loadingText: { color: '#aaa', marginTop: 8 },
+  loadingHint: { color: '#888', marginTop: 6, fontSize: 12, textAlign: 'center' },
 
   errorContainer: { flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 12 },
   errorText: { color: '#F06292' },

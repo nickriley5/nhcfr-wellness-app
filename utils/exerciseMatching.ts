@@ -5,6 +5,208 @@
 import { exercises } from '../data/exercises';
 import type { Exercise } from '../types/Exercise';
 
+type EquipmentToken =
+  | 'bodyweight'
+  | 'dumbbell'
+  | 'barbell'
+  | 'kettlebell'
+  | 'band'
+  | 'cable'
+  | 'machine'
+  | 'box'
+  | 'rope'
+  | 'sled'
+  | 'tire'
+  | 'pullup_bar'
+  | 'sandbag'
+  | 'medball'
+  | 'landmine'
+  | 'trap_bar'
+  | 'cardio_machine'
+  | 'full_gym';
+
+const EXERCISE_ALIASES: Record<string, string> = {
+  'sled drag': 'Reverse Sled Pulls',
+  'sled pulls': 'Reverse Sled Pulls',
+  'sled pull': 'Reverse Sled Pulls',
+  'reverse sled drag': 'Reverse Sled Pulls',
+  'tire flips': 'Tire Flip',
+  'box jumps': 'Box Jump',
+  'step ups': 'Step-Ups',
+  'farmer carries': 'Farmer Carry',
+  'farmers carry': 'Farmer Carry',
+  'pull ups': 'Pull-Ups',
+  'chin ups': 'Chin-Ups',
+  'deadbugs': 'Dead Bug',
+  'renegade row': 'Renegade Rows',
+};
+
+function normalizeExerciseAlias(name: string): string {
+  const cleaned = name.toLowerCase().trim();
+  return EXERCISE_ALIASES[cleaned] ?? name;
+}
+
+const USER_EQUIPMENT_SYNONYMS: Record<string, EquipmentToken[]> = {
+  bodyweight: ['bodyweight'],
+  none: ['bodyweight'],
+  dumbbell: ['dumbbell'],
+  dumbbells: ['dumbbell'],
+  kettlebell: ['kettlebell'],
+  kettlebells: ['kettlebell'],
+  barbell: ['barbell'],
+  barbells: ['barbell'],
+  band: ['band'],
+  bands: ['band'],
+  cable: ['cable'],
+  machine: ['machine'],
+  box: ['box'],
+  rope: ['rope'],
+  sled: ['sled'],
+  tire: ['tire'],
+  'pullup bar': ['pullup_bar'],
+  'pull-up bar': ['pullup_bar'],
+  pullup: ['pullup_bar'],
+  'pull up bar': ['pullup_bar'],
+  sandbag: ['sandbag'],
+  medball: ['medball'],
+  'medicine ball': ['medball'],
+  landmine: ['landmine'],
+  'trap bar': ['trap_bar'],
+  bike: ['cardio_machine'],
+  rower: ['cardio_machine'],
+  ski: ['cardio_machine'],
+  'full gym': [
+    'full_gym',
+    'dumbbell',
+    'barbell',
+    'kettlebell',
+    'band',
+    'cable',
+    'machine',
+    'box',
+    'rope',
+    'sled',
+    'tire',
+    'pullup_bar',
+    'sandbag',
+    'medball',
+    'landmine',
+    'trap_bar',
+    'cardio_machine',
+  ],
+};
+
+const NON_TRAINING_CATEGORY_KEYWORDS = ['mobility', 'stretch', 'recovery', 'resilience', 'warm-up', 'warmup'];
+
+const NON_TRAINING_NAME_KEYWORDS = [
+  'stretch',
+  'mobility',
+  'cars',
+  'wall slides',
+  'wall pec',
+  'doorway shoulder',
+  'hip circles',
+  'arm swings',
+  'leg swings',
+];
+
+function normalizeUserEquipment(userEquipment: string[]): Set<EquipmentToken> {
+  const tokens = new Set<EquipmentToken>();
+  userEquipment.forEach(raw => {
+    const key = raw.toLowerCase().trim();
+    const mapped = USER_EQUIPMENT_SYNONYMS[key];
+    if (mapped) {
+      mapped.forEach(t => tokens.add(t));
+    }
+  });
+
+  // Always allow bodyweight movements; this keeps no-equipment fallback valid.
+  tokens.add('bodyweight');
+  return tokens;
+}
+
+function inferEquipmentTokens(exercise: Exercise): Set<EquipmentToken> {
+  const text = [
+    exercise.equipment || '',
+    exercise.category || '',
+    exercise.focusArea || '',
+    exercise.name || '',
+    ...(exercise.tags || []),
+    ...(exercise.goalTags || []),
+  ]
+    .join(' | ')
+    .toLowerCase();
+
+  const tokens = new Set<EquipmentToken>();
+
+  if (
+    text.includes('bodyweight') ||
+    text.includes('no equipment') ||
+    text.includes('body weight') ||
+    (exercise.category || '').toLowerCase().includes('bodyweight')
+  ) tokens.add('bodyweight');
+
+  if (text.includes('dumbbell') || text.includes('db ') || text.startsWith('db ')) tokens.add('dumbbell');
+  if (text.includes('barbell')) tokens.add('barbell');
+  if (text.includes('kettlebell') || text.includes('kb ') || text.startsWith('kb ')) tokens.add('kettlebell');
+  if (text.includes('band')) tokens.add('band');
+  if (text.includes('cable')) tokens.add('cable');
+  if (text.includes('machine') || text.includes('lat pulldown') || text.includes('seated row')) tokens.add('machine');
+  if (text.includes('box') || text.includes('step-up') || text.includes('step up')) tokens.add('box');
+  if (text.includes('rope')) tokens.add('rope');
+  if (text.includes('sled') || text.includes('prowler')) tokens.add('sled');
+  if (text.includes('tire')) tokens.add('tire');
+  if (
+    text.includes('pull-up') ||
+    text.includes('pull up') ||
+    text.includes('chin-up') ||
+    text.includes('chin up') ||
+    text.includes('chest-to-bar') ||
+    text.includes('bar, trx')
+  ) tokens.add('pullup_bar');
+
+  // Pull-up/chin-up patterns should require a bar even if category labels are noisy.
+  if (tokens.has('pullup_bar') && /pull-?up|chin-?up|chest-to-bar/.test(exercise.name.toLowerCase())) {
+    tokens.delete('bodyweight');
+  }
+  if (text.includes('sandbag')) tokens.add('sandbag');
+  if (text.includes('medball') || text.includes('medicine ball')) tokens.add('medball');
+  if (text.includes('landmine')) tokens.add('landmine');
+  if (text.includes('trap bar')) tokens.add('trap_bar');
+  if (text.includes('row') || text.includes('bike') || text.includes('erg') || text.includes('treadmill') || text.includes('assault bike') || text.includes('ski')) tokens.add('cardio_machine');
+
+  if (tokens.size === 0) {
+    // Unknown equipment text; keep as bodyweight-compatible fallback so we don't starve the pool.
+    tokens.add('bodyweight');
+  }
+
+  return tokens;
+}
+
+function isTrainingExercise(exercise: Exercise): boolean {
+  const category = (exercise.category || '').toLowerCase();
+  const name = exercise.name.toLowerCase();
+
+  const categoryLooksRecovery = NON_TRAINING_CATEGORY_KEYWORDS.some(k => category.includes(k));
+  const nameLooksRecovery = NON_TRAINING_NAME_KEYWORDS.some(k => name.includes(k));
+
+  // Keep common dynamic conditioning moves even if category naming is noisy.
+  const forceInclude = /(burpee|jump|climber|carry|press|squat|deadlift|row|pull|lunge|thruster|clean|snatch|push-up|dip|plank)/.test(name);
+  if (forceInclude) return true;
+
+  return !categoryLooksRecovery && !nameLooksRecovery;
+}
+
+function userHasRequiredEquipment(userTokens: Set<EquipmentToken>, exTokens: Set<EquipmentToken>): boolean {
+  if (userTokens.has('full_gym')) return true;
+  if (exTokens.has('bodyweight')) return true;
+
+  for (const token of exTokens) {
+    if (userTokens.has(token)) return true;
+  }
+  return false;
+}
+
 /**
  * Get curated list of exercises filtered by equipment
  * Returns most common/useful exercises for AI selection
@@ -16,7 +218,7 @@ export function getCuratedExerciseList(userEquipment: string[]): Exercise[] {
     'Farmer Carry',           // Hose/equipment carries
     'Tire Flip',              // Explosive power for equipment manipulation
     'Sled Push',              // Forceful displacement similar to breaching
-    'Sled Drag',              // Dragging victims/equipment
+    'Reverse Sled Pulls',     // Dragging victims/equipment
     'Step-Ups',               // Stair climbing with gear
     'Box Jump',               // Explosive power for obstacles
     'Broad Jumps',            // Horizontal power
@@ -94,36 +296,13 @@ export function getCuratedExerciseList(userEquipment: string[]): Exercise[] {
     ...accessoryMovements,
   ];
 
-  // Normalize equipment strings for comparison
-  const normalizedUserEquip = userEquipment.map(e => e.toLowerCase().trim());
+  const normalizedUserEquip = normalizeUserEquipment(userEquipment);
   
   // Filter exercises by user's available equipment
   const filtered = exercises.filter(ex => {
-    if (!ex.equipment) return false;
-    
-    const exEquip = ex.equipment.toLowerCase();
-    
-    // Always include bodyweight exercises
-    if (exEquip.includes('bodyweight') || exEquip.includes('none')) {
-      return true;
-    }
-    
-    // Check if user has this equipment
-    return normalizedUserEquip.some(userEq => {
-      // Handle plural/singular variations
-      if (userEq.includes('dumbbell') && exEquip.includes('dumbbell')) return true;
-      if (userEq.includes('barbell') && exEquip.includes('barbell')) return true;
-      if (userEq.includes('kettlebell') && exEquip.includes('kettlebell')) return true;
-      if (userEq.includes('band') && exEquip.includes('band')) return true;
-      if (userEq.includes('cable') && exEquip.includes('cable')) return true;
-      if (userEq.includes('machine') && exEquip.includes('machine')) return true;
-      if (userEq.includes('box') && exEquip.includes('box')) return true;
-      if (userEq.includes('rope') && exEquip.includes('rope')) return true;
-      if (userEq.includes('sled') && exEquip.includes('sled')) return true;
-      if (userEq.includes('tire') && exEquip.includes('tire')) return true;
-      if (userEq.includes('pull-up bar') && exEquip.includes('pull-up')) return true;
-      return userEq === exEquip;
-    });
+    if (!isTrainingExercise(ex)) return false;
+    const exTokens = inferEquipmentTokens(ex);
+    return userHasRequiredEquipment(normalizedUserEquip, exTokens);
   });
 
   // Prioritize exercises from our priority list (maintains firefighter-specific ordering)
@@ -131,11 +310,11 @@ export function getCuratedExerciseList(userEquipment: string[]): Exercise[] {
   const others = filtered.filter(ex => !priorityExercises.includes(ex.name));
 
   // Combine: priority first (firefighter-critical movements at top), then others
-  // Limit to 100 exercises for optimal AI performance (expanded from 75 for better variety)
-  const combined = [...priority, ...others].slice(0, 100);
+  // Limit to 150 exercises for better variety while keeping prompts reasonable
+  const combined = [...priority, ...others].slice(0, 150);
 
   console.log(`🚒 Curated ${combined.length} exercises for firefighter training (from ${exercises.length} total)`);
-  console.log(`🏋️ Equipment available: ${userEquipment.join(', ')}`);
+  console.log(`🏋️ Equipment available: ${Array.from(normalizedUserEquip).join(', ')}`);
   console.log(`🔥 Firefighter-critical movements: ${priority.filter(ex => firefighterCritical.includes(ex.name)).length}`);
   
   return combined;
@@ -238,7 +417,8 @@ export function findBestExerciseMatch(aiGeneratedName: string): Exercise | null 
     return null;
   }
 
-  const searchName = aiGeneratedName.toLowerCase().trim();
+  const aliased = normalizeExerciseAlias(aiGeneratedName);
+  const searchName = aliased.toLowerCase().trim();
   
   // First try: Exact match (case insensitive)
   let match = exercises.find(ex => ex.name.toLowerCase() === searchName);
@@ -295,26 +475,26 @@ export function nameToId(name: string): string {
  */
 export function resolveExercise(idOrName: string): Exercise | null {
   if (!idOrName) return null;
+  const aliased = normalizeExerciseAlias(idOrName);
 
   // Try ID lookup first
   let exercise = exercises.find(ex => ex.id === idOrName);
   if (exercise) return exercise;
 
   // Try name-based ID lookup (convert name to ID format)
-  const nameBasedId = nameToId(idOrName);
+  const nameBasedId = nameToId(aliased);
   exercise = exercises.find(ex => nameToId(ex.name) === nameBasedId);
   if (exercise) return exercise;
 
   // Try direct name match
-  exercise = exercises.find(ex => ex.name.toLowerCase() === idOrName.toLowerCase());
+  exercise = exercises.find(ex => ex.name.toLowerCase() === aliased.toLowerCase());
   if (exercise) return exercise;
 
   // Last resort: fuzzy match
-  return findBestExerciseMatch(idOrName);
+  return findBestExerciseMatch(aliased);
 }
 
 /**
  * Export all firefighter-specific utilities
  */
 export { FIREFIGHTER_BENCHMARKS, getFirefighterBenchmark, evaluatePerformance, getCPATReadiness, getTrainingPriorities } from './firefighterMetrics';
-

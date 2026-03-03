@@ -3,6 +3,30 @@ import { useState, useEffect } from 'react';
 import { auth, db } from '../firebase';
 import { doc, getDoc, collection, query, where, limit, getDocs, orderBy, setDoc, updateDoc } from 'firebase/firestore';
 
+const logSafeError = (label: string, err: unknown) => {
+  if (err instanceof Error) {
+    console.error(label, err.message);
+    return;
+  }
+  try {
+    console.error(label, JSON.parse(JSON.stringify(err)));
+  } catch {
+    console.error(label, String(err));
+  }
+};
+
+const logSafeWarn = (label: string, err: unknown) => {
+  if (err instanceof Error) {
+    console.warn(label, err.message);
+    return;
+  }
+  try {
+    console.warn(label, JSON.parse(JSON.stringify(err)));
+  } catch {
+    console.warn(label, String(err));
+  }
+};
+
 interface HydrationState {
   currentOz: number;
   goalOz: number;
@@ -35,6 +59,39 @@ interface WorkoutSummary {
   prMessages: string[];
 }
 
+interface CardioSummary {
+  isCompleted: boolean;
+  dayTitle: string;
+  totalTime: string;
+  completedAt: Date;
+  type?: string;
+  distance?: number | null;
+  pace?: string | null;
+  calories?: number | null;
+  avgHeartRate?: number | null;
+  maxHeartRate?: number | null;
+}
+
+interface CardioSession {
+  dayOfWeek: string;
+  type: string;
+  duration: number;
+  intensity: string;
+  notes?: string;
+  targetHeartRate?: string;
+}
+
+interface CardioScheduleInfo {
+  frequency: number;
+  currentWeek: number;
+  sessions: CardioSession[];
+  completedSessionKeys: string[];
+  completedThisWeek: number;
+  todaySession?: CardioSession;
+  todaySessionKey?: string;
+  todayIsCompleted?: boolean;
+}
+
 interface ConsistencyData {
   workoutStreak: number;
   workoutsCompleted: number;
@@ -54,6 +111,8 @@ export function useDashboardState(bump: number, programExists: boolean) {
   const [programInfo, setProgramInfo] = useState<ProgramInfo | null>(null);
   const [tomorrowInfo, setTomorrowInfo] = useState<TomorrowInfo | null>(null);
   const [todayWorkoutSummary, setTodayWorkoutSummary] = useState<WorkoutSummary | null>(null);
+  const [todayCardioSummary, setTodayCardioSummary] = useState<CardioSummary | null>(null);
+  const [cardioScheduleInfo, setCardioScheduleInfo] = useState<CardioScheduleInfo | null>(null);
   const [consistencyData, setConsistencyData] = useState<ConsistencyData>({
     workoutStreak: 0,
     workoutsCompleted: 0,
@@ -69,6 +128,7 @@ export function useDashboardState(bump: number, programExists: boolean) {
       const uid = auth.currentUser?.uid;
       if (!uid) {
         setProgramInfo(null);
+        setCardioScheduleInfo(null);
         return;
       }
 
@@ -76,6 +136,7 @@ export function useDashboardState(bump: number, programExists: boolean) {
         // Double-check user is still authenticated before making Firestore calls
         if (!auth.currentUser) {
           setProgramInfo(null);
+          setCardioScheduleInfo(null);
           return;
         }
 
@@ -109,13 +170,40 @@ export function useDashboardState(bump: number, programExists: boolean) {
               }
             };
             daysPerWeek = programData.template.daysPerWeek;
+
+            const currentWeek = aiProgram.currentWeek || 1;
+            const cardioSchedule = aiProgram.cardioSchedule;
+            const completedCardioSessions = aiProgram.completedCardioSessions || [];
+            if (cardioSchedule?.frequency) {
+              const weekSchedule = cardioSchedule.weeks?.find((w: any) => w.weekNumber === currentWeek);
+              const sessions = (weekSchedule?.sessions || []) as CardioSession[];
+              const todayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+              const todaySession = sessions.find((session) => session.dayOfWeek === todayName);
+              const todaySessionKey = todaySession ? `week${currentWeek}-${todaySession.dayOfWeek}` : undefined;
+              const completedThisWeek = completedCardioSessions.filter((key: string) => key.startsWith(`week${currentWeek}-`)).length;
+
+              setCardioScheduleInfo({
+                frequency: cardioSchedule.frequency,
+                currentWeek,
+                sessions,
+                completedSessionKeys: completedCardioSessions,
+                completedThisWeek,
+                todaySession,
+                todaySessionKey,
+                todayIsCompleted: todaySessionKey ? completedCardioSessions.includes(todaySessionKey) : false,
+              });
+            } else {
+              setCardioScheduleInfo(null);
+            }
           }
         } else {
           daysPerWeek = programData.template?.daysPerWeek || 4;
+          setCardioScheduleInfo(null);
         }
 
         if (!programData) {
           setProgramInfo(null);
+          setCardioScheduleInfo(null);
           return;
         }
 
@@ -186,7 +274,7 @@ export function useDashboardState(bump: number, programExists: boolean) {
           todayEnvironment,
         });
       } catch (error) {
-        console.error('Error loading program info:', error);
+        logSafeError('Error loading program info:', error);
         setProgramInfo(null);
       }
     };
@@ -297,7 +385,7 @@ export function useDashboardState(bump: number, programExists: boolean) {
               }
             }
           } catch (aiError) {
-            console.error('Error loading AI program for tomorrow:', aiError);
+            logSafeError('Error loading AI program for tomorrow:', aiError);
             // Continue - nextWorkoutDay will be null
           }
         }
@@ -346,7 +434,7 @@ export function useDashboardState(bump: number, programExists: boolean) {
           environment,
         });
       } catch (error) {
-        console.error('Error getting tomorrow info:', error);
+        logSafeError('Error getting tomorrow info:', error);
         setTomorrowInfo(null);
       }
     };
@@ -354,12 +442,13 @@ export function useDashboardState(bump: number, programExists: boolean) {
     loadTomorrowInfo();
   }, [bump, programExists]);
 
-  // Load today's workout completion status
+  // Load today's workout + cardio completion status
   useEffect(() => {
     const loadWorkoutSummary = async () => {
       const uid = auth.currentUser?.uid;
       if (!uid) {
         setTodayWorkoutSummary(null);
+        setTodayCardioSummary(null);
         return;
       }
 
@@ -374,24 +463,45 @@ export function useDashboardState(bump: number, programExists: boolean) {
         const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
         const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
 
-        // Query today's workout logs
-        const workoutLogsQuery = query(
-          collection(db, 'users', uid, 'workoutLogs'),
-          where('completedAt', '>=', todayStart),
-          where('completedAt', '<', todayEnd),
-          orderBy('completedAt', 'desc'),
-          limit(1)
-        );
+        const loadTodayLogByType = async (workoutType: 'strength' | 'cardio') => {
+          try {
+            const workoutLogsQuery = query(
+              collection(db, 'users', uid, 'workoutLogs'),
+              where('completedAt', '>=', todayStart),
+              where('completedAt', '<', todayEnd),
+              where('workoutType', '==', workoutType),
+              orderBy('completedAt', 'desc'),
+              limit(1)
+            );
 
-        const snapshot = await getDocs(workoutLogsQuery);
+            const snapshot = await getDocs(workoutLogsQuery);
+            return snapshot.empty ? null : snapshot.docs[0].data();
+          } catch (error) {
+            logSafeWarn(`Workout summary fallback for ${workoutType}:`, error);
+          }
+
+          const fallbackQuery = query(
+            collection(db, 'users', uid, 'workoutLogs'),
+            where('completedAt', '>=', todayStart),
+            where('completedAt', '<', todayEnd),
+            orderBy('completedAt', 'desc')
+          );
+          const fallbackSnap = await getDocs(fallbackQuery);
+          const match = fallbackSnap.docs.find(docSnap => docSnap.data().workoutType === workoutType);
+          return match?.data() ?? null;
+        };
+
+        const workoutData = await loadTodayLogByType('strength');
+        const cardioData = await loadTodayLogByType('cardio');
 
         // Check again after async operation
         if (!auth.currentUser) {
           setTodayWorkoutSummary(null);
+          setTodayCardioSummary(null);
           return;
         }
-        if (!snapshot.empty) {
-          const workoutData = snapshot.docs[0].data();
+
+        if (workoutData) {
           const prMessages: string[] = [];
 
           // Calculate summary stats
@@ -433,9 +543,28 @@ export function useDashboardState(bump: number, programExists: boolean) {
         } else {
           setTodayWorkoutSummary(null);
         }
+
+        if (cardioData) {
+          const actualDuration = cardioData.actualDuration ?? cardioData.plannedDuration ?? 0;
+          setTodayCardioSummary({
+            isCompleted: true,
+            dayTitle: cardioData.dayTitle || 'Cardio',
+            totalTime: `${actualDuration} min`,
+            completedAt: cardioData.completedAt?.toDate() || new Date(),
+            type: cardioData.type,
+            distance: cardioData.distance ?? null,
+            pace: cardioData.pace ?? null,
+            calories: cardioData.calories ?? null,
+            avgHeartRate: cardioData.avgHeartRate ?? null,
+            maxHeartRate: cardioData.maxHeartRate ?? null,
+          });
+        } else {
+          setTodayCardioSummary(null);
+        }
       } catch (error) {
-        console.error('Error loading workout summary:', error);
+        logSafeError('Error loading workout summary:', error);
         setTodayWorkoutSummary(null);
+        setTodayCardioSummary(null);
       }
     };
 
@@ -631,7 +760,7 @@ export function useDashboardState(bump: number, programExists: boolean) {
         });
 
       } catch (error) {
-        console.error('Error calculating consistency:', error);
+        logSafeError('Error calculating consistency:', error);
       }
     };
 
@@ -709,7 +838,7 @@ export function useDashboardState(bump: number, programExists: boolean) {
           });
         }
       } catch (error) {
-        console.error('Error loading hydration data:', error);
+        logSafeError('Error loading hydration data:', error);
       }
     };
 
@@ -743,7 +872,7 @@ export function useDashboardState(bump: number, programExists: boolean) {
 
       setHydrationToday(prev => ({ ...prev, goalOz: newGoal }));
     } catch (error) {
-      console.error('Error updating hydration goal:', error);
+      logSafeError('Error updating hydration goal:', error);
     }
   };
 
@@ -761,7 +890,7 @@ export function useDashboardState(bump: number, programExists: boolean) {
 
       setHydrationToday(prev => ({ ...prev, containerOz: newContainerOz }));
     } catch (error) {
-      console.error('Error updating container size:', error);
+      logSafeError('Error updating container size:', error);
     }
   };
 
@@ -783,7 +912,7 @@ export function useDashboardState(bump: number, programExists: boolean) {
 
       setHydrationToday(prev => ({ ...prev, currentOz: newTotal }));
     } catch (error) {
-      console.error('Error updating hydration:', error);
+      logSafeError('Error updating hydration:', error);
     }
   };
 
@@ -793,6 +922,8 @@ export function useDashboardState(bump: number, programExists: boolean) {
     programInfo,
     tomorrowInfo,
     todayWorkoutSummary,
+    todayCardioSummary,
+    cardioScheduleInfo,
     consistencyData,
     updateHydrationGoal,
     updateContainerSize,

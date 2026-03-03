@@ -19,6 +19,7 @@ import {
 import {
   buildAnalyzeMealImagePrompt,
   buildAnalyzeMealTextPrompt,
+  buildContextualMealSuggestionsPrompt,
   buildMealSuggestionsPrompt,
 } from './prompts/nutritionPrompts';
 export type { NutritionAnalysisResult } from './nutritionSchema';
@@ -185,6 +186,33 @@ export interface MealSuggestion {
   dietaryTags: string[];
 }
 
+export type ContextualMealMode = 'pantry' | 'eat_out';
+
+export interface ContextualMealSuggestion {
+  name: string;
+  source: string;
+  prepMinutes: number;
+  estimatedMacros: {
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+  };
+  macroFit: {
+    withinTolerance: boolean;
+    deltaCalories: number;
+    deltaProtein: number;
+    deltaCarbs: number;
+    deltaFat: number;
+  };
+  ingredients: string[];
+  instructions: string[];
+  orderDetails: string[];
+  optionalAddOns: string[];
+  whyItFits: string;
+  fallback: string;
+}
+
 export interface FormAnalysis {
   overallScore: number;
   keyPoints: string[];
@@ -270,8 +298,8 @@ function nameToId(name: string): string {
 }
 
 /**
- * Generate initial 2-week training block
- * Generates just 2 weeks at a time to avoid token limits
+ * Generate initial 4-week training block
+ * Generates weeks 1-4 so users can train before requesting the next block
  */
 export async function generatePeriodizedProgram(
   programContext: {
@@ -328,7 +356,7 @@ EXERCISE PRIORITIES (Job-Specific):
 7. WORK CAPACITY: ${ffGuidance.movementPatterns.conditioning.join(', ')}
 
 PROGRAM MUST INCLUDE (Every Week):
-- At least 1 carrying exercise (Farmer Carry, Sled Drag)
+- At least 1 carrying exercise (Farmer Carry, Reverse Sled Pulls)
 - At least 1 deadlift variation (ground-to-standing lifts)
 - At least 1 overhead press (ladder work, ceiling operations)
 - At least 1 pull exercise (hoseline work)
@@ -350,12 +378,24 @@ PROGRAM MUST INCLUDE (Every Week):
 
   const periodization = programContext.periodizationModel || defaultPeriodization;
 
-  // Map periodization names
-  const periodizationMap = {
-    linear: 'Progressive',
-    undulating: 'Varied',
-    block: 'Focused'
-  };
+  const periodizationGuidance =
+    periodization === 'undulating'
+      ? `📊 Periodization (Undulating Model):
+   - Week 1: Heavy/Moderate/Light rotation across days
+   - Week 2: Change emphasis (volume up, intensity wave)
+   - Week 3: Highest performance week with planned variation
+   - Week 4: DELOAD with 60-70% volume and reduced intensity`
+      : periodization === 'block'
+      ? `📊 Periodization (Block Model):
+   - Week 1: Accumulation (higher volume, technical quality)
+   - Week 2: Intensification (moderate volume, higher load)
+   - Week 3: Realization (peak specificity and intensity)
+   - Week 4: DELOAD and recovery consolidation`
+      : `📊 Periodization (Linear Model):
+   - Week 1: Base building (moderate volume, RPE 6-7)
+   - Week 2: Volume increase (+5-10% volume, RPE 7-8)
+   - Week 3: Peak intensity (maintain volume, RPE 8-9)
+   - Week 4: DELOAD (60-70% volume, RPE 5-6, recovery focus)`;
 
   // Cardio prompt addition
   const cardioPrompt = programContext.includeCardio 
@@ -373,9 +413,11 @@ Primary Goal: ${programContext.goal}
 Available Equipment: ${programContext.equipment.join(', ')}
 Training Days: ${programContext.daysPerWeek} strength sessions per week
 ${programContext.includeCardio ? 'PLUS 2-3 dedicated cardio/conditioning sessions' : ''}
+${programContext.allowTwoADays ? 'Two-a-days are allowed for advanced users when useful.' : 'Do NOT schedule two-a-days.'}
 
 ${firefighterContext}
 ${exerciseListText}
+${cardioPrompt}
 
 PROGRAM DESIGN RULES:
 ✅ Generate EXACTLY 4 weeks (weeks 1-4 only)
@@ -391,7 +433,7 @@ ${programContext.includeCardio ? '✅ Include separate cardioSchedule with 2-3 s
 
 FIREFIGHTER-SPECIFIC REQUIREMENTS:
 🚒 Every week MUST include:
-   - 2-3 carrying exercises (Farmer Carry, Sled Drag, Bear Crawl)
+   - 2-3 carrying exercises (Farmer Carry, Reverse Sled Pulls, Bear Crawl)
    - 2-3 deadlift variations (victim rescue simulation)
    - 2-3 overhead pressing movements (ladder/ceiling work)
    - 2-3 pulling exercises (hoseline operations)
@@ -406,11 +448,7 @@ FIREFIGHTER-SPECIFIC REQUIREMENTS:
    - CONDITIONING: Circuits/AMRAPs, 45-90 sec work periods
    - CORE: 3 sets × 30-60 sec holds or 10-15 reps
 
-📊 Periodization (Linear Model):
-   - Week 1: Base building (moderate volume, RPE 6-7)
-   - Week 2: Volume increase (+5-10% volume, RPE 7-8)
-   - Week 3: Peak intensity (maintain volume, RPE 8-9)
-   - Week 4: DELOAD (60-70% volume, RPE 5-6, recovery focus)
+${periodizationGuidance}
 
 RETURN FORMAT - Valid JSON Only:
 {
@@ -552,7 +590,7 @@ Return ONLY valid, parseable JSON. No markdown formatting. Be concise in notes (
         { role: 'user', content: prompt }
       ],
       'gemini',
-      { temperature: 0.7, maxTokens: 16384 }
+      { temperature: 0.45, maxTokens: 16384 }
     );
 
     onProgress?.('Finalizing...', 90);
@@ -561,20 +599,69 @@ Return ONLY valid, parseable JSON. No markdown formatting. Be concise in notes (
     console.log('📦 First 200:', response.content.substring(0, 200));
     console.log('📦 Last 200:', response.content.substring(response.content.length - 200));
     
-    const program = parseCleanJsonResponse<PeriodizedProgram>(response.content);
-    
+    const validateProgram = (candidate: PeriodizedProgram): string[] => {
+      const issues: string[] = [];
+      if (!Array.isArray(candidate.weeks) || candidate.weeks.length < 4) {
+        issues.push('Program must include weeks 1-4.');
+      }
+      candidate.weeks?.forEach((week) => {
+        if (!Array.isArray(week.days) || week.days.length !== programContext.daysPerWeek) {
+          issues.push(`Week ${week.weekNumber} must have exactly ${programContext.daysPerWeek} days.`);
+        }
+        week.days?.forEach((day) => {
+          const exerciseCount = Array.isArray(day.exercises) ? day.exercises.length : 0;
+          if (exerciseCount < 4 || exerciseCount > 6) {
+            issues.push(`Week ${week.weekNumber} day ${day.dayNumber} must have 4-6 exercises.`);
+          }
+        });
+      });
+      if (programContext.includeCardio) {
+        if (!candidate.cardioSchedule || !Array.isArray(candidate.cardioSchedule.weeks) || candidate.cardioSchedule.weeks.length < 4) {
+          issues.push('Cardio schedule is required for all 4 generated weeks when cardio is enabled.');
+        }
+      }
+      return issues;
+    };
+
+    const normalizeProgramMetadata = (candidate: PeriodizedProgram): PeriodizedProgram => {
+      candidate.totalWeeks = programContext.totalWeeks;
+      candidate.periodizationModel = periodization;
+      candidate.progressionPlan = 'Complete these 4 weeks, then generate the next block.';
+      return candidate;
+    };
+
+    let program = normalizeProgramMetadata(parseCleanJsonResponse<PeriodizedProgram>(response.content));
+
+    let qualityIssues = validateProgram(program);
+    if (qualityIssues.length > 0) {
+      console.warn('⚠️ Program quality validation failed. Attempting one strict repair pass...', qualityIssues);
+      const repairResponse = await sendAIMessage(
+        [
+          {
+            role: 'system',
+            content: 'You are a strict JSON repair assistant. Output valid JSON only.',
+          },
+          {
+            role: 'user',
+            content: `Fix this program JSON to satisfy constraints with minimal edits.\nConstraints:\n- Exactly 4 weeks (1-4)\n- Exactly ${programContext.daysPerWeek} strength days per week\n- 4-6 exercises per day\n${programContext.includeCardio ? '- Include cardioSchedule for weeks 1-4' : ''}\n\nCurrent issues:\n${qualityIssues.join('\n')}\n\nJSON:\n${response.content}`,
+          },
+        ],
+        'gemini',
+        { temperature: 0.2, maxTokens: 16384 }
+      );
+
+      program = normalizeProgramMetadata(parseCleanJsonResponse<PeriodizedProgram>(repairResponse.content));
+      qualityIssues = validateProgram(program);
+      if (qualityIssues.length > 0) {
+        throw new Error(`Program quality validation failed: ${qualityIssues.join(' ')}`);
+      }
+    }
+
     console.log('🏃 Generated program has cardio:', !!program.cardioSchedule);
     if (program.cardioSchedule) {
       console.log('🏃 Cardio frequency:', program.cardioSchedule.frequency);
       console.log('🏃 Cardio weeks:', program.cardioSchedule.weeks.length);
     }
-    
-    // Ensure program metadata is correct
-    program.totalWeeks = programContext.totalWeeks;
-    program.periodizationModel = periodization;
-    
-    // Add note that this is first block
-    program.progressionPlan = `Complete these 2 weeks, then generate next block.`;
     
     // Match exercises using fuzzy matching fallback
     const { resolveExercise } = await import('../exerciseMatching');
@@ -703,6 +790,297 @@ export async function getMealSuggestions(nutritionContext: {
   });
   
   return normalizedMeals as MealSuggestion[];
+}
+
+/**
+ * Get contextual meal suggestions for pantry cooking or eating out.
+ */
+export async function getContextualMealSuggestions(nutritionContext: {
+  mode: ContextualMealMode;
+  targetCalories: number;
+  targetProtein: number;
+  targetCarbs: number;
+  targetFat: number;
+  dietaryPreference?: string;
+  restrictions?: string[];
+  mealType: 'breakfast' | 'lunch' | 'dinner' | 'snack';
+  prepTimeLimit?: number;
+  pantryIngredients?: string[];
+  equipment?: string[];
+  restaurants?: string[];
+  locationHint?: string;
+  macroStrictness?: 'strict' | 'balanced';
+}): Promise<ContextualMealSuggestion[]> {
+  const prompt = buildContextualMealSuggestionsPrompt(nutritionContext);
+  const normalizedRestaurants = (nutritionContext.restaurants || [])
+    .map((restaurant) =>
+      restaurant
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+    )
+    .filter(Boolean);
+
+  const hasRestaurantMatch = (option: ContextualMealSuggestion): boolean => {
+    if (nutritionContext.mode !== 'eat_out' || normalizedRestaurants.length === 0) {
+      return true;
+    }
+
+    const searchable = [
+      option.name,
+      option.source,
+      option.orderDetails.join(' '),
+      option.fallback,
+      option.whyItFits,
+    ]
+      .join(' ')
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    return normalizedRestaurants.some((restaurant) => searchable.includes(restaurant));
+  };
+
+  const isLikelyOrderableAtRestaurant = (option: ContextualMealSuggestion): boolean => {
+    if (nutritionContext.mode !== 'eat_out') {
+      return true;
+    }
+    const source = (option.source || '').toLowerCase();
+    const details = option.orderDetails.join(' ').toLowerCase();
+    const merged = `${option.name} ${source} ${details}`;
+
+    const isDominos = source.includes('domino') || merged.includes('domino');
+    if (!isDominos) {
+      return true;
+    }
+
+    const forbiddenForDominos = ['burrito', 'bowl', 'taco', 'chipotle', 'quesadilla', 'poke'];
+    if (forbiddenForDominos.some((token) => merged.includes(token))) {
+      return false;
+    }
+
+    const expectedDominosSignals = ['pizza', 'wings', 'pasta', 'sandwich', 'bread', 'crust', 'topping', 'slice'];
+    return expectedDominosSignals.some((token) => merged.includes(token));
+  };
+
+  const isOptionDetailedEnough = (option: ContextualMealSuggestion): boolean => {
+    const hasWhy = option.whyItFits.trim().length >= 60;
+    const hasFallback = option.fallback.trim().length >= 35;
+    const hasMacros =
+      option.estimatedMacros.calories > 0 &&
+      option.estimatedMacros.protein >= 0 &&
+      option.estimatedMacros.carbs >= 0 &&
+      option.estimatedMacros.fat >= 0;
+
+    if (!hasWhy || !hasFallback || !hasMacros) {
+      return false;
+    }
+
+    if (nutritionContext.mode === 'eat_out') {
+      return option.orderDetails.length >= 3 && option.source.trim().length >= 2;
+    }
+    return option.instructions.length >= 3 && option.ingredients.length >= 2;
+  };
+
+  const response = await sendAIMessage(
+    [
+      {
+        role: 'system',
+        content:
+          'You are a tactical nutrition planner. Provide realistic, executable meal options and return only strict JSON.',
+      },
+      { role: 'user', content: prompt },
+    ],
+    'gemini',
+    { temperature: 0.2, maxTokens: 3800 }
+  );
+
+  const parseSuggestions = (content: string): ContextualMealSuggestion[] => {
+    const parsed = parseCleanJsonResponse<any>(content);
+    const options = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.options)
+      ? parsed.options
+      : Array.isArray(parsed?.meals)
+      ? parsed.meals
+      : [];
+
+    return options.slice(0, 3).map((option: any) => {
+      const estimatedMacros = {
+        calories: Number(option?.estimatedMacros?.calories) || 0,
+        protein: Number(option?.estimatedMacros?.protein) || 0,
+        carbs: Number(option?.estimatedMacros?.carbs) || 0,
+        fat: Number(option?.estimatedMacros?.fat) || 0,
+      };
+      const macroFit = {
+        withinTolerance: Boolean(option?.macroFit?.withinTolerance),
+        deltaCalories: Number(option?.macroFit?.deltaCalories) || 0,
+        deltaProtein: Number(option?.macroFit?.deltaProtein) || 0,
+        deltaCarbs: Number(option?.macroFit?.deltaCarbs) || 0,
+        deltaFat: Number(option?.macroFit?.deltaFat) || 0,
+      };
+
+      return {
+        name: String(option?.name || 'Meal Option'),
+        source: String(option?.source || (nutritionContext.mode === 'eat_out' ? 'Restaurant' : 'Kitchen')),
+        prepMinutes: Number(option?.prepMinutes) || nutritionContext.prepTimeLimit || 20,
+        estimatedMacros,
+        macroFit,
+        ingredients: Array.isArray(option?.ingredients) ? option.ingredients.map(String) : [],
+        instructions: Array.isArray(option?.instructions) ? option.instructions.map(String) : [],
+        orderDetails: Array.isArray(option?.orderDetails) ? option.orderDetails.map(String) : [],
+        optionalAddOns: Array.isArray(option?.optionalAddOns) ? option.optionalAddOns.map(String) : [],
+        whyItFits: String(option?.whyItFits || ''),
+        fallback: String(option?.fallback || ''),
+      };
+    });
+  };
+
+  const validateOptions = (options: ContextualMealSuggestion[]): ContextualMealSuggestion[] => {
+    if (!options.length) {
+      throw new Error('No meal options returned');
+    }
+
+    const filtered = options.filter((option) => hasRestaurantMatch(option) && isLikelyOrderableAtRestaurant(option));
+    if (nutritionContext.mode === 'eat_out' && normalizedRestaurants.length > 0 && filtered.length === 0) {
+      throw new Error('No options matched the requested restaurants');
+    }
+    return filtered;
+  };
+
+  const enrichIncompleteOptions = async (
+    options: ContextualMealSuggestion[]
+  ): Promise<ContextualMealSuggestion[]> => {
+    const needsEnrichment = options.some((option) => !isOptionDetailedEnough(option));
+    if (!needsEnrichment) {
+      return options;
+    }
+
+    const enrichPrompt = `You are an elite tactical nutrition coach.
+Upgrade the provided contextual meal options so they are complete and actionable.
+
+CONTEXT:
+- Mode: ${nutritionContext.mode}
+- Meal type: ${nutritionContext.mealType}
+- Target macros: calories ${nutritionContext.targetCalories}, protein ${nutritionContext.targetProtein}g, carbs ${nutritionContext.targetCarbs}g, fat ${nutritionContext.targetFat}g
+${nutritionContext.mode === 'eat_out' ? `- Allowed restaurants only: ${(nutritionContext.restaurants || []).join(', ')}` : ''}
+
+INPUT OPTIONS JSON:
+${JSON.stringify(options)}
+
+Return ONLY valid JSON:
+{
+  "options": [ ...same option objects, with richer details... ]
+}
+
+Requirements:
+- Keep existing option names and macro estimates unless clearly invalid.
+- Fill in missing or weak fields with specific practical guidance.
+- whyItFits: minimum 2 sentences, specific to macro target and context.
+- fallback: actionable backup.
+- eat_out: at least 3 concrete orderDetails steps.
+- pantry: at least 3 instruction steps.
+- Do not add restaurants outside the allowed list (eat_out).`;
+
+    const enriched = await sendAIMessage(
+      [
+        {
+          role: 'system',
+          content: 'Return strict JSON only. Improve option quality without changing intent.',
+        },
+        { role: 'user', content: enrichPrompt },
+      ],
+      'gemini',
+      { temperature: 0.15, maxTokens: 4200 }
+    );
+
+    const enrichedOptions = validateOptions(parseSuggestions(enriched.content));
+    return enrichedOptions;
+  };
+
+  try {
+    const options = validateOptions(parseSuggestions(response.content));
+    const enriched = await enrichIncompleteOptions(options);
+    return enriched;
+  } catch (parseError) {
+    console.warn('Contextual meal parsing failed, attempting strict JSON repair...', parseError);
+    const repaired = await sendAIMessage(
+      [
+        {
+          role: 'system',
+          content:
+            'Repair the following response into strictly valid JSON with shape { "mode": string, "options": [] }. Return only JSON.',
+        },
+        { role: 'user', content: response.content },
+      ],
+      'gemini',
+      { temperature: 0.05, maxTokens: 3800 }
+    );
+
+    try {
+      const repairedOptions = validateOptions(parseSuggestions(repaired.content));
+      const enrichedRepairedOptions = await enrichIncompleteOptions(repairedOptions);
+      return enrichedRepairedOptions;
+    } catch (repairError) {
+      if (nutritionContext.mode !== 'eat_out' || normalizedRestaurants.length === 0) {
+        throw new Error('Failed to parse contextual meal suggestions');
+      }
+
+      // Last attempt: regenerate with explicit hard constraint reminder.
+      const strictRetry = await sendAIMessage(
+        [
+          {
+            role: 'system',
+            content:
+              'Return only strict JSON. Include complete, actionable details for each option.',
+          },
+          {
+            role: 'user',
+            content:
+              `${prompt}\n\nCRITICAL REQUIREMENTS:\n` +
+              `- Use ONLY these restaurants: ${normalizedRestaurants.join(', ')}\n` +
+              '- Each option must include: whyItFits, fallback, and at least 2 orderDetails\n' +
+              '- Do not leave any required fields empty.',
+          },
+        ],
+        'gemini',
+        { temperature: 0.1, maxTokens: 3800 }
+      );
+
+      try {
+        const strictOptions = validateOptions(parseSuggestions(strictRetry.content));
+        if (!strictOptions.length) {
+          throw new Error('No valid restaurant-matched options generated');
+        }
+        const enrichedStrictOptions = await enrichIncompleteOptions(strictOptions);
+        return enrichedStrictOptions;
+      } catch (strictParseError) {
+        console.warn('Strict retry parse failed, attempting final JSON repair...', strictParseError);
+
+        const strictRetryRepair = await sendAIMessage(
+          [
+            {
+              role: 'system',
+              content:
+                'Repair the following content into valid JSON with shape { "mode": string, "options": [] }. Return only JSON.',
+            },
+            { role: 'user', content: strictRetry.content },
+          ],
+          'gemini',
+          { temperature: 0.05, maxTokens: 3800 }
+        );
+
+        try {
+          const repairedStrictOptions = validateOptions(parseSuggestions(strictRetryRepair.content));
+          const enrichedRepairedStrictOptions = await enrichIncompleteOptions(repairedStrictOptions);
+          return enrichedRepairedStrictOptions;
+        } catch (finalParseError) {
+          console.error('Contextual meal final parse failure after all retries:', finalParseError);
+          throw new Error('AI response was incomplete. Please try again.');
+        }
+      }
+    }
+  }
 }
 
 /**
@@ -1107,8 +1485,29 @@ export async function analyzeMealFromText(
     { temperature: 0.3, maxTokens: 4000 }
   );
 
-  const parsed = parseCleanJsonResponse(response.content) as unknown;
-  const result = parseNutritionResult(parsed);
+  let result: NutritionAnalysisResult;
+  try {
+    const parsed = parseCleanJsonResponse(response.content) as unknown;
+    result = parseNutritionResult(parsed);
+  } catch (parseError) {
+    console.warn('⚠️ Meal text JSON parse failed, attempting strict repair...', parseError);
+    const repair = await sendAIMessage(
+      [
+        {
+          role: 'system',
+          content: 'Repair the response into strictly valid JSON that matches the requested nutrition schema. Return only JSON.',
+        },
+        {
+          role: 'user',
+          content: response.content,
+        },
+      ],
+      'gemini',
+      { temperature: 0.1, maxTokens: 4000 }
+    );
+    const repairedParsed = parseCleanJsonResponse(repair.content) as unknown;
+    result = parseNutritionResult(repairedParsed);
+  }
   result.source = 'gemini-text';
 
   // Validation
@@ -1291,4 +1690,5 @@ export default {
   analyzeMealFromText,
   analyzeMealFromImage,
   analyzeMeal,
+  getContextualMealSuggestions,
 };

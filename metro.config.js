@@ -6,6 +6,10 @@ const defaultConfig = getDefaultConfig(__dirname);
 
 const config = {
   resolver: {
+    // Ensure RN/browser entry points win over Node "main" for packages like axios.
+    resolverMainFields: ['react-native', 'browser', 'main'],
+    unstable_enablePackageExports: true,
+    unstable_conditionNames: ['react-native', 'browser', 'require', 'default'],
     blockList: exclusionList([
       /node_modules[/\\]react-native-reanimated[/\\]android[/\\].cxx[/\\].*/,
       // Exclude server-side scripts from React Native bundle

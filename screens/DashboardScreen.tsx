@@ -45,7 +45,6 @@ import { ComingUpCard } from '../components/Dashboard/ComingUpCard';
 import { TodaysNutritionCard } from '../components/Dashboard/TodaysNutritionCard';
 import MealLoggingModal, { MealContext } from '../components/mealplan/MealLoggingModal';
 import DescribeMealModal from '../components/mealplan/DescribeMealModal';
-import CameraModal from '../components/mealplan/CameraModal';
 import QuickFavoritesModal from '../components/mealplan/QuickFavorites';
 import EnvironmentCalendarModal from '../components/EnvironmentCalendarModal';
 import HydrationSettingsModal from '../components/Modals/HydrationSettingsModal';
@@ -150,13 +149,11 @@ export default function DashboardScreen() {
   const [showMealLoggingModal, setShowMealLoggingModal] = useState(false);
   const [showDescribeModal, setShowDescribeModal] = useState(false);
   const [showQuickFavoritesModal, setShowQuickFavoritesModal] = useState(false);
-  const [showCameraModal, setShowCameraModal] = useState(false);
   const [showEnvironmentCalendar, setShowEnvironmentCalendar] = useState(false);
   const [showHydrationGoalModal, setShowHydrationGoalModal] = useState(false);
   const [showLightWorkoutModal, setShowLightWorkoutModal] = useState(false);
 
   // ✅ CAMERA & PHOTO STATES
-  const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
   const [pendingPhotoUri, setPendingPhotoUri] = useState<string | null>(null);
 
   // ✅ COACH RECOMMENDATION STATES
@@ -517,8 +514,8 @@ export default function DashboardScreen() {
         return;
       }
       if (response.assets && response.assets[0]?.uri) {
-        setSelectedImageUri(response.assets[0].uri);
-        setShowCameraModal(true);
+        setPendingPhotoUri(response.assets[0].uri);
+        setShowDescribeModal(true);
       }
     });
   };
@@ -532,8 +529,8 @@ export default function DashboardScreen() {
         return;
       }
       if (response.assets && response.assets[0]?.uri) {
-        setSelectedImageUri(response.assets[0].uri);
-        setShowCameraModal(true);
+        setPendingPhotoUri(response.assets[0].uri);
+        setShowDescribeModal(true);
       }
     });
   };
@@ -549,15 +546,6 @@ export default function DashboardScreen() {
   const handleOpenQuickAdd = (mealContext: MealContext) => {
     setCurrentMealContext(mealContext);
     setShowQuickFavoritesModal(true);
-  };
-
-  const handleCameraModalComplete = (meal: any) => {
-    if (meal.source === 'OPEN_DESCRIBE_MODAL') {
-      setPendingPhotoUri(meal.photoUri);
-      setShowCameraModal(false);
-      setSelectedImageUri(null);
-      setTimeout(() => setShowDescribeModal(true), 300);
-    }
   };
 
   const handleFoodLogged = () => {
@@ -786,19 +774,6 @@ export default function DashboardScreen() {
           }}
           onFoodLogged={handleFoodLogged}
           mealContext={currentMealContext}
-        />
-      )}
-
-      {showCameraModal && (
-        <CameraModal
-          visible={showCameraModal}
-          onClose={() => {
-            setShowCameraModal(false);
-            setSelectedImageUri(null);
-            setCurrentMealContext(null);
-          }}
-          imageUri={selectedImageUri}
-          onMealLogged={handleCameraModalComplete}
         />
       )}
 

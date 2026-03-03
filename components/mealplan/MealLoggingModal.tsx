@@ -216,6 +216,7 @@ const MealLoggingModal: React.FC<Props> = ({
   const [selectedMealType, setSelectedMealType] = useState<MealType | null>(null);
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [selectedTime, setSelectedTime] = useState(format(new Date(), 'HH:mm'));
+  const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   
@@ -225,49 +226,43 @@ const [selectedMinute, setSelectedMinute] = useState(new Date().getMinutes());
   const [isSelectingMinutes, setIsSelectingMinutes] = useState(false);
 
   const mealTypes: MealType[] = [
-    { id: 'breakfast', label: 'Breakfast', emoji: '🍳', defaultTime: '08:00' },
-    { id: 'snack1', label: 'Morning Snack', emoji: '🍎', defaultTime: '10:30' },
-    { id: 'lunch', label: 'Lunch', emoji: '🥗', defaultTime: '12:30' },
-    { id: 'snack2', label: 'Afternoon Snack', emoji: '🥜', defaultTime: '15:30' },
-    { id: 'dinner', label: 'Dinner', emoji: '🍽️', defaultTime: '18:30' },
-    { id: 'dessert', label: 'Dessert', emoji: '🍰', defaultTime: '20:00' },
+    { id: 'breakfast', label: 'Breakfast', emoji: '', defaultTime: '08:00' },
+    { id: 'snack1', label: 'Morning Snack', emoji: '', defaultTime: '10:30' },
+    { id: 'lunch', label: 'Lunch', emoji: '', defaultTime: '12:30' },
+    { id: 'snack2', label: 'Afternoon Snack', emoji: '', defaultTime: '15:30' },
+    { id: 'dinner', label: 'Dinner', emoji: '', defaultTime: '18:30' },
+    { id: 'dessert', label: 'Dessert', emoji: '', defaultTime: '20:00' },
   ];
 
   const methods: LoggingMethod[] = [
     {
       id: 'photo-describe',
-      title: 'Photo + Describe',
-      subtitle: '96% accuracy with smart analysis',
+      title: 'Scan Meal',
+      subtitle: 'Use a photo for AI-assisted logging',
       icon: 'camera',
       primary: true,
       color: '#4FC3F7',
     },
     {
-      id: 'quick-add',
-      title: 'Quick Add',
-      subtitle: 'Instant logging from favorites',
-      icon: 'flash',
-      color: '#81C784',
-    },
-    {
       id: 'describe-only',
-      title: 'Describe Meal',
-      subtitle: 'Text description only',
+      title: 'Type Meal',
+      subtitle: 'Describe what you ate in text',
       icon: 'create',
       color: '#FFD54F',
     },
   ];
 
-  // Auto-suggest meal type based on current time
+  // Auto-suggest meal type by nearest scheduled meal slot.
   const getSuggestedMealType = (): MealType => {
-    const currentHour = new Date().getHours();
-
-    if (currentHour >= 6 && currentHour < 10) {return mealTypes[0];} // Breakfast
-    if (currentHour >= 10 && currentHour < 12) {return mealTypes[1];} // Morning Snack
-    if (currentHour >= 12 && currentHour < 15) {return mealTypes[2];} // Lunch
-    if (currentHour >= 15 && currentHour < 17) {return mealTypes[3];} // Afternoon Snack
-    if (currentHour >= 17 && currentHour < 21) {return mealTypes[4];} // Dinner
-    return mealTypes[5]; // Dessert/Late night
+    const now = new Date();
+    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    const scored = mealTypes.map(meal => {
+      const [h, m] = meal.defaultTime.split(':').map(Number);
+      const mealMinutes = (h || 0) * 60 + (m || 0);
+      return { meal, diff: Math.abs(nowMinutes - mealMinutes) };
+    });
+    scored.sort((a, b) => a.diff - b.diff);
+    return scored[0].meal;
   };
 
   // ✅ NEW: Reset modal state when opened
@@ -275,6 +270,7 @@ const [selectedMinute, setSelectedMinute] = useState(new Date().getMinutes());
     setSelectedMealType(null);
     setSelectedDate(format(new Date(), 'yyyy-MM-dd'));
     setSelectedTime(format(new Date(), 'HH:mm'));
+    setShowAdvancedOptions(false);
     setSelectedHour(new Date().getHours());
     setSelectedMinute(new Date().getMinutes());
     setIsSelectingMinutes(false);
@@ -304,9 +300,6 @@ const [selectedMinute, setSelectedMinute] = useState(new Date().getMinutes());
       switch (methodId) {
         case 'photo-describe':
           onOpenCamera(mealContext);
-          break;
-        case 'quick-add':
-          onOpenQuickAdd(mealContext);
           break;
         case 'describe-only':
           onOpenDescribeModal(mealContext);
@@ -343,7 +336,7 @@ const [selectedMinute, setSelectedMinute] = useState(new Date().getMinutes());
             {/* Quick Meal Type Selection */}
             <View style={styles.mealTypeSection}>
               <Text style={styles.sectionTitle}>
-                {selectedMealType ? `${selectedMealType.emoji} ${selectedMealType.label}` : 'Meal Type (optional)'}
+                {selectedMealType ? selectedMealType.label : 'Meal Type'}
               </Text>
 
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.mealTypeScroll}>
@@ -359,7 +352,6 @@ const [selectedMinute, setSelectedMinute] = useState(new Date().getMinutes());
                       setSelectedTime(meal.defaultTime);
                     }}
                   >
-                    <Text style={styles.mealTypeEmoji}>{meal.emoji}</Text>
                     <Text style={[
                       styles.mealTypeText,
                       selectedMealType?.id === meal.id && styles.selectedMealTypeText,
@@ -373,46 +365,54 @@ const [selectedMinute, setSelectedMinute] = useState(new Date().getMinutes());
               {/* ✅ NEW: Auto-selection hint */}
               {autoSelected && !selectedMealType && (
                 <Text style={styles.autoHint}>
-                  Auto-selected: {autoSelected.label} {autoSelected.emoji}
+                  Suggested: {autoSelected.label}
                 </Text>
               )}
             </View>
 
-            {/* Enhanced Time Section */}
+            {/* Advanced Date/Time (optional) */}
             <View style={styles.timeSection}>
-              <Text style={styles.sectionTitle}>When did you eat?</Text>
+              <Pressable style={styles.advancedToggle} onPress={() => setShowAdvancedOptions(!showAdvancedOptions)}>
+                <Text style={styles.advancedToggleText}>
+                  {showAdvancedOptions ? 'Hide Date/Time' : 'Adjust Date/Time'}
+                </Text>
+                <Ionicons
+                  name={showAdvancedOptions ? 'chevron-up' : 'chevron-down'}
+                  size={18}
+                  color="#9aa0a6"
+                />
+              </Pressable>
 
-              {/* Date and Time Selectors */}
-              <View style={styles.dateTimeRow}>
-                {/* Date Selector */}
-                <Pressable
-                  style={styles.dateTimeCard}
-                  onPress={() => setShowCalendar(true)}
-                >
-                  <View style={styles.dateTimeHeader}>
-                    <Ionicons name="calendar" size={20} color="#4FC3F7" />
-                    <Text style={styles.dateTimeLabel}>Date</Text>
-                  </View>
-                  <Text style={styles.dateTimeValue}>
-                    {selectedDate === format(new Date(), 'yyyy-MM-dd')
-                      ? 'Today'
-                      : format(new Date(selectedDate), 'MMM d, yyyy')
-                    }
-                  </Text>
-                </Pressable>
+              {showAdvancedOptions && (
+                <View style={styles.dateTimeRow}>
+                  <Pressable
+                    style={styles.dateTimeCard}
+                    onPress={() => setShowCalendar(true)}
+                  >
+                    <View style={styles.dateTimeHeader}>
+                      <Ionicons name="calendar" size={20} color="#4FC3F7" />
+                      <Text style={styles.dateTimeLabel}>Date</Text>
+                    </View>
+                    <Text style={styles.dateTimeValue}>
+                      {selectedDate === format(new Date(), 'yyyy-MM-dd')
+                        ? 'Today'
+                        : format(new Date(selectedDate), 'MMM d, yyyy')
+                      }
+                    </Text>
+                  </Pressable>
 
-                {/* Time Selector */}
-                <Pressable
-                  style={styles.dateTimeCard}
-                  onPress={() => setShowTimePicker(true)}
-                >
-                  <View style={styles.dateTimeHeader}>
-                    <Ionicons name="time" size={20} color="#4FC3F7" />
-                    <Text style={styles.dateTimeLabel}>Time</Text>
-                  </View>
-                  <Text style={styles.dateTimeValue}>{selectedTime}</Text>
-                </Pressable>
-              </View>
+                  <Pressable
+                    style={styles.dateTimeCard}
+                    onPress={() => setShowTimePicker(true)}
+                  >
+                    <View style={styles.dateTimeHeader}>
+                      <Ionicons name="time" size={20} color="#4FC3F7" />
+                      <Text style={styles.dateTimeLabel}>Time</Text>
+                    </View>
+                    <Text style={styles.dateTimeValue}>{selectedTime}</Text>
+                  </Pressable>
+                </View>
+              )}
             </View>
 
             {/* Primary Methods - Big, Visual */}
@@ -439,12 +439,29 @@ const [selectedMinute, setSelectedMinute] = useState(new Date().getMinutes());
                   <Ionicons name="chevron-forward" size={20} color="#666" />
                 </Pressable>
               ))}
+
+              <Pressable
+                style={styles.secondaryAction}
+                onPress={() => {
+                  const mealType = selectedMealType || getSuggestedMealType();
+                  onClose();
+                  setTimeout(() => {
+                    onOpenQuickAdd({
+                      mealType,
+                      date: selectedDate,
+                      time: selectedTime,
+                    });
+                  }, 300);
+                }}
+              >
+                <Text style={styles.secondaryActionText}>Use Quick Add / Favorites</Text>
+              </Pressable>
             </View>
 
             {/* Info Footer */}
             <View style={styles.infoSection}>
               <Text style={styles.infoText}>
-                💡 Pro tip: Photo + Describe gives the most accurate nutrition data using AI analysis
+                Photo-based logging is generally the most accurate.
               </Text>
             </View>
           </ScrollView>
@@ -672,6 +689,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     marginBottom: 24,
   },
+  advancedToggle: {
+    backgroundColor: '#2a2a2a',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#333',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  advancedToggleText: {
+    color: '#b3b8bf',
+    fontSize: 14,
+    fontWeight: '500',
+  },
   dateTimeRow: {
     flexDirection: 'row',
     gap: 12,
@@ -763,6 +797,16 @@ const styles = StyleSheet.create({
   methodSubtitle: {
     fontSize: 14,
     color: '#aaa',
+  },
+  secondaryAction: {
+    marginTop: 6,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  secondaryActionText: {
+    color: '#b3b8bf',
+    fontSize: 14,
+    textDecorationLine: 'underline',
   },
 
   // Info Section

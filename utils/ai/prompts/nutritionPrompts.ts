@@ -9,6 +9,25 @@ export interface MealSuggestionPromptContext {
   prepTimeLimit?: number;
 }
 
+export type ContextualMealMode = 'pantry' | 'eat_out';
+
+export interface ContextualMealSuggestionsPromptContext {
+  mode: ContextualMealMode;
+  targetCalories: number;
+  targetProtein: number;
+  targetCarbs: number;
+  targetFat: number;
+  mealType: 'breakfast' | 'lunch' | 'dinner' | 'snack';
+  dietaryPreference?: string;
+  restrictions?: string[];
+  prepTimeLimit?: number;
+  pantryIngredients?: string[];
+  equipment?: string[];
+  restaurants?: string[];
+  locationHint?: string;
+  macroStrictness?: 'strict' | 'balanced';
+}
+
 export function buildMealSuggestionsPrompt(nutritionContext: MealSuggestionPromptContext): string {
   return `You are a nutrition expert. Suggest 3 meal options for a firefighter with these requirements:
 
@@ -32,6 +51,122 @@ Provide a JSON array of 3 meal suggestions. Each should include:
 - dietaryTags: array of tags like "high-protein", "low-carb", etc.
 
 Return ONLY valid JSON array, no additional text.`;
+}
+
+export function buildContextualMealSuggestionsPrompt(
+  nutritionContext: ContextualMealSuggestionsPromptContext
+): string {
+  const normalizedRestaurants = (nutritionContext.restaurants || []).map((restaurant) =>
+    restaurant.toLowerCase()
+  );
+  const includesDominos = normalizedRestaurants.some(
+    (restaurant) => restaurant.includes('domino') || restaurant.includes("domino's")
+  );
+  const eatOutSpecificRules = includesDominos
+    ? `
+Restaurant-specific constraints:
+- For Domino's, use only realistic Domino's categories: pizza, wings, sandwiches, pasta, bread sides, salads, drinks.
+- Include concrete pizza order structure when used (size, crust, topping choices, quantity).
+- Do not reference non-Domino's formats like burrito bowls, tacos, or Chipotle-style custom orders.`
+    : '';
+
+  const tolerance =
+    nutritionContext.macroStrictness === 'strict'
+      ? { protein: 8, carbs: 10, fat: 6, calories: 80 }
+      : { protein: 12, carbs: 18, fat: 8, calories: 120 };
+
+  const modeContext =
+    nutritionContext.mode === 'pantry'
+      ? `MODE: COOK FROM WHAT I HAVE
+AVAILABLE INGREDIENTS (must use these only unless clearly marked optional add-on): ${
+          nutritionContext.pantryIngredients?.length
+            ? nutritionContext.pantryIngredients.join(', ')
+            : 'Not provided'
+        }
+AVAILABLE EQUIPMENT: ${
+          nutritionContext.equipment?.length ? nutritionContext.equipment.join(', ') : 'Basic kitchen'
+        }
+Requirements:
+- Build realistic meal ideas using on-hand ingredients.
+- Include clear cooking steps.
+- If one optional add-on would materially improve macros, include it in "optionalAddOns".`
+      : `MODE: EAT OUT NOW
+LOCATION HINT: ${nutritionContext.locationHint || 'Not provided'}
+RESTAURANTS TO USE (must use ONLY these places): ${
+          nutritionContext.restaurants?.length ? nutritionContext.restaurants.join(', ') : 'Not provided'
+        }
+Requirements:
+- Use realistic menu items from the listed restaurants only.
+- Provide exact order details and portion modifications.
+- Include one backup order from the same or another listed restaurant.
+${eatOutSpecificRules}`;
+
+  return `You are a practical performance nutrition coach for firefighters.
+Generate meal guidance that is realistic, executable, and tightly aligned to macro targets.
+
+TARGET MACROS FOR THIS ${nutritionContext.mealType.toUpperCase()}:
+- Calories: ${nutritionContext.targetCalories}
+- Protein: ${nutritionContext.targetProtein}g
+- Carbs: ${nutritionContext.targetCarbs}g
+- Fat: ${nutritionContext.targetFat}g
+
+MACRO TOLERANCE:
+- Calories: +/- ${tolerance.calories}
+- Protein: +/- ${tolerance.protein}g
+- Carbs: +/- ${tolerance.carbs}g
+- Fat: +/- ${tolerance.fat}g
+
+CONTEXT:
+${nutritionContext.dietaryPreference ? `- Dietary Preference: ${nutritionContext.dietaryPreference}` : '- Dietary Preference: none'}
+${nutritionContext.restrictions?.length ? `- Restrictions: ${nutritionContext.restrictions.join(', ')}` : '- Restrictions: none'}
+${nutritionContext.prepTimeLimit ? `- Max prep time: ${nutritionContext.prepTimeLimit} minutes` : '- Max prep time: 30 minutes'}
+${modeContext}
+
+Return ONLY valid JSON with this exact shape:
+{
+  "mode": "pantry" | "eat_out",
+  "options": [
+    {
+      "name": "string",
+      "source": "string",
+      "prepMinutes": 20,
+      "estimatedMacros": {
+        "calories": 600,
+        "protein": 45,
+        "carbs": 55,
+        "fat": 18
+      },
+      "macroFit": {
+        "withinTolerance": true,
+        "deltaCalories": 20,
+        "deltaProtein": -3,
+        "deltaCarbs": 6,
+        "deltaFat": 2
+      },
+      "ingredients": ["string"],
+      "instructions": ["string"],
+      "orderDetails": ["string"],
+      "optionalAddOns": ["string"],
+      "whyItFits": "string",
+      "fallback": "string"
+    }
+  ]
+}
+
+Rules:
+- Return 2 options.
+- If mode is "pantry", "ingredients" and "instructions" must be populated. Keep "orderDetails" empty.
+- If mode is "eat_out", "orderDetails" must be populated. Keep "instructions" concise and practical.
+- If mode is "eat_out", each option MUST reference one of the provided restaurants in "source" and in "orderDetails".
+- Do NOT invent restaurants not listed by the user.
+- Quality floor:
+- "whyItFits" must be specific and tactical (minimum 2 sentences).
+- "fallback" must be an actionable backup option (minimum 1 sentence).
+- For "eat_out", include at least 3 concrete order steps in "orderDetails"
+  (exact menu item structure, customizations, and macro-control adjustments).
+- For "pantry", include at least 3 clear cooking steps in "instructions".
+- Do not include markdown, prose, or code fences.
+- Ensure numbers are realistic and internally consistent.`;
 }
 
 export function buildAnalyzeMealTextPrompt(description: string): string {

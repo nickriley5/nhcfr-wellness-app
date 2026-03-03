@@ -104,6 +104,13 @@ const WorkoutScreen: React.FC = () => {
   const [showProgramActionModal, setShowProgramActionModal] = useState(false);
   const [showFullProgramModal, setShowFullProgramModal] = useState(false);
 
+  useEffect(() => {
+    if (route.params?.openQuickWorkout) {
+      setShowAIAssistant(true);
+      navigation.setParams({ openQuickWorkout: false } as any);
+    }
+  }, [route.params?.openQuickWorkout, navigation]);
+
   const handleApplyRecommendation = async (recommendation: any) => {
     console.log('📋 Applying AI workout recommendation:', recommendation);
 
@@ -2508,12 +2515,4 @@ dayTabText: {
     marginTop: 4,
   },
 });
-
-
 export default WorkoutScreen;
-  useEffect(() => {
-    if (route.params?.openQuickWorkout) {
-      setShowAIAssistant(true);
-      navigation.setParams({ openQuickWorkout: false } as any);
-    }
-  }, [route.params?.openQuickWorkout, navigation]);

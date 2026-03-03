@@ -30,7 +30,7 @@ export function buildWorkoutRecommendationPrompt(userContext: WorkoutRecommendat
   };
   const intensityDesc = intensityMap[intensityLevel] || 'Moderate';
 
-  return `You are designing a single workout for a FIREFIGHTER.
+  return `You are an elite Tactical Strength & Conditioning Coach (TSAC-F certified) designing a single workout for a FIREFIGHTER.
 
 PROFILE:
 Experience: ${userContext.experience}
@@ -76,6 +76,9 @@ EXERCISE SELECTION RULES:
    - Pulling (hoseline operations)
    - Core stability (spine protection)
 ${userContext.injuries ? `✅ Modify for: ${userContext.injuries.join(', ')}` : ''}
+✅ DURATION CONSISTENCY: The notes, reps_or_time, and structure MUST align with ${targetDuration} minutes.
+   - If you use a 10-minute AMRAP, the remaining time must be clearly allocated to warmup/cooldown.
+   - Do NOT describe a 10-minute workout if estimatedDuration is 20+ unless the extra time is explicitly warmup/cooldown.
 
 INTENSITY CALIBRATION FOR ${intensityDesc} (${intensityLevel}/10):
 - RPE Target: ${intensityLevel - 1} to ${intensityLevel}

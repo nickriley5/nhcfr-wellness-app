@@ -36,7 +36,7 @@ interface WorkoutLog {
 const ProgressChartScreen: React.FC = () => {
   const navigation = useNavigation();
   const route = useRoute<ProgressScreenRouteProp>();
-  const { exerciseName } = route.params;
+  const exerciseName = route?.params?.exerciseName;
 
   const [loading, setLoading] = useState(true);
   const [chartType, setChartType] = useState<'weight' | 'reps' | 'volume'>('weight');
@@ -46,12 +46,13 @@ const ProgressChartScreen: React.FC = () => {
 
   // Get readable exercise name for display
   const getReadableExerciseName = (): string => {
+    if (!exerciseName) return 'Unknown Exercise';
     const exercise = resolveExerciseDetails(exerciseName);
     if (exercise && exercise.name) {
       return exercise.name;
     }
     // Fallback: format the ID if not found
-    return exerciseName.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+    return exerciseName.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
   };
 
   useEffect(() => {
@@ -67,6 +68,12 @@ const ProgressChartScreen: React.FC = () => {
           return;
         }
 
+        if (!exerciseName) {
+          console.log('📊 ProgressChart - Missing exerciseName param');
+          setLoading(false);
+          return;
+        }
+
         console.log('📊 ProgressChart - Fetching logs for exercise:', exerciseName);
         console.log('📊 ProgressChart - Exercise name length:', exerciseName.length);
         const logRef = collection(db, 'users', uid, 'workoutLogs');
@@ -75,8 +82,8 @@ const ProgressChartScreen: React.FC = () => {
         console.log('📊 ProgressChart - Total logs found:', snapshot.docs.length);
 
         const sortedLogs = snapshot.docs
-          .map(doc => ({ id: doc.id, ...doc.data() } as WorkoutLog & { id: string }))
-          .sort((a, b) => {
+          .map((doc: any) => ({ id: doc.id, ...doc.data() } as WorkoutLog & { id: string }))
+          .sort((a: any, b: any) => {
             const aTime = a.completedAt && typeof a.completedAt.toDate === 'function' 
               ? a.completedAt.toDate().getTime() 
               : 0;
@@ -92,14 +99,14 @@ const ProgressChartScreen: React.FC = () => {
         let filteredLogs = sortedLogs;
 
         if (dateRange === '7D') {
-          filteredLogs = sortedLogs.filter(log => {
+          filteredLogs = sortedLogs.filter((log: any) => {
             if (!log.completedAt || typeof log.completedAt.toDate !== 'function') return false;
             const logDate = log.completedAt.toDate();
             const diff = (now.getTime() - logDate.getTime()) / (1000 * 60 * 60 * 24);
             return diff <= 7;
           });
         } else if (dateRange === '30D') {
-          filteredLogs = sortedLogs.filter(log => {
+          filteredLogs = sortedLogs.filter((log: any) => {
             if (!log.completedAt || typeof log.completedAt.toDate !== 'function') return false;
             const logDate = log.completedAt.toDate();
             const diff = (now.getTime() - logDate.getTime()) / (1000 * 60 * 60 * 24);
@@ -112,17 +119,17 @@ const ProgressChartScreen: React.FC = () => {
         const entries: number[] = [];
         const entryLabels: string[] = [];
 
-        filteredLogs.forEach(log => {
-          const exercise = log.exercises.find(ex => ex.name === exerciseName);
+        filteredLogs.forEach((log: any) => {
+          const exercise = log.exercises.find((ex: any) => ex.name === exerciseName);
           if (exercise) {
             let value = 0;
             if (chartType === 'weight') {
-              value = exercise.sets.reduce((acc, set) => acc + parseFloat(set.weight || '0'), 0);
+              value = exercise.sets.reduce((acc: number, set: any) => acc + parseFloat(set.weight || '0'), 0);
             } else if (chartType === 'reps') {
-              value = exercise.sets.reduce((acc, set) => acc + parseInt(set.reps || '0', 10), 0);
+              value = exercise.sets.reduce((acc: number, set: any) => acc + parseInt(set.reps || '0', 10), 0);
             } else if (chartType === 'volume') {
               value = exercise.sets.reduce(
-                (acc, set) => acc + (parseInt(set.reps || '0', 10) * parseFloat(set.weight || '0')),
+                (acc: number, set: any) => acc + (parseInt(set.reps || '0', 10) * parseFloat(set.weight || '0')),
                 0
               );
             }
@@ -243,7 +250,7 @@ const ProgressChartScreen: React.FC = () => {
             data={{ 
               labels, 
               datasets: [{ 
-                data: dataPoints.map(d => d === 0 ? 0.1 : d) // Prevent zero values from breaking chart
+                data: dataPoints.map((d: number) => d === 0 ? 0.1 : d) // Prevent zero values from breaking chart
               }] 
             }}
             width={screenWidth}

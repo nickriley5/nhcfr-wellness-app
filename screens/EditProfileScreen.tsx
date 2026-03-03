@@ -120,7 +120,9 @@ const EditProfileScreen = () => {
     } catch (err: any) {
       console.error('❌ Profile update failed:', err);
       console.error('❌ Error message:', err.message || err.toString());
-      console.error('❌ Error stack:', err.stack);
+      if (err instanceof Error && err.stack) {
+        console.error('❌ Error stack:', err.stack);
+      }
       setSaving(false);
     }
   };

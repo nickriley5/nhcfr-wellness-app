@@ -12,7 +12,6 @@ import {
   Pressable,
   ScrollView,
   ActivityIndicator,
-  TextInput,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { generatePeriodizedProgram, PeriodizedProgram } from '../../utils/ai/aiService';
@@ -567,6 +566,9 @@ const PeriodizedProgramModal: React.FC<Props> = ({
                 <Text style={styles.generatingSubtext}>
                   We'll generate the next block when you complete these weeks
                 </Text>
+                <Text style={styles.generatingHint}>
+                  AI generation can take 45-90 seconds. Please keep this screen open.
+                </Text>
               </View>
             )}
 
@@ -955,6 +957,13 @@ const styles = StyleSheet.create({
     color: '#aaa',
     textAlign: 'center',
     paddingHorizontal: 32,
+  },
+  generatingHint: {
+    fontSize: 12,
+    color: '#7f8790',
+    textAlign: 'center',
+    marginTop: 8,
+    paddingHorizontal: 28,
   },
   progressBarContainer: {
     width: '80%',
