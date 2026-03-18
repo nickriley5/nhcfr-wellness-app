@@ -224,11 +224,12 @@ const WorkoutScreen: React.FC = () => {
 
       // Import exercise library to match names to IDs
       const { exercises: exerciseLibrary } = await import('../data/exercises');
+      const { resolveExercise } = await import('../utils/exerciseMatching');
       
       // Helper function to map exercise name to library entry
       const mapExercise = (exerciseInput: any, defaultSets: number = 3, defaultReps: string = '8-12 reps') => {
         const exerciseName = typeof exerciseInput === 'string' ? exerciseInput : (exerciseInput?.name || 'Exercise');
-        const matchedExercise = exerciseLibrary.find(
+        const matchedExercise = resolveExercise(exerciseName) || exerciseLibrary.find(
           ex => ex.name.toLowerCase() === exerciseName.toLowerCase()
         );
         
@@ -319,6 +320,8 @@ const WorkoutScreen: React.FC = () => {
         day: aiWorkoutDays[0],
         weekIdx: 0,
         dayIdx: 0,
+        sourceType: 'ai',
+        workoutId: aiWorkoutId,
       });
     } catch (error) {
       console.error('Error applying AI workout:', error);
@@ -879,6 +882,8 @@ const WorkoutScreen: React.FC = () => {
                         day: programDay,
                         weekIdx: currentWeekNum - 1,
                         dayIdx: currentDayNum - 1,
+                        sourceType: 'aiProgram',
+                        weekNumber: currentWeekNum,
                       });
                     } catch (error) {
                       console.error('Error starting workout:', error);
@@ -1657,6 +1662,7 @@ const WorkoutScreen: React.FC = () => {
       day: today,
       weekIdx: selectedWeekIdx,
       dayIdx: selectedDayIdx,
+      sourceType: 'program',
     })
   }
 >

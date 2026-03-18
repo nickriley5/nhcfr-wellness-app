@@ -215,7 +215,7 @@ const AIChatScreen = () => {
 
   const createThread = async (options?: { title?: string; context?: string }) => {
     const uid = auth.currentUser?.uid;
-    if (!uid) return;
+    if (!uid) return null;
 
     const title = options?.title || 'New Chat';
     const threadDoc = await addDoc(collection(db, 'users', uid, 'aiChatThreads'), {
@@ -296,7 +296,7 @@ const AIChatScreen = () => {
       const currentThread = threads.find(t => t.id === threadId);
       const shouldUpdateTitle =
         !currentThread?.title || currentThread.title === 'New Chat';
-      const nextTitle = shouldUpdateTitle ? summarizeTitle(userMessage) : currentThread?.title;
+      const nextTitle: string | null = shouldUpdateTitle ? summarizeTitle(userMessage) : null;
 
       // Add user message to Firestore
       await addDoc(collection(db, 'users', uid, 'aiChatThreads', threadId, 'messages'), {

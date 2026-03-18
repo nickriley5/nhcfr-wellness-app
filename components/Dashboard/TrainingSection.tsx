@@ -69,6 +69,9 @@ export default function TrainingSection({
                     day: todayInfo.day,
                     weekIdx: todayInfo.weekIdx,
                     dayIdx: todayInfo.dayIdx,
+                    sourceType: todayInfo.sourceType || 'program',
+                    workoutId: todayInfo.workoutId,
+                    weekNumber: todayInfo.weekNumber,
                   });
                 }}
               >
@@ -76,7 +79,16 @@ export default function TrainingSection({
               </Pressable>
               <Pressable
                 style={[styles.btn, styles.btnSecondary]}
-                onPress={() => navigation.navigate('AdaptWorkout')}
+                onPress={() =>
+                  navigation.navigate('AdaptWorkout', {
+                    day: todayInfo.day,
+                    weekIdx: todayInfo.weekIdx,
+                    dayIdx: todayInfo.dayIdx,
+                    sourceType: todayInfo.sourceType || 'program',
+                    workoutId: todayInfo.workoutId,
+                    weekNumber: todayInfo.weekNumber,
+                  })
+                }
               >
                 <Text style={styles.btnSecondaryText}>Adapt</Text>
               </Pressable>

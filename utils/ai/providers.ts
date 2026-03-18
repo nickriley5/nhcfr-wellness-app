@@ -127,11 +127,20 @@ async function sendGeminiMessage(
       return await sendGeminiMessageAttempt(messages, config, options);
     } catch (error: any) {
       const is503 = error.response?.status === 503;
+      const isNetworkFailure =
+        error?.message?.includes('Network error reaching Gemini API') ||
+        error?.code === 'ERR_NETWORK' ||
+        error?.code === 'ECONNABORTED' ||
+        error?.code === 'ECONNRESET' ||
+        error?.code === 'ETIMEDOUT' ||
+        error?.code === 'ENETUNREACH' ||
+        error?.code === 'EHOSTUNREACH';
       const isLastAttempt = attempt === maxRetries;
 
-      if (is503 && !isLastAttempt) {
+      if ((is503 || isNetworkFailure) && !isLastAttempt) {
         const delay = baseDelay * Math.pow(2, attempt - 1);
-        console.log(`🔄 Retry ${attempt}/${maxRetries} after ${delay}ms...`);
+        const reason = is503 ? '503' : 'network';
+        console.log(`🔄 Gemini retry ${attempt}/${maxRetries} (${reason}) after ${delay}ms...`);
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }
@@ -148,6 +157,45 @@ async function sendGeminiMessageAttempt(
   config: ProviderConfig,
   options?: ProviderOptions
 ): Promise<ProviderResponse> {
+  const mapGeminiAxiosError = (error: any): Error => {
+    if (error?.response) {
+      const status = error.response.status;
+      const errorData = error.response.data;
+
+      if (status === 503) {
+        return error;
+      }
+      if (status === 429) {
+        return new Error('⏱️ Rate limit exceeded. You made too many requests. Please wait and try again.');
+      }
+      if (status === 400) {
+        return new Error(`❌ Invalid request: ${errorData?.error?.message || 'Bad request'}`);
+      }
+      if (status === 401 || status === 403) {
+        return new Error('🔑 API key is invalid or has been revoked. Please check your Gemini key.');
+      }
+      if (status === 404) {
+        return new Error(`🔍 Model not found. The model "${config.model}" may not be available.`);
+      }
+
+      return new Error(`Gemini API error (${status}): ${errorData?.error?.message || error.message}`);
+    }
+
+    if (error?.code === 'ECONNABORTED') {
+      return new Error('⏱️ Request timed out while contacting Gemini. Please try again.');
+    }
+
+    if (error?.message === 'Network Error' || !error?.response) {
+      const mapped = new Error(
+        '🌐 Network error reaching Gemini API. Check internet connectivity, Android date/time, and whether your network blocks Google APIs.'
+      );
+      (mapped as any).code = error?.code || 'ERR_NETWORK';
+      return mapped;
+    }
+
+    return error instanceof Error ? error : new Error(String(error));
+  };
+
   const systemMessage = messages.find(m => m.role === 'system');
   const nonSystemMessages = messages.filter(m => m.role !== 'system');
 
@@ -191,7 +239,7 @@ async function sendGeminiMessageAttempt(
           headers: {
             'Content-Type': 'application/json',
           },
-          timeout: 60000,
+          timeout: 90000,
         }
       );
 
@@ -204,31 +252,7 @@ async function sendGeminiMessageAttempt(
         model: config.model,
       };
     } catch (error: any) {
-      if (error.response) {
-        const status = error.response.status;
-        const errorData = error.response.data;
-
-        if (status === 503) {
-          console.warn('⚠️ Gemini API returned 503, will retry...');
-          throw error;
-        } else if (status === 429) {
-          throw new Error('⏱️ Rate limit exceeded. You\'ve made too many requests. Please wait a few minutes and try again.');
-        } else if (status === 400) {
-          throw new Error(`❌ Invalid request: ${errorData?.error?.message || 'Bad request'}`);
-        } else if (status === 401 || status === 403) {
-          throw new Error('🔑 API key is invalid or has been revoked. Please check your configuration.');
-        } else if (status === 404) {
-          throw new Error(`🔍 Model not found. The model "${config.model}" may not be available.`);
-        }
-
-        throw new Error(`Gemini API error (${status}): ${errorData?.error?.message || error.message}`);
-      }
-
-      if (error.code === 'ECONNABORTED') {
-        throw new Error('⏱️ Request timed out. The AI is taking too long to respond. Please try again.');
-      }
-
-      throw error;
+      throw mapGeminiAxiosError(error);
     }
   }
 
@@ -248,31 +272,36 @@ async function sendGeminiMessageAttempt(
   console.log('🌐 Gemini API URL:', url.replace(config.apiKey, 'API_KEY_HIDDEN'));
   console.log('📨 Request payload:', JSON.stringify({ contents: formattedMessages }, null, 2));
 
-  const response = await axios.post<any>(
-    url,
-    {
-      contents: formattedMessages,
-      generationConfig: {
-        temperature: options?.temperature || 0.7,
-        maxOutputTokens: options?.maxTokens || 2000,
+  try {
+    const response = await axios.post<any>(
+      url,
+      {
+        contents: formattedMessages,
+        generationConfig: {
+          temperature: options?.temperature || 0.7,
+          maxOutputTokens: options?.maxTokens || 2000,
+        },
       },
-    },
-    {
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        timeout: 90000,
+      }
+    );
+
+    console.log('📥 Gemini response received:', JSON.stringify(response.data).substring(0, 200));
+
+    if (!response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+      console.error('❌ Unexpected Gemini response structure:', JSON.stringify(response.data, null, 2));
+      throw new Error('Invalid response from Gemini API');
     }
-  );
 
-  console.log('📥 Gemini response received:', JSON.stringify(response.data).substring(0, 200));
-
-  if (!response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
-    console.error('❌ Unexpected Gemini response structure:', JSON.stringify(response.data, null, 2));
-    throw new Error('Invalid response from Gemini API');
+    return {
+      content: response.data.candidates[0].content.parts[0].text,
+      model: config.model,
+    };
+  } catch (error: any) {
+    throw mapGeminiAxiosError(error);
   }
-
-  return {
-    content: response.data.candidates[0].content.parts[0].text,
-    model: config.model,
-  };
 }

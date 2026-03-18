@@ -69,6 +69,9 @@ export function useDashboardData(view: 'week' | 'month' | 'all', bump: number = 
     day: ProgramDay;
     weekIdx: number;
     dayIdx: number;
+    sourceType?: 'program' | 'aiProgram';
+    workoutId?: string;
+    weekNumber?: number;
   } | null>(null);
   
   const [aiWorkoutInfo, setAiWorkoutInfo] = useState<{
@@ -186,6 +189,7 @@ export function useDashboardData(view: 'week' | 'month' | 'all', bump: number = 
               day: days[idx],
               weekIdx: (days[idx] as any).week - 1,
               dayIdx: (days[idx] as any).day - 1,
+              sourceType: 'program',
             });
           } else {
             setTodayInfo(null);
@@ -230,6 +234,8 @@ export function useDashboardData(view: 'week' | 'month' | 'all', bump: number = 
             if (day) {
               // Convert AI program day to ProgramDay format
               const nameToId = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+              const { resolveExercise } = await import('../utils/exerciseMatching');
+              const resolveExerciseId = (value: string) => resolveExercise(value)?.id || nameToId(value);
               
               const rawPhase = week?.phase;
               const phase: ProgramDay['phase'] =
@@ -249,18 +255,18 @@ export function useDashboardData(view: 'week' | 'month' | 'all', bump: number = 
                 type: 'training',
                 phase,
                 warmup: day.warmup?.map((w: string) => ({ 
-                  exerciseId: nameToId(w), 
+                  exerciseId: resolveExerciseId(w), 
                   repsOrDuration: '5-10 reps' 
                 })) || [],
                 exercises: day.exercises?.map((ex: any) => ({
-                  exerciseId: ex.id || nameToId(ex.name),
+                  exerciseId: ex.id || resolveExerciseId(ex.name || ''),
                   sets: ex.sets,
                   repsOrDuration: ex.reps,
                   restSeconds: ex.restSeconds,
                   notes: ex.notes || '',
                 })) || [],
                 cooldown: day.cooldown?.map((c: string) => ({ 
-                  exerciseId: nameToId(c), 
+                  exerciseId: resolveExerciseId(c), 
                   repsOrDuration: '30-60 sec' 
                 })) || [],
               };
@@ -269,6 +275,9 @@ export function useDashboardData(view: 'week' | 'month' | 'all', bump: number = 
                 day: programDay,
                 weekIdx: currentWeek - 1,
                 dayIdx: currentDay - 1,
+                sourceType: 'aiProgram',
+                workoutId: activePrograms[0].id,
+                weekNumber: currentWeek,
               });
             } else {
               setTodayInfo(null);

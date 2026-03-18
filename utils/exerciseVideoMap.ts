@@ -134,8 +134,38 @@ export const exerciseVideoDatabase: Record<string, ExerciseVideoData> = {
     name: 'Barbell Back Squat',
     videoUrl: 'https://firebasestorage.googleapis.com/v0/b/firefighter-wellness-app.firebasestorage.app/o/barbell-squat.mp4?alt=media&token=41ffe1f6-8805-44ea-9563-aa2297746552',
   },
+  'deadbug': {
+    name: 'Deadbug',
+    videoUrl: 'https://firebasestorage.googleapis.com/v0/b/firefighter-wellness-app.firebasestorage.app/o/dead-bug.mp4?alt=media&token=06641cd1-c3f6-49ae-af32-3cadcf055800',
+    id: '0de90faa94094763b2fa3a544640cbca',
+  },
+  'dead_bug': {
+    name: 'Dead Bug',
+    videoUrl: 'https://firebasestorage.googleapis.com/v0/b/firefighter-wellness-app.firebasestorage.app/o/dead-bug.mp4?alt=media&token=06641cd1-c3f6-49ae-af32-3cadcf055800',
+  },
+  'broad_jumps': {
+    name: 'Broad Jumps',
+    videoUrl: 'https://www.youtube.com/watch?v=vPQv1gmrfUo',
+    id: '25aef4fb46f74fabb92c69334cc7edc4',
+  },
+  'broad_jump': {
+    name: 'Broad Jump',
+    videoUrl: 'https://www.youtube.com/watch?v=vPQv1gmrfUo',
+  },
 };
 
 export function getExerciseVideoData(exerciseId: string): ExerciseVideoData | null {
-  return exerciseVideoDatabase[exerciseId] || null;
+  if (!exerciseId) return null;
+
+  const raw = exerciseId.trim();
+  const normalizedKey = raw.toLowerCase().replace(/\s+/g, '_');
+
+  if (exerciseVideoDatabase[raw]) return exerciseVideoDatabase[raw];
+  if (exerciseVideoDatabase[normalizedKey]) return exerciseVideoDatabase[normalizedKey];
+
+  const byMetadata = Object.values(exerciseVideoDatabase).find((entry) => {
+    const entryName = entry.name.toLowerCase().trim();
+    return entry.id === raw || entryName === raw.toLowerCase().trim();
+  });
+  return byMetadata || null;
 }

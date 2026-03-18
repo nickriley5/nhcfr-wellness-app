@@ -16,7 +16,7 @@ import { RootStackParamList } from '../App';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import Sound from 'react-native-sound';
 import Video from 'react-native-video';
-import WebView from 'react-native-webview';
+import YoutubePlayer from 'react-native-youtube-iframe';
 import { auth, db } from '../firebase';
 import { doc, setDoc, Timestamp, collection, getDoc, getDocs, query, where, updateDoc } from 'firebase/firestore';
 import Toast from 'react-native-toast-message';
@@ -67,7 +67,7 @@ const CardioWorkoutScreen: React.FC = () => {
   const [intervalElapsedMs, setIntervalElapsedMs] = useState(0);
   const intervalLastTickRef = useRef<number | null>(null);
   const intervalCountdownRef = useRef<string | null>(null);
-  const beepRef = useRef<Sound | null>(null);
+  const beepRef = useRef<any>(null);
   const [expandedVideos, setExpandedVideos] = useState<Set<string>>(new Set());
 
   // Detect if this is an interval/HIIT workout
@@ -117,7 +117,7 @@ const CardioWorkoutScreen: React.FC = () => {
       }
     : parseIntervalNotes(session?.notes);
 
-  const suggestedCircuit = session?.circuit?.exercises?.length
+  const suggestedCircuit: Array<string | { name: string; notes?: string }> = session?.circuit?.exercises?.length
     ? session.circuit.exercises
     : isIntervalWorkout
       ? ['Burpees', 'Kettlebell Swings', 'Mountain Climbers', 'Jump Rope', 'Air Squats']
@@ -127,12 +127,19 @@ const CardioWorkoutScreen: React.FC = () => {
 
   const getYoutubeVideoId = (url: string): string | null => {
     if (!url) return null;
-    const match1 = url.match(/youtube\.com\/watch\?v=([^&]+)/);
-    if (match1) return match1[1];
-    const match2 = url.match(/youtu\.be\/([^?]+)/);
-    if (match2) return match2[1];
-    const match3 = url.match(/youtube\.com\/embed\/([^?]+)/);
-    if (match3) return match3[1];
+    try {
+      const normalized = url.trim();
+      const watchMatch = normalized.match(/[?&]v=([^&]+)/);
+      if (watchMatch?.[1]) return watchMatch[1];
+      const shortMatch = normalized.match(/youtu\.be\/([^?/]+)/);
+      if (shortMatch?.[1]) return shortMatch[1];
+      const embedMatch = normalized.match(/youtube\.com\/embed\/([^?/]+)/);
+      if (embedMatch?.[1]) return embedMatch[1];
+      const shortsMatch = normalized.match(/youtube\.com\/shorts\/([^?/]+)/);
+      if (shortsMatch?.[1]) return shortsMatch[1];
+    } catch {
+      return null;
+    }
     return null;
   };
 
@@ -161,7 +168,9 @@ const CardioWorkoutScreen: React.FC = () => {
     return { name, notes, matched };
   };
 
-  const resolvedCircuit = suggestedCircuit.map((exercise) => resolveCircuitExercise(exercise));
+  const resolvedCircuit = suggestedCircuit.map(
+    (exercise: string | { name: string; notes?: string }) => resolveCircuitExercise(exercise)
+  );
 
   const formatPrepLine = (item: { name: string; notes?: string }) =>
     item.notes ? `${item.name} - ${item.notes}` : item.name;
@@ -180,7 +189,7 @@ const CardioWorkoutScreen: React.FC = () => {
       lines.push(
         `Interval: ${intervalConfig.rounds} rounds, ${intervalConfig.workSec}s work / ${intervalConfig.restSec}s rest`,
         `Circuit: ${suggestedCircuit
-          .map(ex => (typeof ex === 'string' ? ex : ex.name))
+          .map((ex: string | { name: string; notes?: string }) => (typeof ex === 'string' ? ex : ex.name))
           .join(', ')}`
       );
     }
@@ -201,7 +210,7 @@ const CardioWorkoutScreen: React.FC = () => {
 
   useEffect(() => {
     Sound.setCategory('Playback');
-    const sound = new Sound(require('../assets/sounds/beep.wav'), (error) => {
+    const sound = new Sound(require('../assets/sounds/beep.wav'), (error: any) => {
       if (error) {
         console.warn('Failed to load beep sound', error);
       }
@@ -627,7 +636,7 @@ const CardioWorkoutScreen: React.FC = () => {
             </Text>
             <Text style={styles.circuitSubtext}>1 round = all exercises once</Text>
             <View style={styles.circuitList}>
-              {suggestedCircuit.map((exercise, idx) => {
+              {suggestedCircuit.map((exercise: string | { name: string; notes?: string }, idx: number) => {
                 const { name, notes, matched } = resolveCircuitExercise(exercise);
                 const exerciseKey = `${name}-${idx}`;
                 const youtubeId = matched?.videoUrl ? getYoutubeVideoId(matched.videoUrl) : null;
@@ -646,11 +655,10 @@ const CardioWorkoutScreen: React.FC = () => {
                         {expandedVideos.has(exerciseKey) ? (
                           <View style={styles.videoPlayerContainer}>
                             {youtubeId ? (
-                              <WebView
-                                source={{ uri: `https://www.youtube.com/embed/${youtubeId}?playsinline=1&controls=1` }}
-                                style={styles.videoPlayer}
-                                allowsInlineMediaPlayback={true}
-                                mediaPlaybackRequiresUserAction={false}
+                              <YoutubePlayer
+                                height={200}
+                                videoId={youtubeId}
+                                play={false}
                               />
                             ) : (
                               <Video

@@ -63,8 +63,10 @@ const WorkoutDetailScreen: React.FC = () => {
   const [feeling, setFeeling] = useState<'easy' | 'moderate' | 'hard' | 'crushed' | null>(null);
   const [showPR, setShowPR] = useState(false);
   const [prMsgs, setPrMsgs] = useState<string[]>([]);
+  const [videoLoading, setVideoLoading] = useState<Record<string, boolean>>({});
   
   const restIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const videoLoadStartRef = useRef<Record<string, number>>({});
 
   const formatContextBlock = (block: any) => {
     if (!block) return 'Exercise';
@@ -98,13 +100,14 @@ const WorkoutDetailScreen: React.FC = () => {
     
     const parseExerciseList = (list: any[]) =>
       (list || []).map((ex: any) => {
-        const rawName = typeof ex === 'string' ? ex : (ex.id || ex.name);
+        const rawName =
+          typeof ex === 'string' ? ex : (ex.id || ex.exerciseId || ex.name);
         const resolved = resolveExercise(rawName);
         return {
           id: resolved?.id || rawName,
           name: resolved?.name || rawName || 'Unknown Exercise',
           sets: ex.sets || 3,
-          reps: ex.reps || ex.repsOrDuration || '10',
+          reps: ex.reps || ex.repsOrDuration || ex.reps_or_time || '10',
           weight: ex.weight,
           videoUrl: resolved?.videoUrl,
           swapOptions: resolved?.swapOptions,
@@ -145,8 +148,11 @@ const WorkoutDetailScreen: React.FC = () => {
       const next = new Set(prev);
       if (next.has(exerciseId)) {
         next.delete(exerciseId);
+        setVideoLoading(current => ({ ...current, [exerciseId]: false }));
       } else {
         next.add(exerciseId);
+        videoLoadStartRef.current[exerciseId] = Date.now();
+        setVideoLoading(current => ({ ...current, [exerciseId]: true }));
       }
       return next;
     });
@@ -237,8 +243,22 @@ const WorkoutDetailScreen: React.FC = () => {
   };
 
   const handleSwapExercise = (exercise: ExerciseData) => {
-    setSwapModalExercise(exercise);
-    setShowSwapModal(true);
+    try {
+      // Use the same richer adaptation flow as dashboard Adapt.
+      navigation.navigate('AdaptWorkout', {
+        day,
+        weekIdx,
+        dayIdx,
+        sourceType: route.params?.sourceType,
+        workoutId: route.params?.workoutId,
+        weekNumber: route.params?.weekNumber,
+      });
+    } catch (error) {
+      // Fallback to legacy local swap modal if navigation fails.
+      console.warn('Unable to open AdaptWorkout, using local swap modal:', error);
+      setSwapModalExercise(exercise);
+      setShowSwapModal(true);
+    }
   };
 
   const confirmSwap = (newExerciseName: string) => {
@@ -465,13 +485,13 @@ const WorkoutDetailScreen: React.FC = () => {
           return (
             <View key={`${section.title}-${sectionIdx}`} style={styles.sectionBlock}>
               <Text style={styles.sectionHeaderText}>{section.title}</Text>
-              {section.exercises.map((exercise) => {
+              {section.exercises.map((exercise, exerciseIdx) => {
                 const isExpanded = expandedExercises.has(exercise.id);
                 const sets = workoutSets[exercise.id] || [];
                 const completedSets = sets.filter(s => s.completed).length;
                 
                 return (
-                  <View key={exercise.id} style={styles.exerciseCard}>
+                  <View key={`${section.title}-${sectionIdx}-${exercise.id}-${exerciseIdx}`} style={styles.exerciseCard}>
                     {/* EXERCISE HEADER */}
                     <Pressable 
                       style={styles.exerciseHeader}
@@ -513,6 +533,20 @@ const WorkoutDetailScreen: React.FC = () => {
                                 height={220}
                                 videoId={youtubeId}
                                 play={false}
+                                webViewProps={{
+                                  cacheEnabled: true,
+                                  domStorageEnabled: true,
+                                  allowsInlineMediaPlayback: true,
+                                }}
+                                onReady={() => {
+                                  const elapsed = Date.now() - (videoLoadStartRef.current[exercise.id] || Date.now());
+                                  console.log(`🎥 YouTube ready (${exercise.name}) in ${elapsed}ms`);
+                                  setVideoLoading(current => ({ ...current, [exercise.id]: false }));
+                                }}
+                                onError={(error: any) => {
+                                  console.warn(`⚠️ YouTube load error for ${exercise.name}:`, error);
+                                  setVideoLoading(current => ({ ...current, [exercise.id]: false }));
+                                }}
                               />
                             );
                           } else {
@@ -522,11 +556,37 @@ const WorkoutDetailScreen: React.FC = () => {
                                 style={styles.video}
                                 controls
                                 resizeMode="contain"
-                                paused
+                                paused={false}
+                                automaticallyWaitsToMinimizeStalling={false}
+                                bufferConfig={{
+                                  minBufferMs: 1000,
+                                  maxBufferMs: 6000,
+                                  bufferForPlaybackMs: 300,
+                                  bufferForPlaybackAfterRebufferMs: 500,
+                                }}
+                                onLoadStart={() => {
+                                  videoLoadStartRef.current[exercise.id] = Date.now();
+                                  setVideoLoading(current => ({ ...current, [exercise.id]: true }));
+                                }}
+                                onLoad={() => {
+                                  const elapsed = Date.now() - (videoLoadStartRef.current[exercise.id] || Date.now());
+                                  console.log(`🎥 MP4 ready (${exercise.name}) in ${elapsed}ms`);
+                                  setVideoLoading(current => ({ ...current, [exercise.id]: false }));
+                                }}
+                                onError={(error) => {
+                                  console.warn(`⚠️ MP4 load error for ${exercise.name}:`, error);
+                                  setVideoLoading(current => ({ ...current, [exercise.id]: false }));
+                                }}
                               />
                             );
                           }
                         })()}
+                        {videoLoading[exercise.id] && (
+                          <View style={styles.videoLoadingOverlay}>
+                            <ActivityIndicator size="small" color="#fff" />
+                            <Text style={styles.videoLoadingText}>Loading video...</Text>
+                          </View>
+                        )}
                       </View>
                     )}
 
@@ -789,6 +849,7 @@ const styles = StyleSheet.create({
     padding: 12,
     borderTopWidth: 1,
     borderTopColor: '#444',
+    position: 'relative',
   },
   video: {
     width: '100%',
@@ -800,6 +861,17 @@ const styles = StyleSheet.create({
     color: '#4fc3f7',
     textAlign: 'center',
     padding: 20,
+  },
+  videoLoadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  videoLoadingText: {
+    fontSize: 12,
+    color: '#fff',
   },
   setRow: {
     flexDirection: 'row',

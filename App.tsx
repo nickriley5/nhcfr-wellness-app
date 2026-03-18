@@ -70,6 +70,9 @@ export type RootStackParamList = {
     weekIdx: number;
     dayIdx: number;
     adapt?: boolean;
+    sourceType?: 'ai' | 'program' | 'aiProgram';
+    workoutId?: string;
+    weekNumber?: number;
   };
   CardioWorkout: {
     session: {
@@ -79,12 +82,27 @@ export type RootStackParamList = {
       intensity: string;
       notes?: string;
       targetHeartRate?: string;
+      circuit?: {
+        rounds: number;
+        workSec: number;
+        restSec: number;
+        exercises: Array<string | { name: string; notes?: string }>;
+      };
       warmup?: Array<string | { name: string; notes?: string }>;
       cooldown?: Array<string | { name: string; notes?: string }>;
     };
     weekNumber: number;
   };
-  AdaptWorkout: undefined;
+  AdaptWorkout:
+    | {
+        day?: ProgramDay;
+        weekIdx?: number;
+        dayIdx?: number;
+        sourceType?: 'ai' | 'program' | 'aiProgram';
+        workoutId?: string;
+        weekNumber?: number;
+      }
+    | undefined;
   ExerciseLibrary: undefined;
   ExerciseDetail: { exerciseId: string };
   WorkoutHistory: undefined;

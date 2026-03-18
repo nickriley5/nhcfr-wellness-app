@@ -128,18 +128,36 @@ export default function TodaysWorkoutCard({
             Custom workout generated just for you. Includes warm-up and cool-down exercises.
           </Text>
 
-          <Pressable
-            style={[dashboardStyles.btn, dashboardStyles.btnPrimary, { width: '100%' }]}
-            onPress={() =>
-              navigation.navigate('WorkoutDetail', {
-                day: aiWorkoutInfo.day,
-                weekIdx: 0,
-                dayIdx: 0,
-              })
-            }
-          >
-            <Text style={dashboardStyles.btnPrimaryText}>Start AI Workout</Text>
-          </Pressable>
+          <View style={dashboardStyles.rowButtons}>
+            <Pressable
+              style={[dashboardStyles.btn, dashboardStyles.btnPrimary]}
+              onPress={() =>
+                navigation.navigate('WorkoutDetail', {
+                  day: aiWorkoutInfo.day,
+                  weekIdx: 0,
+                  dayIdx: 0,
+                  sourceType: 'ai',
+                  workoutId: aiWorkoutInfo.workoutId,
+                })
+              }
+            >
+              <Text style={dashboardStyles.btnPrimaryText}>Start AI Workout</Text>
+            </Pressable>
+            <Pressable
+              style={[dashboardStyles.btn, dashboardStyles.btnSecondary]}
+              onPress={() =>
+                navigation.navigate('AdaptWorkout', {
+                  day: aiWorkoutInfo.day,
+                  weekIdx: 0,
+                  dayIdx: 0,
+                  sourceType: 'ai',
+                  workoutId: aiWorkoutInfo.workoutId,
+                })
+              }
+            >
+              <Text style={dashboardStyles.btnSecondaryText}>Adapt</Text>
+            </Pressable>
+          </View>
 
           <Pressable
             style={[dashboardStyles.linkWrap, { marginTop: 12 }]}
@@ -254,6 +272,9 @@ export default function TodaysWorkoutCard({
                       day: todayInfo!.day,
                       weekIdx: todayInfo!.weekIdx,
                       dayIdx: todayInfo!.dayIdx,
+                      sourceType: todayInfo!.sourceType || 'program',
+                      workoutId: todayInfo!.workoutId,
+                      weekNumber: todayInfo!.weekNumber,
                     })
                   }
                 >
@@ -264,7 +285,14 @@ export default function TodaysWorkoutCard({
                   onPress={() => {
                     console.log('Adapt button pressed');
                     try {
-                      navigation.navigate('AdaptWorkout' as never);
+                      navigation.navigate('AdaptWorkout', {
+                        day: todayInfo!.day,
+                        weekIdx: todayInfo!.weekIdx,
+                        dayIdx: todayInfo!.dayIdx,
+                        sourceType: todayInfo!.sourceType || 'program',
+                        workoutId: todayInfo!.workoutId,
+                        weekNumber: todayInfo!.weekNumber,
+                      });
                     } catch (error) {
                       console.error('Navigation error:', error);
                     }

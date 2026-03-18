@@ -3,7 +3,7 @@
  * Allows users to create complete multi-week training programs with AI
  */
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
   Pressable,
   ScrollView,
   ActivityIndicator,
+  Switch,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { generatePeriodizedProgram, PeriodizedProgram } from '../../utils/ai/aiService';
@@ -31,12 +32,48 @@ interface Props {
   };
 }
 
+type TrainingAccess = 'bodyweight' | 'weighted' | 'mixed';
+
+const WEIGHTED_EQUIPMENT = ['dumbbells', 'kettlebells', 'barbell', 'pullup bar', 'full gym'];
+
+const getInitialTrainingAccess = (equipment: string[] = []): TrainingAccess => {
+  const normalized = equipment.map(item => item.toLowerCase());
+  const hasBodyweight = normalized.includes('bodyweight');
+  const hasWeighted = normalized.some(item => WEIGHTED_EQUIPMENT.includes(item));
+
+  if (hasBodyweight && hasWeighted) return 'mixed';
+  if (hasWeighted) return 'weighted';
+  return 'bodyweight';
+};
+
+const getEquipmentFromAccess = (trainingAccess: TrainingAccess): string[] => {
+  switch (trainingAccess) {
+    case 'weighted':
+      return WEIGHTED_EQUIPMENT;
+    case 'mixed':
+      return ['bodyweight', ...WEIGHTED_EQUIPMENT];
+    case 'bodyweight':
+    default:
+      return ['bodyweight'];
+  }
+};
+
+const getAutoPeriodizationModel = (
+  goal: string,
+  fitnessLevel: 'beginner' | 'intermediate' | 'advanced'
+): 'linear' | 'undulating' | 'block' => {
+  if (goal === 'Improve VO2 Max') return 'block';
+  if (fitnessLevel === 'advanced') return 'undulating';
+  return 'linear';
+};
+
 const PeriodizedProgramModal: React.FC<Props> = ({
   visible,
   onClose,
   onProgramGenerated,
   userProfile,
 }) => {
+  const scrollRef = useRef<ScrollView>(null);
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState<'setup' | 'generating' | 'preview'>('setup');
   const [generatedProgram, setGeneratedProgram] = useState<PeriodizedProgram | null>(null);
@@ -48,32 +85,20 @@ const PeriodizedProgramModal: React.FC<Props> = ({
   const [fitnessLevel, setFitnessLevel] = useState<'beginner' | 'intermediate' | 'advanced'>(
     (userProfile?.experience?.toLowerCase() as 'beginner' | 'intermediate' | 'advanced') || 'intermediate'
   );
-  const [selectedEquipment, setSelectedEquipment] = useState<string[]>(
-    userProfile?.equipment || ['dumbbells', 'bodyweight']
+  const [trainingAccess, setTrainingAccess] = useState<TrainingAccess>(
+    getInitialTrainingAccess(userProfile?.equipment || [])
   );
-  const [totalWeeks, setTotalWeeks] = useState('12');
   const [daysPerWeek, setDaysPerWeek] = useState('4');
   const [includeCardio, setIncludeCardio] = useState(false);
-  const [allowTwoADays, setAllowTwoADays] = useState(false);
-  const [periodizationModel, setPeriodizationModel] = useState<'linear' | 'undulating' | 'block'>(
-    'linear'
-  );
 
   const handleGenerate = async () => {
-    // Validation: Ensure at least one equipment is selected
-    if (selectedEquipment.length === 0) {
-      Toast.show({
-        type: 'error',
-        text1: 'Equipment Required',
-        text2: 'Please select at least one equipment option',
-      });
-      return;
-    }
-
     setLoading(true);
     setStep('generating');
 
     try {
+      const selectedEquipment = getEquipmentFromAccess(trainingAccess);
+      const periodizationModel = getAutoPeriodizationModel(goal, fitnessLevel);
+
       // Use curated exercise list filtered by user's equipment
       const curatedExercises = getCuratedExerciseList(selectedEquipment);
       
@@ -93,12 +118,12 @@ const PeriodizedProgramModal: React.FC<Props> = ({
           goal,
           experience: fitnessLevel,
           equipment: selectedEquipment,
-          totalWeeks: parseInt(totalWeeks),
+          totalWeeks: 4,
           daysPerWeek: parseInt(daysPerWeek),
           periodizationModel,
           availableExercises,
           includeCardio,
-          allowTwoADays: fitnessLevel === 'advanced' ? allowTwoADays : false,
+          allowTwoADays: false,
         },
         (phase, percent) => {
           setProgressPhase(phase);
@@ -181,6 +206,12 @@ const PeriodizedProgramModal: React.FC<Props> = ({
     setLoading(false);
   };
 
+  useEffect(() => {
+    if (visible) {
+      scrollRef.current?.scrollTo({ y: 0, animated: false });
+    }
+  }, [visible]);
+
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.overlay}>
@@ -199,10 +230,16 @@ const PeriodizedProgramModal: React.FC<Props> = ({
             </Pressable>
           </View>
 
-          <ScrollView style={styles.content}>
+          <ScrollView
+            ref={scrollRef}
+            style={styles.content}
+            contentContainerStyle={styles.contentContainer}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
             {/* SETUP STEP */}
             {step === 'setup' && (
-              <View>
+              <View style={styles.setupContainer}>
                 <Text style={styles.sectionTitle}>Program Details</Text>
 
                 {/* Goal Selection */}
@@ -304,66 +341,36 @@ const PeriodizedProgramModal: React.FC<Props> = ({
 
                 {/* Equipment Selection */}
                 <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Available Equipment</Text>
-                  <Text style={styles.helperText}>Select all that apply</Text>
-                  <View style={styles.equipmentButtons}>
+                  <Text style={styles.label}>Training Access</Text>
+                  <Text style={styles.helperText}>Pick what you have right now</Text>
+                  <View style={styles.accessButtons}>
                     {[
-                      { id: 'bodyweight', label: 'Bodyweight', icon: '💪' },
-                      { id: 'dumbbells', label: 'Dumbbells', icon: '🏋️' },
-                      { id: 'kettlebells', label: 'Kettlebells', icon: '⚫' },
-                      { id: 'barbell', label: 'Barbell', icon: '━' },
-                      { id: 'pullup bar', label: 'Pull-up Bar', icon: '🎯' },
-                      { id: 'full gym', label: 'Full Gym', icon: '🏢' },
-                    ].map(eq => (
+                      { id: 'bodyweight', label: 'Bodyweight Only' },
+                      { id: 'weighted', label: 'Weighted Equipment' },
+                      { id: 'mixed', label: 'Both / Adaptable' },
+                    ].map(option => (
                       <Pressable
-                        key={eq.id}
+                        key={option.id}
                         style={[
-                          styles.equipmentButton,
-                          selectedEquipment.includes(eq.id) && styles.equipmentButtonActive,
+                          styles.accessButton,
+                          trainingAccess === option.id && styles.accessButtonActive,
                         ]}
-                        onPress={() => {
-                          if (selectedEquipment.includes(eq.id)) {
-                            setSelectedEquipment(selectedEquipment.filter(e => e !== eq.id));
-                          } else {
-                            setSelectedEquipment([...selectedEquipment, eq.id]);
-                          }
-                        }}
+                        onPress={() => setTrainingAccess(option.id as TrainingAccess)}
                       >
-                        <Text style={styles.equipmentIcon}>{eq.icon}</Text>
                         <Text
                           style={[
-                            styles.equipmentButtonText,
-                            selectedEquipment.includes(eq.id) && styles.equipmentButtonTextActive,
+                            styles.accessButtonText,
+                            trainingAccess === option.id && styles.accessButtonTextActive,
                           ]}
                         >
-                          {eq.label}
+                          {option.label}
                         </Text>
                       </Pressable>
                     ))}
                   </View>
-                </View>
-
-                {/* Duration */}
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Program Duration (weeks)</Text>
-                  <View style={styles.numberButtons}>
-                    {['8', '12', '16'].map(w => (
-                      <Pressable
-                        key={w}
-                        style={[styles.numberButton, totalWeeks === w && styles.numberButtonActive]}
-                        onPress={() => setTotalWeeks(w)}
-                      >
-                        <Text
-                          style={[
-                            styles.numberButtonText,
-                            totalWeeks === w && styles.numberButtonTextActive,
-                          ]}
-                        >
-                          {w}
-                        </Text>
-                      </Pressable>
-                    ))}
-                  </View>
+                  <Text style={styles.helperText}>
+                    You can still swap exercises later with Adapt if your equipment changes mid-shift.
+                  </Text>
                 </View>
 
                 {/* Days per Week */}
@@ -391,141 +398,20 @@ const PeriodizedProgramModal: React.FC<Props> = ({
 
                 {/* Cardio Days Toggle */}
                 <View style={styles.inputGroup}>
-                  <Pressable
-                    style={styles.toggleRow}
-                    onPress={() => setIncludeCardio(!includeCardio)}
-                  >
+                  <View style={styles.toggleRow}>
                     <View style={styles.toggleLeft}>
                       <Text style={styles.toggleLabel}>Include Cardio Days</Text>
                       <Text style={styles.toggleSubtext}>
                         Add dedicated cardio/conditioning sessions
                       </Text>
                     </View>
-                    <View
-                      style={[
-                        styles.toggleSwitch,
-                        includeCardio && styles.toggleSwitchActive,
-                      ]}
-                    >
-                      <View
-                        style={[
-                          styles.toggleCircle,
-                          includeCardio && styles.toggleCircleActive,
-                        ]}
-                      />
-                    </View>
-                  </Pressable>
-                </View>
-
-                {/* Two-a-Days Toggle (Advanced only) */}
-                {fitnessLevel === 'advanced' && (
-                  <View style={styles.inputGroup}>
-                    <Pressable
-                      style={styles.toggleRow}
-                      onPress={() => setAllowTwoADays(!allowTwoADays)}
-                    >
-                      <View style={styles.toggleLeft}>
-                        <Text style={styles.toggleLabel}>Allow Two-a-Days</Text>
-                        <Text style={styles.toggleSubtext}>
-                          Multiple training sessions per day (advanced)
-                        </Text>
-                      </View>
-                      <View
-                        style={[
-                          styles.toggleSwitch,
-                          allowTwoADays && styles.toggleSwitchActive,
-                        ]}
-                      >
-                        <View
-                          style={[
-                            styles.toggleCircle,
-                            allowTwoADays && styles.toggleCircleActive,
-                          ]}
-                        />
-                      </View>
-                    </Pressable>
-                  </View>
-                )}
-
-                {/* Periodization Model */}
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Training Progression Style</Text>
-                  <Text style={styles.helperText}>How your workouts will progress over time</Text>
-                  <View style={styles.periodizationButtons}>
-                    <Pressable
-                      style={[
-                        styles.periodizationButton,
-                        periodizationModel === 'linear' && styles.periodizationButtonActive,
-                      ]}
-                      onPress={() => setPeriodizationModel('linear')}
-                    >
-                      <Text
-                        style={[
-                          styles.periodizationButtonText,
-                          periodizationModel === 'linear' && styles.periodizationButtonTextActive,
-                        ]}
-                      >
-                        📈 Progressive
-                      </Text>
-                      <Text
-                        style={[
-                          styles.periodizationSubtext,
-                          periodizationModel === 'linear' && styles.periodizationSubtextActive,
-                        ]}
-                      >
-                        Gradually increase weight/intensity each week. Best for building strength.
-                      </Text>
-                    </Pressable>
-
-                    <Pressable
-                      style={[
-                        styles.periodizationButton,
-                        periodizationModel === 'undulating' && styles.periodizationButtonActive,
-                      ]}
-                      onPress={() => setPeriodizationModel('undulating')}
-                    >
-                      <Text
-                        style={[
-                          styles.periodizationButtonText,
-                          periodizationModel === 'undulating' && styles.periodizationButtonTextActive,
-                        ]}
-                      >
-                        🔄 Varied
-                      </Text>
-                      <Text
-                        style={[
-                          styles.periodizationSubtext,
-                          periodizationModel === 'undulating' && styles.periodizationSubtextActive,
-                        ]}
-                      >
-                        Mix of heavy, moderate, and light days. Best for muscle growth.
-                      </Text>
-                    </Pressable>
-
-                    <Pressable
-                      style={[
-                        styles.periodizationButton,
-                        periodizationModel === 'block' && styles.periodizationButtonActive,
-                      ]}
-                      onPress={() => setPeriodizationModel('block')}
-                    >
-                      <Text
-                        style={[
-                          styles.periodizationButtonText,
-                          periodizationModel === 'block' && styles.periodizationButtonTextActive,
-                        ]}
-                      >
-                        🎯 Focused
-                      </Text>
-                      <Text
-                        style={[
-                          styles.periodizationSubtext,
-                          periodizationModel === 'block' && styles.periodizationSubtextActive,
-                        ]}
-                      >
-                        Focus on one quality at a time (endurance → strength → power).
-                      </Text>
-                    </Pressable>
+                    <Switch
+                      value={includeCardio}
+                      onValueChange={setIncludeCardio}
+                      trackColor={{ false: '#333', true: '#FF3C38' }}
+                      thumbColor={includeCardio ? '#fff' : '#aaa'}
+                      ios_backgroundColor="#333"
+                    />
                   </View>
                 </View>
 
@@ -535,17 +421,12 @@ const PeriodizedProgramModal: React.FC<Props> = ({
                   <View style={styles.infoTextContainer}>
                     <Text style={styles.infoTitle}>What is Periodization?</Text>
                     <Text style={styles.infoText}>
-                      A structured approach to training that cycles through different phases to maximize
-                      results and prevent plateaus. Includes built-in deload weeks for recovery.
+                      We auto-select progression style based on your goal and level. Programs are
+                      generated in focused 4-week blocks to keep quality and progression tight.
                     </Text>
                   </View>
                 </View>
 
-                {/* Generate Button */}
-                <Pressable style={styles.generateButton} onPress={handleGenerate}>
-                  <Ionicons name="flash" size={20} color="#fff" />
-                  <Text style={styles.generateButtonText}>Generate Program</Text>
-                </Pressable>
               </View>
             )}
 
@@ -653,6 +534,16 @@ const PeriodizedProgramModal: React.FC<Props> = ({
               </View>
             )}
           </ScrollView>
+
+          {step === 'setup' && (
+            <View style={styles.footer}>
+              <Pressable style={styles.generateButton} onPress={handleGenerate}>
+                <Ionicons name="flash" size={20} color="#fff" />
+                <Text style={styles.generateButtonText}>Generate Program</Text>
+              </Pressable>
+            </View>
+          )}
+
         </View>
       </View>
     </Modal>
@@ -669,7 +560,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#1a1a1a',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    maxHeight: '90%',
+    height: '90%',
+    position: 'relative',
   },
   header: {
     flexDirection: 'row',
@@ -688,7 +580,16 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   content: {
-    padding: 20,
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+  },
+  contentContainer: {
+    flexGrow: 1,
+    paddingBottom: 120,
+  },
+  setupContainer: {
+    paddingBottom: 24,
   },
   sectionTitle: {
     fontSize: 18,
@@ -755,38 +656,6 @@ const styles = StyleSheet.create({
   numberButtonTextActive: {
     color: '#fff',
   },
-  periodizationButtons: {
-    gap: 8,
-  },
-  periodizationButton: {
-    padding: 16,
-    backgroundColor: '#222',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#333',
-  },
-  periodizationButtonActive: {
-    backgroundColor: '#FF3C38',
-    borderColor: '#FF3C38',
-  },
-  periodizationButtonText: {
-    color: '#aaa',
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  periodizationButtonTextActive: {
-    color: '#fff',
-  },
-  periodizationSubtext: {
-    color: '#666',
-    fontSize: 12,
-    lineHeight: 16,
-    marginTop: 4,
-  },
-  periodizationSubtextActive: {
-    color: '#fff',
-  },
   helperText: {
     fontSize: 12,
     color: '#666',
@@ -826,35 +695,29 @@ const styles = StyleSheet.create({
   fitnessLevelSubtextActive: {
     color: '#fff',
   },
-  equipmentButtons: {
+  accessButtons: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
   },
-  equipmentButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  accessButton: {
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 10,
     backgroundColor: '#222',
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#333',
-    gap: 6,
   },
-  equipmentButtonActive: {
+  accessButtonActive: {
     backgroundColor: '#FF3C38',
     borderColor: '#FF3C38',
   },
-  equipmentIcon: {
-    fontSize: 16,
-  },
-  equipmentButtonText: {
+  accessButtonText: {
     color: '#aaa',
     fontSize: 13,
-    fontWeight: '500',
+    fontWeight: '600',
   },
-  equipmentButtonTextActive: {
+  accessButtonTextActive: {
     color: '#fff',
   },
   toggleRow: {
@@ -881,27 +744,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#666',
     lineHeight: 16,
-  },
-  toggleSwitch: {
-    width: 50,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#333',
-    padding: 2,
-    justifyContent: 'center',
-  },
-  toggleSwitchActive: {
-    backgroundColor: '#FF3C38',
-  },
-  toggleCircle: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#666',
-  },
-  toggleCircleActive: {
-    backgroundColor: '#fff',
-    alignSelf: 'flex-end',
   },
   infoCard: {
     flexDirection: 'row',
@@ -933,8 +775,6 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderRadius: 12,
     gap: 8,
-    marginTop: 24,
-    marginBottom: 20,
   },
   generateButtonText: {
     color: '#fff',
@@ -1118,6 +958,18 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     fontWeight: '600',
+  },
+  footer: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#333',
+    backgroundColor: '#1a1a1a',
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
 });
 

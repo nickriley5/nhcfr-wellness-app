@@ -1,6 +1,6 @@
 // components/VideoToggle.tsx
-import React, { useState } from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import Video from 'react-native-video';
 import YoutubePlayer from 'react-native-youtube-iframe';
@@ -11,6 +11,32 @@ interface VideoToggleProps {
 
 const VideoToggle: React.FC<VideoToggleProps> = ({ uri }) => {
   const [expanded, setExpanded] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [showSlowLoadHint, setShowSlowLoadHint] = useState(false);
+  const slowHintTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    if (!expanded) {
+      setIsLoading(false);
+      setShowSlowLoadHint(false);
+      if (slowHintTimerRef.current) {
+        clearTimeout(slowHintTimerRef.current);
+      }
+      return;
+    }
+
+    setIsLoading(true);
+    setShowSlowLoadHint(false);
+    slowHintTimerRef.current = setTimeout(() => {
+      setShowSlowLoadHint(true);
+    }, 1000);
+
+    return () => {
+      if (slowHintTimerRef.current) {
+        clearTimeout(slowHintTimerRef.current);
+      }
+    };
+  }, [expanded]);
 
   if (!uri) {return null;}
 
@@ -100,6 +126,7 @@ const VideoToggle: React.FC<VideoToggleProps> = ({ uri }) => {
           }}
           onReady={() => {
             console.log('✅ YouTube player ready for video ID:', videoId);
+            setIsLoading(false);
           }}
         />
       );
@@ -112,11 +139,15 @@ const VideoToggle: React.FC<VideoToggleProps> = ({ uri }) => {
           resizeMode="contain"
           paused={false}
           onEnd={() => setExpanded(false)}
+          onLoad={() => {
+            setIsLoading(false);
+          }}
           onError={(error) => {
             console.error('❌ Video playback error:', {
               uri: uri,
               errorType: error?.error?.errorString || 'Unknown error',
             });
+            setIsLoading(false);
           }}
         />
       );
@@ -137,6 +168,14 @@ const VideoToggle: React.FC<VideoToggleProps> = ({ uri }) => {
       ) : (
         <View style={styles.videoBox}>
           {renderVideo()}
+          {isLoading && (
+            <View style={styles.loadingOverlay}>
+              <ActivityIndicator size="small" color="#fff" />
+              {showSlowLoadHint && (
+                <Text style={styles.loadingText}>Loading video… this can take a few seconds</Text>
+              )}
+            </View>
+          )}
           <Pressable style={styles.closeBtn} onPress={() => setExpanded(false)}>
             <Ionicons name="close-circle" size={26} color="#fff" />
             <Text style={styles.toggleText}>Hide Video</Text>
@@ -204,6 +243,19 @@ const styles = StyleSheet.create({
     color: '#999',
     fontSize: 14,
     marginTop: 6,
+    textAlign: 'center',
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingHorizontal: 12,
+  },
+  loadingText: {
+    color: '#fff',
+    fontSize: 12,
     textAlign: 'center',
   },
 });

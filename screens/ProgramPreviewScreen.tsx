@@ -149,7 +149,7 @@ const ProgramPreviewScreen: React.FC = () => {
             onPress: () => {
               navigation.navigate('AppDrawer', {
                 screen: 'MainTabs',
-                params: { screen: 'Workout' },
+                params: { screen: 'Workout', params: { openQuickWorkout: false } },
               });
             },
           },

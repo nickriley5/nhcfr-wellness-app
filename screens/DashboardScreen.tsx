@@ -1,5 +1,5 @@
 // screens/DashboardScreen.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Text,
   ScrollView,
@@ -168,6 +168,7 @@ export default function DashboardScreen() {
   const [showCoachBanner, setShowCoachBanner] = useState(false);
   const [isAnalyzingReadiness, setIsAnalyzingReadiness] = useState(false);
   const [hasAnalyzedToday, setHasAnalyzedToday] = useState(false);
+  const readinessAnalysisInFlightRef = useRef(false);
 
   // ✅ WEEKLY PROGRESSION STATES
   const [weeklyProgression, setWeeklyProgression] = useState<{
@@ -300,13 +301,14 @@ export default function DashboardScreen() {
           return;
         }
 
-        // Don't analyze if currently in progress
-        if (isAnalyzingReadiness) {
+        // Don't analyze if currently in progress (state + sync ref guard)
+        if (isAnalyzingReadiness || readinessAnalysisInFlightRef.current) {
           console.log('⏭️ AI analysis already in progress');
           return;
         }
 
         // Mark as analyzing IMMEDIATELY to prevent duplicate calls
+        readinessAnalysisInFlightRef.current = true;
         setIsAnalyzingReadiness(true);
 
         const checkInData = checkInSnapshot.docs[0].data();
@@ -372,6 +374,7 @@ export default function DashboardScreen() {
         logSafeError('❌ Error analyzing readiness:', error);
         // Don't mark as done on error so it can retry next time
       } finally {
+        readinessAnalysisInFlightRef.current = false;
         setIsAnalyzingReadiness(false);
       }
     };
@@ -483,7 +486,7 @@ export default function DashboardScreen() {
   const handleViewProgressionDetails = () => {
     setShowProgressionCard(false);
     // Navigate to workout screen to see updated program
-    navigation.navigate('Workout');
+    navigation.navigate('Workout', { openQuickWorkout: false });
   };
 
   const handleDismissProgression = () => {

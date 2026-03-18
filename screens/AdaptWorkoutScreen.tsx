@@ -15,16 +15,17 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation, useFocusEffect, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
 import { auth, db } from '../firebase';
-import { doc, getDoc, setDoc, collection, getDocs, query, orderBy } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, getDocs, query, where, orderBy } from 'firebase/firestore';
 import Toast from '../components/Toast';
 import VideoToggle from '../components/VideoToggle';
 import { getExerciseVideoData } from '../utils/exerciseVideoMap';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
+type AdaptRoute = RouteProp<RootStackParamList, 'AdaptWorkout'>;
 
 /* ---------- types ---------- */
 type ExCategory = 'strength' | 'mobility' | 'conditioning' | 'skill' | 'unknown';
@@ -145,6 +146,42 @@ const macroFromPattern = (p?: string) => {
   return p;
 };
 
+const isYoutubeUrl = (url?: string) => !!url && (url.includes('youtube.com') || url.includes('youtu.be'));
+
+const dedupeSuggestionCards = (cards: ExerciseCard[]): ExerciseCard[] => {
+  const byName = new Map<string, ExerciseCard>();
+  cards.forEach((card) => {
+    const key = norm(card.name).trim();
+    const existing = byName.get(key);
+
+    if (!existing) {
+      byName.set(key, card);
+      return;
+    }
+
+    const existingHasVideo = !!existing.videoUri;
+    const currentHasVideo = !!card.videoUri;
+
+    if (!existingHasVideo && currentHasVideo) {
+      byName.set(key, card);
+      return;
+    }
+
+    if (
+      existingHasVideo &&
+      currentHasVideo &&
+      isYoutubeUrl(existing.videoUri) &&
+      !isYoutubeUrl(card.videoUri)
+    ) {
+      byName.set(key, card);
+    }
+  });
+
+  return Array.from(byName.values());
+};
+
+const isDeadbugVariant = (name?: string): boolean => /dead\s*bug|deadbug/.test(norm(name));
+
 /* ---------------- relevance scoring ---------------- */
 const overlapCount = (a: string[] = [], b: string[] = []) => {
   if (!a.length || !b.length) {return 0;}
@@ -154,18 +191,32 @@ const overlapCount = (a: string[] = [], b: string[] = []) => {
   return n;
 };
 
+const tokenize = (s = ''): string[] =>
+  norm(s)
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean);
+
+const tokenOverlap = (a = '', b = ''): number => {
+  const A = new Set(tokenize(a));
+  if (!A.size) {return 0;}
+  let n = 0;
+  tokenize(b).forEach((t) => {
+    if (A.has(t)) {n++;}
+  });
+  return n;
+};
+
 const scoreCandidate = (current: ExerciseCard, cand: ExerciseCard) => {
   if (current.id === cand.id) {return -1;}
 
-  // hard filter: category must match (when known)
+  // category preference (not a hard filter)
   if (current.category && cand.category && current.category !== 'unknown' && cand.category !== 'unknown') {
-    if (current.category !== cand.category) {return -1;}
+    if (current.category !== cand.category) {return -4;}
   }
 
-  // must share pattern or at least one muscle
   const musclesShared = overlapCount(current.muscles || [], cand.muscles || []);
   const samePattern = !!(current.pattern && cand.pattern && current.pattern === cand.pattern);
-  if (!samePattern && musclesShared === 0) {return -1;}
 
   let score = 0;
 
@@ -186,6 +237,9 @@ const scoreCandidate = (current: ExerciseCard, cand: ExerciseCard) => {
     if (current.equipKey === cand.equipKey) {score -= 1;}
   }
 
+  // weak lexical tie-breaker for sparse metadata libraries
+  score += tokenOverlap(current.name, cand.name);
+
   return score;
 };
 
@@ -193,6 +247,13 @@ const scoreCandidate = (current: ExerciseCard, cand: ExerciseCard) => {
 const AdaptWorkoutScreen: React.FC = () => {
   console.log('🔴 AdaptWorkoutScreen COMPONENT MOUNTED 🔴');
   const navigation = useNavigation<Nav>();
+  const route = useRoute<AdaptRoute>();
+  const routeDay = route.params?.day;
+  const routeWeekIdx = route.params?.weekIdx;
+  const routeDayIdx = route.params?.dayIdx;
+  const routeSourceType = route.params?.sourceType;
+  const routeWorkoutId = route.params?.workoutId;
+  const routeWeekNumber = route.params?.weekNumber;
   const [adapted, setAdapted] = useState<ExerciseCard[]>([]);
   const [library, setLibrary] = useState<ExerciseCard[]>([]);
   const [loading, setLoading] = useState(true);
@@ -203,9 +264,10 @@ const AdaptWorkoutScreen: React.FC = () => {
   const [showAllReplacements, setShowAllReplacements] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [activeWorkoutSource, setActiveWorkoutSource] = useState<{
-    type: 'ai' | 'program';
+    type: 'ai' | 'program' | 'aiProgram';
     workoutId?: string;
     dayIdx: number;
+    weekNumber?: number;
   } | null>(null);
 
   // ---------- load today's plan (enriched) + full library ----------
@@ -228,42 +290,85 @@ const AdaptWorkoutScreen: React.FC = () => {
         }
         console.log('AdaptWorkout: User ID:', uid);
         
-        // Check for AI workouts first (takes precedence)
-        const todayStart = new Date();
-        todayStart.setHours(0, 0, 0, 0);
-        
-        const aiWorkoutsQuery = query(
-          collection(db, 'users', uid, 'aiWorkouts'),
-          orderBy('createdAt', 'desc')
-        );
-        const aiWorkoutsSnap = await getDocs(aiWorkoutsQuery);
-        
         type LatestAiWorkout = {
           id: string;
           data: Record<string, any>;
           createdAt: Date;
         };
         let latestAiWorkout: LatestAiWorkout | null = null;
-        for (const docSnap of aiWorkoutsSnap.docs) {
-          const data = docSnap.data() as Record<string, any>;
-          const createdAt = data.createdAt?.toDate();
-          if (createdAt && createdAt >= todayStart) {
-            if (!latestAiWorkout || createdAt > latestAiWorkout.createdAt) {
-              latestAiWorkout = {
-                id: docSnap.id,
-                data,
-                createdAt,
-              };
-            }
-          }
-        }
         
         let blocks: any[] = [];
         let dayIdx = 0;
         let currentProgramDay = 1;
         let totalProgramDays = 0;
-        
-        if (latestAiWorkout) {
+
+        if (routeSourceType === 'ai' && routeWorkoutId) {
+          console.log('AdaptWorkout: Loading AI workout by explicit workoutId');
+          const aiRef = doc(db, 'users', uid, 'aiWorkouts', routeWorkoutId);
+          const aiSnap = await getDoc(aiRef);
+          if (!aiSnap.exists()) {
+            Alert.alert('Not Found', 'The selected AI workout could not be found.');
+            if (showLoadingSpinner) {setLoading(false);}
+            else {setRefreshing(false);}
+            navigation.goBack();
+            return;
+          }
+
+          const aiData = aiSnap.data() as any;
+          dayIdx = Math.max(0, routeDayIdx ?? 0);
+          const aiDay = aiData.days?.[dayIdx] || aiData.days?.[0];
+          blocks = aiDay?.exercises ?? [];
+          currentProgramDay = dayIdx + 1;
+          totalProgramDays = Array.isArray(aiData.days) ? aiData.days.length : 1;
+
+          setActiveWorkoutSource({
+            type: 'ai',
+            workoutId: routeWorkoutId,
+            dayIdx,
+          });
+        } else if (routeDay) {
+          console.log('AdaptWorkout: Using workout passed from route context');
+          blocks = routeDay.exercises ?? [];
+          dayIdx = Math.max(0, routeDayIdx ?? 0);
+          currentProgramDay = dayIdx + 1;
+          totalProgramDays = (routeWeekIdx ?? 0) + 1;
+
+          setActiveWorkoutSource({
+            type: routeSourceType || 'program',
+            workoutId: routeWorkoutId,
+            dayIdx,
+            weekNumber:
+              routeSourceType === 'aiProgram'
+                ? routeWeekNumber || (routeWeekIdx ?? 0) + 1
+                : undefined,
+          });
+        } else {
+          // Check for AI workouts first (takes precedence)
+          const todayStart = new Date();
+          todayStart.setHours(0, 0, 0, 0);
+
+          const aiWorkoutsQuery = query(
+            collection(db, 'users', uid, 'aiWorkouts'),
+            orderBy('createdAt', 'desc')
+          );
+          const aiWorkoutsSnap = await getDocs(aiWorkoutsQuery);
+
+          for (const docSnap of aiWorkoutsSnap.docs) {
+            const data = docSnap.data() as Record<string, any>;
+            const createdAt = data.createdAt?.toDate();
+            if (createdAt && createdAt >= todayStart) {
+              if (!latestAiWorkout || createdAt > latestAiWorkout.createdAt) {
+                latestAiWorkout = {
+                  id: docSnap.id,
+                  data,
+                  createdAt,
+                };
+              }
+            }
+          }
+        }
+
+        if (!routeDay && latestAiWorkout) {
           // Use AI workout exercises
           console.log('AdaptWorkout: Using AI workout from today');
           const aiDay = latestAiWorkout.data.days?.[0];
@@ -274,32 +379,59 @@ const AdaptWorkoutScreen: React.FC = () => {
             workoutId: latestAiWorkout.id,
             dayIdx: 0,
           });
-        } else {
+        } else if (!routeDay) {
           // Fall back to active program
           console.log('AdaptWorkout: Using active program');
           const progRef = doc(db, 'users', uid, 'program', 'active');
           const progSnap = await getDoc(progRef);
           console.log('AdaptWorkout: Program exists:', progSnap.exists());
-          if (!progSnap.exists()) {
-            Alert.alert('No Program', 'No active program found. Please set up your workout program first.');
-            if (showLoadingSpinner) setLoading(false);
-            else setRefreshing(false);
-            navigation.goBack();
-            return;
+          if (progSnap.exists()) {
+            const data = progSnap.data() as any;
+            const curDay = data?.metadata?.currentDay ?? data?.currentDay ?? 1;
+            dayIdx = Math.max(0, curDay - 1);
+            currentProgramDay = curDay;
+            totalProgramDays = Array.isArray(data?.days) ? data.days.length : 0;
+            console.log('AdaptWorkout: Current day:', curDay, 'Day index:', dayIdx);
+
+            blocks = data.days?.[dayIdx]?.exercises ?? [];
+            setActiveWorkoutSource({
+              type: 'program',
+              dayIdx,
+            });
+          } else {
+            // Fall back to active aiProgram (periodized program structure)
+            console.log('AdaptWorkout: Checking active aiPrograms');
+            const aiProgramsRef = collection(db, 'users', uid, 'aiPrograms');
+            const activeProgramsSnap = await getDocs(query(aiProgramsRef, where('isActive', '==', true)));
+            const activePrograms = activeProgramsSnap.docs.filter((d) => !d.data()?.isArchived);
+
+            if (activePrograms.length === 0) {
+              Alert.alert('No Program', 'No active program found. Please set up your workout program first.');
+              if (showLoadingSpinner) setLoading(false);
+              else setRefreshing(false);
+              navigation.goBack();
+              return;
+            }
+
+            const activeProgramDoc = activePrograms[0];
+            const activeProgram = activeProgramDoc.data() as any;
+            const currentWeek = activeProgram.currentWeek || 1;
+            const currentDay = activeProgram.currentDay || 1;
+            const week = activeProgram.weeks?.find((w: any) => w.weekNumber === currentWeek);
+            const day = week?.days?.find((d: any) => d.dayNumber === currentDay);
+
+            dayIdx = Math.max(0, currentDay - 1);
+            currentProgramDay = currentDay;
+            totalProgramDays = Array.isArray(week?.days) ? week.days.length : 0;
+            blocks = day?.exercises ?? [];
+
+            setActiveWorkoutSource({
+              type: 'aiProgram',
+              workoutId: activeProgramDoc.id,
+              dayIdx,
+              weekNumber: currentWeek,
+            });
           }
-
-          const data = progSnap.data() as any;
-          const curDay = data?.metadata?.currentDay ?? data?.currentDay ?? 1;
-          dayIdx = Math.max(0, curDay - 1);
-          currentProgramDay = curDay;
-          totalProgramDays = Array.isArray(data?.days) ? data.days.length : 0;
-          console.log('AdaptWorkout: Current day:', curDay, 'Day index:', dayIdx);
-
-          blocks = data.days?.[dayIdx]?.exercises ?? [];
-          setActiveWorkoutSource({
-            type: 'program',
-            dayIdx,
-          });
         }
         console.log('AdaptWorkout: Exercises count:', blocks.length);
 
@@ -348,7 +480,7 @@ const AdaptWorkoutScreen: React.FC = () => {
             
             // If no video URL found, try the exerciseVideoMap
             if (!videoUri || videoUri.includes('w3schools')) {
-              const videoData = getExerciseVideoData(exId);
+              const videoData = getExerciseVideoData(exId) || getExerciseVideoData(name);
               if (videoData?.videoUrl) {
                 videoUri = videoData.videoUrl;
                 console.log('Using exerciseVideoMap for', name, ':', videoUri);
@@ -440,10 +572,14 @@ const AdaptWorkoutScreen: React.FC = () => {
       cur.category && cur.category !== 'unknown'
         ? library.filter((c: ExerciseCard) => (c.category ?? 'unknown') === cur.category)
         : library;
+    const excludeDeadbugFamily = isDeadbugVariant(cur.name);
+    const filteredPool = excludeDeadbugFamily
+      ? pool.filter((c: ExerciseCard) => !isDeadbugVariant(c.name))
+      : pool;
 
-    const MIN_SCORE = 6;
+    const MIN_SCORE = 2;
 
-    const ranked = pool
+    const ranked = filteredPool
       .map((c: ExerciseCard) => ({ c, s: scoreCandidate(cur, c) }))
       .filter((x: { c: ExerciseCard; s: number }) => x.s >= MIN_SCORE)
       .sort((a: { c: ExerciseCard; s: number }, b: { c: ExerciseCard; s: number }) => b.s - a.s)
@@ -451,19 +587,39 @@ const AdaptWorkoutScreen: React.FC = () => {
 
     // elbow_flexion fallback: seed with curl family if nothing hit
     if (ranked.length === 0 && cur.pattern === 'elbow_flexion') {
-      return pool
+      return dedupeSuggestionCards(
+        filteredPool
         .filter((c: ExerciseCard) => /curl|bicep|biceps|preacher|hammer/.test(norm(c.name)))
-        .slice(0, 20);
+        .filter((c: ExerciseCard) => c.id !== cur.id)
+      ).slice(0, 20);
     }
 
     // relaxed fallback by macro pattern
     if (ranked.length === 0 && cur.pattern) {
       const macro = macroFromPattern(cur.pattern);
-      const relaxed = pool.filter((c: ExerciseCard) => macroFromPattern(c.pattern) === macro && c.id !== cur.id);
-      return relaxed.slice(0, 20);
+      const relaxed = filteredPool.filter((c: ExerciseCard) => macroFromPattern(c.pattern) === macro && c.id !== cur.id);
+      return dedupeSuggestionCards(relaxed).slice(0, 20);
     }
 
-    return ranked.slice(0, 20);
+    const primary = dedupeSuggestionCards(ranked.filter((c: ExerciseCard) => c.id !== cur.id));
+    if (primary.length >= 5) {
+      return primary.slice(0, 20);
+    }
+
+    // Final fallback: broaden to full library sorted by soft similarity.
+    const broad = library
+      .filter((c: ExerciseCard) => c.id !== cur.id)
+      .map((c: ExerciseCard) => ({
+        c,
+        s:
+          scoreCandidate(cur, c) +
+          overlapCount(cur.tags || [], c.tags || []) +
+          tokenOverlap(cur.name, c.name),
+      }))
+      .sort((a: { c: ExerciseCard; s: number }, b: { c: ExerciseCard; s: number }) => b.s - a.s)
+      .map((x: { c: ExerciseCard; s: number }) => x.c);
+
+    return dedupeSuggestionCards([...primary, ...broad]).slice(0, 20);
   }, [currentIndex, adapted, library]);
 
   // ---------- handlers ----------
@@ -523,9 +679,11 @@ const AdaptWorkoutScreen: React.FC = () => {
             weekIdx: 0,
             dayIdx,
             adapt: true,
+            sourceType: 'ai',
+            workoutId: activeWorkoutSource.workoutId,
           });
         }, 800);
-      } else {
+      } else if (activeWorkoutSource.type === 'program') {
         // Save to regular program
         const ref = doc(db, 'users', uid, 'program', 'active');
         const snap = await getDoc(ref);
@@ -557,6 +715,63 @@ const AdaptWorkoutScreen: React.FC = () => {
             weekIdx: data.currentWeek ?? 0,
             dayIdx,
             adapt: true,
+            sourceType: 'program',
+          });
+        }, 800);
+      } else {
+        // Save to aiProgram
+        const aiProgramId = activeWorkoutSource.workoutId;
+        if (!aiProgramId) {
+          Alert.alert('Error', 'No active AI program source found.');
+          return;
+        }
+
+        const aiProgramRef = doc(db, 'users', uid, 'aiPrograms', aiProgramId);
+        const aiProgramSnap = await getDoc(aiProgramRef);
+        if (!aiProgramSnap.exists()) {
+          Alert.alert('Error', 'Active AI program not found.');
+          return;
+        }
+
+        const aiProgramData = aiProgramSnap.data() as any;
+        const currentWeek = activeWorkoutSource.weekNumber || aiProgramData.currentWeek || 1;
+        const targetWeek = aiProgramData.weeks?.find((w: any) => w.weekNumber === currentWeek);
+        if (!targetWeek) {
+          Alert.alert('Error', 'Current week not found in active AI program.');
+          return;
+        }
+
+        const dayIdx = activeWorkoutSource.dayIdx;
+        const targetDay = targetWeek.days?.[dayIdx];
+        if (!targetDay) {
+          Alert.alert('Error', 'Current day not found in active AI program.');
+          return;
+        }
+
+        const merged = (targetDay.exercises ?? []).map((orig: any, i: number) => {
+          const a = adapted[i];
+          return {
+            ...orig,
+            id: a?.id ?? orig.id,
+            name: a?.name ?? orig.name,
+            videoUri: a?.videoUri ?? orig.videoUri ?? '',
+            thumbnailUri: a?.thumbnailUri ?? orig.thumbnailUri ?? '',
+          };
+        });
+
+        targetDay.exercises = merged;
+        await setDoc(aiProgramRef, aiProgramData, { merge: true });
+        setShowToast(true);
+
+        setTimeout(() => {
+          navigation.navigate('WorkoutDetail', {
+            day: targetDay,
+            weekIdx: currentWeek - 1,
+            dayIdx,
+            adapt: true,
+            sourceType: 'aiProgram',
+            workoutId: aiProgramId,
+            weekNumber: currentWeek,
           });
         }, 800);
       }

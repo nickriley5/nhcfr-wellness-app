@@ -169,6 +169,7 @@ export interface PeriodizedProgram {
   currentWeek?: number;
   currentDay?: number;
   completedWeeks?: number;
+  completedCardioSessions?: string[];
   createdAt?: any; // Firestore Timestamp
 }
 
@@ -289,15 +290,6 @@ export async function getWorkoutRecommendation(
 }
 
 /**
- * Convert exercise name to ID format (lowercase with underscores)
- * Example: "Bench Press" -> "bench_press"
- * @deprecated Use exerciseMatching.ts utilities instead
- */
-function nameToId(name: string): string {
-  return name.toLowerCase().replace(/[^a-z0-9]+/g, '_');
-}
-
-/**
  * Generate initial 4-week training block
  * Generates weeks 1-4 so users can train before requesting the next block
  */
@@ -317,14 +309,63 @@ export async function generatePeriodizedProgram(
 ): Promise<PeriodizedProgram> {
   
   onProgress?.('Creating your first 4 weeks...', 20);
+  const MAX_ALLOWLIST_EXERCISES = 90;
+
+  const normalizeLookupKey = (value: string): string =>
+    value
+      .toLowerCase()
+      .trim()
+      .replace(/[_-]+/g, ' ')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  const toNonEmptyString = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
   
   // Build exercise list - use curated list for better AI selection
   let exerciseListText = '';
+  const { resolveExercise, getCuratedExerciseList } = await import('../exerciseMatching');
+  const curatedFallback = getCuratedExerciseList(programContext.equipment || []);
+  const allowedExercises =
+    programContext.availableExercises && programContext.availableExercises.length > 0
+      ? programContext.availableExercises.map((ex) => ({
+          id: toNonEmptyString(ex.id),
+          name: toNonEmptyString(ex.name),
+          equipment: toNonEmptyString(ex.equipment),
+          focusArea: toNonEmptyString(ex.focusArea),
+        }))
+      : curatedFallback.map((ex) => ({
+          id: toNonEmptyString(ex.id),
+          name: toNonEmptyString(ex.name),
+          equipment: toNonEmptyString(ex.equipment),
+          focusArea: toNonEmptyString(ex.focusArea),
+        }));
+  const validAllowedExercises = allowedExercises
+    .filter((ex) => ex.id && ex.name)
+    .slice(0, MAX_ALLOWLIST_EXERCISES);
+  const allowedById = new Map(validAllowedExercises.map((ex) => [ex.id, ex]));
+  const allowedByNormalizedName = new Map(
+    validAllowedExercises.map((ex) => [normalizeLookupKey(ex.name), ex])
+  );
+  if (allowedById.size === 0) {
+    throw new Error('No exercises available for ID-constrained program generation.');
+  }
+
   if (programContext.availableExercises && programContext.availableExercises.length > 0) {
-    // Use all provided exercises (already curated from getCuratedExerciseList)
-    const exerciseNames = programContext.availableExercises.map(ex => ex.name).join('\n- ');
-    exerciseListText = `\n\n⚠️ AVAILABLE EXERCISES - USE EXACT NAMES (CRITICAL):\n- ${exerciseNames}`;
-    console.log(`📋 Providing ${programContext.availableExercises.length} exercises to AI`);
+    // Keep payload compact on mobile: id + canonical name only.
+    const exerciseEntries = validAllowedExercises
+      .map((ex) => `${ex.id} | ${ex.name}`)
+      .join('\n- ');
+    exerciseListText = `\n\n⚠️ AVAILABLE EXERCISES (HARD CONSTRAINT):\n- ${exerciseEntries}`;
+    console.log(
+      `📋 Providing ${validAllowedExercises.length}/${programContext.availableExercises.length} exercises to AI (payload-capped)`
+    );
+  } else {
+    const exerciseEntries = validAllowedExercises
+      .map((ex) => `${ex.id} | ${ex.name}`)
+      .join('\n- ');
+    exerciseListText = `\n\n⚠️ AVAILABLE EXERCISES (HARD CONSTRAINT):\n- ${exerciseEntries}`;
+    console.log(`📋 Using curated fallback allowlist (${validAllowedExercises.length} exercises)`);
   }
 
   // Import firefighter-specific guidance
@@ -424,8 +465,10 @@ PROGRAM DESIGN RULES:
 ✅ Each week has EXACTLY ${programContext.daysPerWeek} strength training days
 ✅ Each day has 4-6 main exercises
 ✅ CRITICAL: Use ONLY exercises from "AVAILABLE EXERCISES" list above
-✅ CRITICAL: Copy exercise names EXACTLY character-for-character (case-sensitive)
-✅ DO NOT abbreviate, modify, or paraphrase exercise names
+✅ CRITICAL: Every exercise object MUST include both "id" and "name"
+✅ CRITICAL: "id" MUST exactly match one ID from the list above
+✅ CRITICAL: "name" MUST exactly match that ID's canonical name
+✅ NEVER invent IDs or names and NEVER leave id blank
 ✅ Include 1-2 warmup exercises per day (mobility/activation)
 ✅ Include 1-2 cooldown exercises per day (stretching/recovery)
 ✅ Keep notes to 1-3 words maximum per exercise
@@ -477,6 +520,7 @@ RETURN FORMAT - Valid JSON Only:
           "warmup": ["Hip Mobility", "Glute Activation"],
           "exercises": [
             {
+              "id": "EXERCISE_ID_FROM_LIST",
               "name": "Barbell Back Squat",
               "sets": 4,
               "reps": "6-8",
@@ -485,6 +529,7 @@ RETURN FORMAT - Valid JSON Only:
               "notes": "Controlled tempo"
             },
             {
+              "id": "EXERCISE_ID_FROM_LIST",
               "name": "Romanian Deadlift",
               "sets": 3,
               "reps": "8-10",
@@ -493,6 +538,7 @@ RETURN FORMAT - Valid JSON Only:
               "notes": "Hip hinge"
             },
             {
+              "id": "EXERCISE_ID_FROM_LIST",
               "name": "Farmer Carry",
               "sets": 4,
               "reps": "40 yards",
@@ -501,6 +547,7 @@ RETURN FORMAT - Valid JSON Only:
               "notes": "Heavy"
             },
             {
+              "id": "EXERCISE_ID_FROM_LIST",
               "name": "Step-Ups",
               "sets": 3,
               "reps": "10 each leg",
@@ -509,6 +556,7 @@ RETURN FORMAT - Valid JSON Only:
               "notes": "Knee drive"
             },
             {
+              "id": "EXERCISE_ID_FROM_LIST",
               "name": "Plank",
               "sets": 3,
               "reps": "45 sec",
@@ -598,6 +646,59 @@ Return ONLY valid, parseable JSON. No markdown formatting. Be concise in notes (
     console.log('📦 Response length:', response.content.length);
     console.log('📦 First 200:', response.content.substring(0, 200));
     console.log('📦 Last 200:', response.content.substring(response.content.length - 200));
+
+    const canonicalizeProgramExerciseRefs = (
+      candidate: PeriodizedProgram,
+      allowRepair: boolean
+    ): { unresolved: string[]; repaired: number; encounteredInvalid: number } => {
+      const unresolved: string[] = [];
+      let repaired = 0;
+      let encounteredInvalid = 0;
+
+      candidate.weeks?.forEach((week) => {
+        week.days?.forEach((day) => {
+          day.exercises?.forEach((exercise, idx) => {
+            const rawId = toNonEmptyString(exercise.id);
+            const rawName = toNonEmptyString(exercise.name);
+            const validById = rawId ? allowedById.get(rawId) : undefined;
+
+            if (validById) {
+              exercise.id = validById.id;
+              exercise.name = validById.name;
+              return;
+            }
+
+            encounteredInvalid += 1;
+            if (!allowRepair) {
+              unresolved.push(
+                `Week ${week.weekNumber} Day ${day.dayNumber} Ex ${idx + 1}: id="${rawId || '(missing)'}" name="${rawName || '(missing)'}"`
+              );
+              return;
+            }
+
+            const byName = rawName ? allowedByNormalizedName.get(normalizeLookupKey(rawName)) : undefined;
+            const resolvedByName = rawName ? resolveExercise(rawName) : null;
+            const resolvedById = rawId ? resolveExercise(rawId) : null;
+            const mapped =
+              byName ||
+              (resolvedByName ? allowedById.get(resolvedByName.id) : undefined) ||
+              (resolvedById ? allowedById.get(resolvedById.id) : undefined);
+
+            if (mapped) {
+              exercise.id = mapped.id;
+              exercise.name = mapped.name;
+              repaired += 1;
+            } else {
+              unresolved.push(
+                `Week ${week.weekNumber} Day ${day.dayNumber} Ex ${idx + 1}: id="${rawId || '(missing)'}" name="${rawName || '(missing)'}"`
+              );
+            }
+          });
+        });
+      });
+
+      return { unresolved, repaired, encounteredInvalid };
+    };
     
     const validateProgram = (candidate: PeriodizedProgram): string[] => {
       const issues: string[] = [];
@@ -613,6 +714,11 @@ Return ONLY valid, parseable JSON. No markdown formatting. Be concise in notes (
           if (exerciseCount < 4 || exerciseCount > 6) {
             issues.push(`Week ${week.weekNumber} day ${day.dayNumber} must have 4-6 exercises.`);
           }
+          day.exercises?.forEach((exercise, idx) => {
+            if (!toNonEmptyString(exercise.id)) {
+              issues.push(`Week ${week.weekNumber} day ${day.dayNumber} exercise ${idx + 1} is missing id.`);
+            }
+          });
         });
       });
       if (programContext.includeCardio) {
@@ -630,7 +736,56 @@ Return ONLY valid, parseable JSON. No markdown formatting. Be concise in notes (
       return candidate;
     };
 
-    let program = normalizeProgramMetadata(parseCleanJsonResponse<PeriodizedProgram>(response.content));
+    const parseProgramJsonWithRepair = async (rawContent: string): Promise<PeriodizedProgram> => {
+      try {
+        return parseCleanJsonResponse<PeriodizedProgram>(rawContent);
+      } catch (parseErr) {
+        console.warn('⚠️ Initial program JSON parse failed. Attempting JSON repair pass...');
+        const parseRepairResponse = await sendAIMessage(
+          [
+            {
+              role: 'system',
+              content: 'You repair malformed JSON. Output ONLY valid JSON. Preserve existing fields and values whenever possible.',
+            },
+            {
+              role: 'user',
+              content:
+                `Fix this malformed program JSON so it is fully valid/parseable JSON.\n` +
+                `Requirements:\n` +
+                `- Keep it as a complete object\n` +
+                `- Ensure all arrays/objects are properly closed\n` +
+                `- Do not add commentary or markdown\n\n` +
+                `Malformed JSON:\n${rawContent}`,
+            },
+          ],
+          'gemini',
+          { temperature: 0.1, maxTokens: 16384 }
+        );
+
+        try {
+          return parseCleanJsonResponse<PeriodizedProgram>(parseRepairResponse.content);
+        } catch (repairParseErr) {
+          const msg = repairParseErr instanceof Error ? repairParseErr.message : 'Unknown parse error';
+          const preview = parseRepairResponse.content.substring(0, 300);
+          throw new Error(`Program JSON parse failed after repair: ${msg}. Preview: ${preview}`);
+        }
+      }
+    };
+
+    let program = normalizeProgramMetadata(await parseProgramJsonWithRepair(response.content));
+    let usedExerciseAutoRepair = false;
+    const initialCanonicalization = canonicalizeProgramExerciseRefs(program, true);
+    if (initialCanonicalization.encounteredInvalid > 0) {
+      usedExerciseAutoRepair = true;
+      console.warn(
+        `⚠️ Auto-repaired ${initialCanonicalization.repaired}/${initialCanonicalization.encounteredInvalid} invalid exercise references.`
+      );
+    }
+    if (initialCanonicalization.unresolved.length > 0) {
+      throw new Error(
+        `Invalid exercise references after auto-repair: ${initialCanonicalization.unresolved.slice(0, 10).join(' | ')}`
+      );
+    }
 
     let qualityIssues = validateProgram(program);
     if (qualityIssues.length > 0) {
@@ -643,14 +798,26 @@ Return ONLY valid, parseable JSON. No markdown formatting. Be concise in notes (
           },
           {
             role: 'user',
-            content: `Fix this program JSON to satisfy constraints with minimal edits.\nConstraints:\n- Exactly 4 weeks (1-4)\n- Exactly ${programContext.daysPerWeek} strength days per week\n- 4-6 exercises per day\n${programContext.includeCardio ? '- Include cardioSchedule for weeks 1-4' : ''}\n\nCurrent issues:\n${qualityIssues.join('\n')}\n\nJSON:\n${response.content}`,
+            content: `Fix this program JSON to satisfy constraints with minimal edits.\nConstraints:\n- Exactly 4 weeks (1-4)\n- Exactly ${programContext.daysPerWeek} strength days per week\n- 4-6 exercises per day\n- Every exercise must include id and name\n- Every exercise id must be from the provided allowlist in the original prompt\n${programContext.includeCardio ? '- Include cardioSchedule for weeks 1-4' : ''}\n\nCurrent issues:\n${qualityIssues.join('\n')}\n\nJSON:\n${response.content}`,
           },
         ],
         'gemini',
         { temperature: 0.2, maxTokens: 16384 }
       );
 
-      program = normalizeProgramMetadata(parseCleanJsonResponse<PeriodizedProgram>(repairResponse.content));
+      program = normalizeProgramMetadata(await parseProgramJsonWithRepair(repairResponse.content));
+      const postRepairCanonicalization = canonicalizeProgramExerciseRefs(program, !usedExerciseAutoRepair);
+      if (postRepairCanonicalization.encounteredInvalid > 0 && !usedExerciseAutoRepair) {
+        usedExerciseAutoRepair = true;
+        console.warn(
+          `⚠️ Auto-repaired ${postRepairCanonicalization.repaired}/${postRepairCanonicalization.encounteredInvalid} invalid exercise references.`
+        );
+      }
+      if (postRepairCanonicalization.unresolved.length > 0) {
+        throw new Error(
+          `Invalid exercise references after repair: ${postRepairCanonicalization.unresolved.slice(0, 10).join(' | ')}`
+        );
+      }
       qualityIssues = validateProgram(program);
       if (qualityIssues.length > 0) {
         throw new Error(`Program quality validation failed: ${qualityIssues.join(' ')}`);
@@ -663,29 +830,13 @@ Return ONLY valid, parseable JSON. No markdown formatting. Be concise in notes (
       console.log('🏃 Cardio weeks:', program.cardioSchedule.weeks.length);
     }
     
-    // Match exercises using fuzzy matching fallback
-    const { resolveExercise } = await import('../exerciseMatching');
-    
-    program.weeks.forEach(week => {
-      week.days.forEach(day => {
-        day.exercises.forEach(exercise => {
-          if (!exercise.id && exercise.name) {
-            // First try: Use exercise name to find match in library
-            const matched = resolveExercise(exercise.name);
-            if (matched) {
-              exercise.id = matched.id;
-              // Update name to match library exactly (in case AI used slight variation)
-              exercise.name = matched.name;
-              console.log(`✅ Matched: "${exercise.name}" -> ID: ${exercise.id}`);
-            } else {
-              // Fallback: Use name-based ID (will show as "Unknown Exercise" in UI)
-              exercise.id = nameToId(exercise.name);
-              console.error(`❌ No match found for: "${exercise.name}", using fallback ID: ${exercise.id}`);
-            }
-          }
-        });
-      });
-    });
+    // Final strict validation gate: no unknown exercise IDs are allowed.
+    const finalCanonicalization = canonicalizeProgramExerciseRefs(program, false);
+    if (finalCanonicalization.unresolved.length > 0) {
+      throw new Error(
+        `Program contains unknown exercise references: ${finalCanonicalization.unresolved.slice(0, 10).join(' | ')}`
+      );
+    }
     
     onProgress?.('Complete!', 100);
     return program;

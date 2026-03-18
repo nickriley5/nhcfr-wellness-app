@@ -38,11 +38,52 @@ const EXERCISE_ALIASES: Record<string, string> = {
   'pull ups': 'Pull-Ups',
   'chin ups': 'Chin-Ups',
   'deadbugs': 'Dead Bug',
+  'dead bug': 'Deadbug',
+  'dead bugs': 'Deadbug',
+  'broad jump': 'Broad Jumps',
+  'broad jumps': 'Broad Jumps',
   'renegade row': 'Renegade Rows',
+  'glute activation': 'Banded Lateral Walk',
+  'glute_activation': 'Banded Lateral Walk',
+  'glute activation band walk': 'Banded Lateral Walk',
+  'hamstring stretch': 'Seated Forward Fold',
+  'hamstring_stretch': 'Seated Forward Fold',
+  'hamstring stretch floor': 'Seated Forward Fold',
+  'hamstring_stretch_floor': 'Seated Forward Fold',
 };
 
+function normalizeLookupText(value: string): string {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[_-]+/g, ' ')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function scoreExerciseCandidate(ex: Exercise): number {
+  let score = 0;
+  const url = (ex.videoUrl || '').toLowerCase();
+  const hasVideo = Boolean(url);
+  const isYouTube = url.includes('youtube.com') || url.includes('youtu.be');
+  const isFirebaseMp4 = url.includes('firebasestorage.googleapis.com') && url.includes('.mp4');
+
+  if (hasVideo) score += 10;
+  if (isFirebaseMp4) score += 4;
+  if (isYouTube) score -= 1;
+  if ((ex.category || '').toLowerCase().includes('exercise library')) score += 1;
+
+  return score;
+}
+
+function pickBestExerciseCandidate(candidates: Exercise[]): Exercise | undefined {
+  if (!candidates.length) return undefined;
+  return [...candidates].sort((a, b) => scoreExerciseCandidate(b) - scoreExerciseCandidate(a))[0];
+}
+
 function normalizeExerciseAlias(name: string): string {
-  const cleaned = name.toLowerCase().trim();
+  const cleaned = normalizeLookupText(name);
   return EXERCISE_ALIASES[cleaned] ?? name;
 }
 
@@ -309,9 +350,23 @@ export function getCuratedExerciseList(userEquipment: string[]): Exercise[] {
   const priority = filtered.filter(ex => priorityExercises.includes(ex.name));
   const others = filtered.filter(ex => !priorityExercises.includes(ex.name));
 
-  // Combine: priority first (firefighter-critical movements at top), then others
+  // Deduplicate by normalized name (dataset has duplicate variants).
+  const dedupedByName = new Map<string, Exercise>();
+  [...priority, ...others].forEach((exercise) => {
+    const key = exercise.name.toLowerCase().trim();
+    const existing = dedupedByName.get(key);
+    if (!existing || scoreExerciseCandidate(exercise) > scoreExerciseCandidate(existing)) {
+      dedupedByName.set(key, exercise);
+    }
+  });
+
+  // Keep firefighter-priority ordering after dedupe.
+  const deduped = Array.from(dedupedByName.values());
+  const orderedPriority = deduped.filter(ex => priorityExercises.includes(ex.name));
+  const orderedOthers = deduped.filter(ex => !priorityExercises.includes(ex.name));
+
   // Limit to 150 exercises for better variety while keeping prompts reasonable
-  const combined = [...priority, ...others].slice(0, 150);
+  const combined = [...orderedPriority, ...orderedOthers].slice(0, 150);
 
   console.log(`🚒 Curated ${combined.length} exercises for firefighter training (from ${exercises.length} total)`);
   console.log(`🏋️ Equipment available: ${Array.from(normalizedUserEquip).join(', ')}`);
@@ -412,25 +467,34 @@ function levenshteinDistance(str1: string, str2: string): number {
 /**
  * Find best matching exercise from library using fuzzy matching
  */
-export function findBestExerciseMatch(aiGeneratedName: string): Exercise | null {
+export function findBestExerciseMatch(aiGeneratedName: string): Exercise | undefined {
   if (!aiGeneratedName || aiGeneratedName.trim() === '') {
-    return null;
+    return undefined;
   }
 
   const aliased = normalizeExerciseAlias(aiGeneratedName);
-  const searchName = aliased.toLowerCase().trim();
+  const searchName = normalizeLookupText(aliased);
+  const searchSlug = nameToId(searchName);
   
   // First try: Exact match (case insensitive)
-  let match = exercises.find(ex => ex.name.toLowerCase() === searchName);
+  let match = pickBestExerciseCandidate(
+    exercises.filter(ex =>
+      ex.name.toLowerCase() === searchName ||
+      normalizeLookupText(ex.name) === searchName ||
+      nameToId(ex.name) === searchSlug
+    )
+  );
   if (match) {
     console.log(`✅ Exact match: "${aiGeneratedName}" -> "${match.name}"`);
     return match;
   }
 
   // Second try: Contains match
-  match = exercises.find(ex => 
-    ex.name.toLowerCase().includes(searchName) || 
-    searchName.includes(ex.name.toLowerCase())
+  match = pickBestExerciseCandidate(
+    exercises.filter(ex =>
+      normalizeLookupText(ex.name).includes(searchName) ||
+      searchName.includes(normalizeLookupText(ex.name))
+    )
   );
   if (match) {
     console.log(`✅ Contains match: "${aiGeneratedName}" -> "${match.name}"`);
@@ -438,12 +502,13 @@ export function findBestExerciseMatch(aiGeneratedName: string): Exercise | null 
   }
 
   // Third try: Fuzzy match with Levenshtein distance
-  let bestMatch: Exercise | null = null;
+  let bestMatch: Exercise | undefined;
   let bestDistance = Infinity;
 
   for (const ex of exercises) {
-    const distance = levenshteinDistance(searchName, ex.name.toLowerCase());
-    const maxLength = Math.max(searchName.length, ex.name.length);
+    const normalizedName = normalizeLookupText(ex.name);
+    const distance = levenshteinDistance(searchName, normalizedName);
+    const maxLength = Math.max(searchName.length, normalizedName.length);
     const similarity = 1 - (distance / maxLength);
 
     // If similarity > 70%, consider it a match
@@ -460,34 +525,45 @@ export function findBestExerciseMatch(aiGeneratedName: string): Exercise | null 
 
   // No match found
   console.error(`❌ No match found for: "${aiGeneratedName}"`);
-  return null;
+  return undefined;
 }
 
 /**
  * Convert exercise name to ID format (for backward compatibility)
  */
 export function nameToId(name: string): string {
-  return name.toLowerCase().replace(/\s+/g, '_');
+  return normalizeLookupText(name).replace(/\s+/g, '_');
 }
 
 /**
  * Resolve exercise by ID or name, with fuzzy fallback
  */
-export function resolveExercise(idOrName: string): Exercise | null {
-  if (!idOrName) return null;
+export function resolveExercise(idOrName: string): Exercise | undefined {
+  if (!idOrName) return undefined;
   const aliased = normalizeExerciseAlias(idOrName);
+  const normalizedInput = normalizeLookupText(aliased);
+  const normalizedInputId = nameToId(normalizedInput);
 
   // Try ID lookup first
-  let exercise = exercises.find(ex => ex.id === idOrName);
+  let exercise = exercises.find(
+    ex => ex.id.toLowerCase() === idOrName.toLowerCase() || ex.id.toLowerCase() === normalizedInputId
+  );
   if (exercise) return exercise;
 
   // Try name-based ID lookup (convert name to ID format)
-  const nameBasedId = nameToId(aliased);
-  exercise = exercises.find(ex => nameToId(ex.name) === nameBasedId);
+  exercise = pickBestExerciseCandidate(
+    exercises.filter(ex => nameToId(ex.name) === normalizedInputId)
+  );
   if (exercise) return exercise;
 
   // Try direct name match
-  exercise = exercises.find(ex => ex.name.toLowerCase() === aliased.toLowerCase());
+  exercise = pickBestExerciseCandidate(
+    exercises.filter(
+      ex =>
+        ex.name.toLowerCase() === aliased.toLowerCase() ||
+        normalizeLookupText(ex.name) === normalizedInput
+    )
+  );
   if (exercise) return exercise;
 
   // Last resort: fuzzy match
