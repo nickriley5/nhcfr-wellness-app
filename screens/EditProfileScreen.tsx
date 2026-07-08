@@ -6,9 +6,7 @@ import {
   StyleSheet,
   ScrollView,
   Pressable,
-  Platform,
 } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
@@ -23,8 +21,6 @@ const EditProfileScreen = () => {
   const [fullName, setFullName] = useState('');
   const [sex, setSex] = useState<'Male' | 'Female' | ''>('');
   const [dob, setDob] = useState('');
-  const [dobDate, setDobDate] = useState<Date | undefined>(undefined);
-  const [showDobPicker, setShowDobPicker] = useState(false);
   const [height, setHeight] = useState('');
   const [weight, setWeight] = useState('');
   const [loading, setLoading] = useState(true);
@@ -40,18 +36,7 @@ const EditProfileScreen = () => {
       const data = docSnap.data();
       setFullName(data.fullName || '');
       setSex(data.sex ? data.sex.charAt(0).toUpperCase() + data.sex.slice(1) : '');
-      const dobString = data.dob || '';
-      setDob(dobString);
-      
-      // Parse the date string to initialize dobDate
-      if (dobString) {
-        const parts = dobString.split('/');
-        if (parts.length === 3) {
-          const dateObj = new Date(parseInt(parts[2]), parseInt(parts[0]) - 1, parseInt(parts[1]));
-          setDobDate(dateObj);
-        }
-      }
-      
+      setDob(data.dob || '');
       setHeight(data.height ? data.height.toString() : '');
       setWeight(data.weight ? data.weight.toString() : '');
     }
@@ -61,6 +46,20 @@ const EditProfileScreen = () => {
   useEffect(() => {
     fetchProfile();
   }, []);
+
+  const formatDobInput = (value: string) => {
+    const digitsOnly = value.replace(/\D/g, '').slice(0, 8);
+
+    if (digitsOnly.length <= 2) {
+      return digitsOnly;
+    }
+
+    if (digitsOnly.length <= 4) {
+      return `${digitsOnly.slice(0, 2)}/${digitsOnly.slice(2)}`;
+    }
+
+    return `${digitsOnly.slice(0, 2)}/${digitsOnly.slice(2, 4)}/${digitsOnly.slice(4)}`;
+  };
 
   const calculateAge = (dateString: string): number | undefined => {
     if (!dateString) return undefined;
@@ -127,24 +126,6 @@ const EditProfileScreen = () => {
     }
   };
 
-  const handleDobChange = (_: any, selectedDate?: Date) => {
-    if (selectedDate) {
-      setDobDate(selectedDate);
-    }
-  };
-
-  const handleDobConfirm = () => {
-    if (dobDate) {
-      const formatted = `${dobDate.getMonth() + 1}/${dobDate.getDate()}/${dobDate.getFullYear()}`;
-      setDob(formatted);
-    }
-    setShowDobPicker(false);
-  };
-
-  const handleDobCancel = () => {
-    setShowDobPicker(false);
-  };
-
   if (loading) {
     return (
       <View style={styles.loading}>
@@ -167,47 +148,16 @@ const EditProfileScreen = () => {
           onChangeText={setFullName}
         />
 
-        <Pressable 
-          onPress={() => {
-            // Initialize dobDate from dob string if not already set
-            if (!dobDate && dob) {
-              const parts = dob.split('/');
-              if (parts.length === 3) {
-                const dateObj = new Date(parseInt(parts[2]), parseInt(parts[0]) - 1, parseInt(parts[1]));
-                setDobDate(dateObj);
-              }
-            } else if (!dobDate) {
-              // Default to 30 years ago if no date set
-              const defaultDate = new Date();
-              defaultDate.setFullYear(defaultDate.getFullYear() - 30);
-              setDobDate(defaultDate);
-            }
-            setShowDobPicker(true);
-          }} 
+        <TextInput
           style={styles.input}
-        >
-          <Text style={styles.dob}>{dob || 'Date of Birth (MM/DD/YYYY)'}</Text>
-        </Pressable>
-        {showDobPicker && (
-          <View style={styles.pickerContainer}>
-            <View style={styles.pickerButtons}>
-              <Pressable onPress={handleDobCancel}>
-                <Text style={styles.pickerButtonText}>Cancel</Text>
-              </Pressable>
-              <Pressable onPress={handleDobConfirm}>
-                <Text style={[styles.pickerButtonText, styles.pickerButtonDone]}>Done</Text>
-              </Pressable>
-            </View>
-            <DateTimePicker
-              value={dobDate || new Date()}
-              mode="date"
-              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-              onChange={handleDobChange}
-              maximumDate={new Date()}
-              textColor="#ffffff"
-            />
-          </View>
-        )}
+          placeholder="Date of Birth (MM/DD/YYYY)"
+          placeholderTextColor="#aaa"
+          value={dob}
+          onChangeText={(value) => setDob(formatDobInput(value))}
+          keyboardType="number-pad"
+          maxLength={10}
+        />
+        <Text style={styles.helpText}>Enter birthdate as MM/DD/YYYY</Text>
 
         <TextInput
           style={styles.input}
@@ -305,31 +255,12 @@ const styles = StyleSheet.create({
   },
   selected: { backgroundColor: '#d32f2f', borderColor: '#d32f2f' },
   buttonText: { color: '#fff', fontSize: 16 },
-  dob: {
-    color: '#fff',
-    fontSize: 16,
-  },
-  pickerContainer: {
-    backgroundColor: '#1e1e1e',
-    borderRadius: 10,
+  helpText: {
+    color: '#888',
+    fontSize: 12,
+    marginTop: -8,
     marginBottom: 16,
-    overflow: 'hidden',
-  },
-  pickerButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    padding: 12,
-    backgroundColor: '#2a2a2a',
-    borderBottomWidth: 1,
-    borderBottomColor: '#333',
-  },
-  pickerButtonText: {
-    color: '#fff',
-    fontSize: 16,
-  },
-  pickerButtonDone: {
-    color: '#d32f2f',
-    fontWeight: 'bold',
+    marginLeft: 4,
   },
 });
 

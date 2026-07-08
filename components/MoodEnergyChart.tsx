@@ -8,7 +8,11 @@ const MoodEnergyChart = ({ moodData, energyData }: {
   moodData: number[];
   energyData: number[];
 }) => {
-  if (moodData.length === 0 || energyData.length === 0) {
+  const safeMoodData = moodData.filter((value) => Number.isFinite(value) && value >= 1 && value <= 5);
+  const safeEnergyData = energyData.filter((value) => Number.isFinite(value) && value >= 1 && value <= 5);
+  const len = Math.min(safeMoodData.length, safeEnergyData.length);
+
+  if (len === 0) {
     return (
       <View style={styles.container}>
         <Text style={styles.placeholder}>
@@ -32,7 +36,7 @@ const MoodEnergyChart = ({ moodData, energyData }: {
     return labels;
   };
 
-  const labels = getDateLabels(moodData.length);
+  const labels = getDateLabels(len);
   return (
     <View style={styles.container}>
       <LineChart
@@ -40,12 +44,12 @@ const MoodEnergyChart = ({ moodData, energyData }: {
           labels: labels,
           datasets: [
             {
-              data: moodData,
+              data: safeMoodData.slice(-len),
               color: () => '#4FC3F7', // Blue for mood
               strokeWidth: 3,
             },
             {
-              data: energyData,
+              data: safeEnergyData.slice(-len),
               color: () => '#81C784', // Green for energy
               strokeWidth: 3,
             },
@@ -61,12 +65,12 @@ const MoodEnergyChart = ({ moodData, energyData }: {
           color: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
           labelColor: () => '#aaa',
           propsForDots: {
-            r: '5',
-            strokeWidth: '2',
+            r: 5,
+            strokeWidth: 2,
             stroke: '#fff',
           },
         }}
-        bezier
+        bezier={len >= 2}
         style={styles.chart}
       />
     </View>

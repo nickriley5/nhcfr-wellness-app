@@ -571,7 +571,6 @@ const styles = StyleSheet.create({
   chipContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
   },
   chip: {
     backgroundColor: '#222',
@@ -752,7 +751,6 @@ const styles = StyleSheet.create({
   },
   buttonRow: {
     flexDirection: 'row',
-    gap: 12,
   },
   backButton: {
     flex: 1,
@@ -762,6 +760,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#444',
     paddingVertical: 14,
     borderRadius: 12,
+    marginRight: 6,
   },
   backButtonText: {
     color: '#fff',
@@ -777,6 +776,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#4CAF50',
     paddingVertical: 14,
     borderRadius: 12,
+    marginLeft: 6,
   },
   applyButtonText: {
     color: '#fff',

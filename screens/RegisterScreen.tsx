@@ -49,8 +49,6 @@ export default function RegisterScreen({ navigation }: any) {
         profileComplete: false,
         createdAt: serverTimestamp(),
       }, { merge: true });
-
-      navigation.replace('Main');
     } catch (err: any) {
       let message = 'Something went wrong.';
       if (err.code === 'auth/network-request-failed') {

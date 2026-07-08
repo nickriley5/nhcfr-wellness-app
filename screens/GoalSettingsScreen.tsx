@@ -446,7 +446,7 @@ const GoalSettingsScreen: React.FC<GoalSettingsProps> = ({
             </View>
 
             {/* Macro Preview Card */}
-            {weight && height && age && (
+            {weight > 0 && height > 0 && age > 0 && (
               <View style={styles.card}>
                 <Text style={styles.label}>Your Nutrition Targets</Text>
                 <View style={styles.macroPreview}>

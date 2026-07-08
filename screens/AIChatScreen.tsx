@@ -74,6 +74,7 @@ const AIChatScreen = () => {
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [userProfile, setUserProfile] = useState<any>(null);
   const scrollViewRef = useRef<ScrollView>(null);
+  const inputRef = useRef<TextInput>(null);
   const contextThreadCreatedRef = useRef(false);
 
   // Load user profile and thread list
@@ -357,15 +358,6 @@ const AIChatScreen = () => {
     }
   };
 
-  const quickPrompts = [
-    { label: 'Generate Quick Workout', type: 'action', action: 'quick_workout' },
-    { label: 'Ask for guidance on today’s workout', type: 'message' },
-    { label: 'Ask about lunch ideas', type: 'message' },
-    { label: 'Review my progress', type: 'message' },
-    { label: 'I have a question about form', type: 'message' },
-    { label: 'Help me set better goals', type: 'message' },
-  ] as const;
-
   const formatThreadTime = (date?: Date) => {
     if (!date) return '';
     return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
@@ -379,18 +371,6 @@ const AIChatScreen = () => {
     const maxWords = 6;
     const title = words.slice(0, maxWords).join(' ');
     return title.length > 32 ? `${title.slice(0, 32)}…` : title;
-  };
-
-  const handleQuickPrompt = (prompt: typeof quickPrompts[number]) => {
-    if (prompt.type === 'action' && prompt.action === 'quick_workout') {
-      navigation.navigate('AppDrawer', {
-        screen: 'MainTabs',
-        params: { screen: 'Workout', params: { openQuickWorkout: true } },
-      });
-      return;
-    }
-
-    setInputText(prompt.label);
   };
 
   return (
@@ -495,21 +475,8 @@ const AIChatScreen = () => {
                   <Text style={styles.emptyStateIcon}>👋</Text>
                   <Text style={styles.emptyStateTitle}>Ask your coach</Text>
                   <Text style={styles.emptyStateText}>
-                    Focus on execution, intent, and how this supports fireground readiness.
+                    Ask your coach anything you&apos;d like about fitness or nutrition, and we&apos;ll figure it out together.
                   </Text>
-
-                  <Text style={styles.quickPromptsTitle}>Quick Start:</Text>
-                  {quickPrompts.map((prompt, index) => (
-                    <Pressable
-                      key={index}
-                      style={styles.quickPromptButton}
-                      onPress={() => {
-                        handleQuickPrompt(prompt);
-                      }}
-                    >
-                      <Text style={styles.quickPromptText}>{prompt.label}</Text>
-                    </Pressable>
-                  ))}
                 </View>
               )}
 
@@ -561,6 +528,7 @@ const AIChatScreen = () => {
             {/* Input */}
             <View style={[styles.inputContainer, { paddingBottom: Math.max(12, insets.bottom) }]}>
               <TextInput
+                ref={inputRef}
                 style={styles.input}
                 value={inputText}
                 onChangeText={setInputText}
@@ -631,20 +599,19 @@ const styles = StyleSheet.create({
   },
   threadsContent: {
     padding: 16,
-    gap: 12,
   },
   threadCard: {
     flexDirection: 'row',
-    gap: 12,
     backgroundColor: '#1f1f1f',
     padding: 16,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: '#333',
+    marginBottom: 12,
   },
   threadInfo: {
     flex: 1,
-    gap: 6,
+    marginRight: 12,
   },
   threadTitle: {
     fontSize: 16,
@@ -705,30 +672,11 @@ const styles = StyleSheet.create({
   loadingState: {
     paddingVertical: 24,
     alignItems: 'center',
-    gap: 10,
   },
   loadingText: {
     color: '#aaa',
     fontSize: 14,
-  },
-  quickPromptsTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#fff',
-    marginBottom: 12,
-  },
-  quickPromptButton: {
-    backgroundColor: '#222',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 20,
-    marginBottom: 8,
-    width: '100%',
-  },
-  quickPromptText: {
-    color: '#FF3C38',
-    fontSize: 14,
-    fontWeight: '500',
+    marginTop: 10,
   },
   messageBubble: {
     flexDirection: 'row',

@@ -33,6 +33,29 @@ interface WorkoutLog {
   }[];
 }
 
+const parseNumericValue = (value: unknown): number => {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  if (typeof value !== 'string') {
+    return 0;
+  }
+
+  const normalized = value.trim().replace(/,/g, '');
+  if (!normalized) {
+    return 0;
+  }
+
+  const match = normalized.match(/-?\d+(\.\d+)?/);
+  if (!match) {
+    return 0;
+  }
+
+  const parsed = Number.parseFloat(match[0]);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
 const ProgressChartScreen: React.FC = () => {
   const navigation = useNavigation();
   const route = useRoute<ProgressScreenRouteProp>();
@@ -124,19 +147,31 @@ const ProgressChartScreen: React.FC = () => {
           if (exercise) {
             let value = 0;
             if (chartType === 'weight') {
-              value = exercise.sets.reduce((acc: number, set: any) => acc + parseFloat(set.weight || '0'), 0);
+              value = exercise.sets.reduce(
+                (acc: number, set: any) => acc + parseNumericValue(set.weight),
+                0
+              );
             } else if (chartType === 'reps') {
-              value = exercise.sets.reduce((acc: number, set: any) => acc + parseInt(set.reps || '0', 10), 0);
+              value = exercise.sets.reduce(
+                (acc: number, set: any) => acc + parseNumericValue(set.reps),
+                0
+              );
             } else if (chartType === 'volume') {
               value = exercise.sets.reduce(
-                (acc: number, set: any) => acc + (parseInt(set.reps || '0', 10) * parseFloat(set.weight || '0')),
+                (acc: number, set: any) =>
+                  acc + (parseNumericValue(set.reps) * parseNumericValue(set.weight)),
                 0
               );
             }
-            entries.push(value);
-            
-            // Format date label
-            if (log.completedAt && typeof log.completedAt.toDate === 'function') {
+
+            if (
+              Number.isFinite(value) &&
+              log.completedAt &&
+              typeof log.completedAt.toDate === 'function'
+            ) {
+              entries.push(value);
+
+              // Format date label
               const date = log.completedAt.toDate();
               const label = `${date.getMonth() + 1}/${date.getDate()}`;
               entryLabels.push(label);
@@ -178,6 +213,10 @@ const ProgressChartScreen: React.FC = () => {
 
   console.log('📊 ProgressChart - Rendering main content');
   console.log('📊 ProgressChart - Exercise name for title:', getReadableExerciseName());
+
+  const chartValues = dataPoints
+    .map((point) => (Number.isFinite(point) ? point : 0))
+    .filter((point, index) => index < labels.length);
   
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -223,7 +262,7 @@ const ProgressChartScreen: React.FC = () => {
           ))}
         </View>
 
-        {dataPoints.length === 0 ? (
+        {chartValues.length === 0 ? (
           <View style={styles.emptyState}>
             <Ionicons name="stats-chart-outline" size={64} color="#666" />
             <Text style={styles.emptyTitle}>No Progress Data</Text>
@@ -231,14 +270,14 @@ const ProgressChartScreen: React.FC = () => {
               Complete workouts with this exercise to see your progress here!
             </Text>
           </View>
-        ) : dataPoints.length === 1 ? (
+        ) : chartValues.length === 1 ? (
           <View style={styles.singleDataPoint}>
             <Ionicons name="bar-chart" size={48} color="#d32f2f" />
             <Text style={styles.singleDataTitle}>One Workout Logged!</Text>
             <Text style={styles.singleDataText}>
-              {chartType === 'weight' && `Total Weight: ${dataPoints[0]} lbs`}
-              {chartType === 'reps' && `Total Reps: ${dataPoints[0]}`}
-              {chartType === 'volume' && `Total Volume: ${dataPoints[0]} lbs`}
+              {chartType === 'weight' && `Total Weight: ${chartValues[0]} lbs`}
+              {chartType === 'reps' && `Total Reps: ${chartValues[0]}`}
+              {chartType === 'volume' && `Total Volume: ${chartValues[0]} lbs`}
             </Text>
             <Text style={styles.singleDataText}>Date: {labels[0]}</Text>
             <Text style={styles.singleDataSubtext}>
@@ -248,9 +287,9 @@ const ProgressChartScreen: React.FC = () => {
         ) : (
           <LineChart
             data={{ 
-              labels, 
+              labels: labels.slice(0, chartValues.length),
               datasets: [{ 
-                data: dataPoints.map((d: number) => d === 0 ? 0.1 : d) // Prevent zero values from breaking chart
+                data: chartValues.map((d: number) => (d === 0 ? 0.1 : d)),
               }] 
             }}
             width={screenWidth}
@@ -260,7 +299,7 @@ const ProgressChartScreen: React.FC = () => {
               backgroundGradientTo: '#1c1c1c',
               color: () => '#d32f2f',
               labelColor: () => '#fff',
-              propsForDots: { r: '4', strokeWidth: '2', stroke: '#fff' },
+              propsForDots: { r: 4, strokeWidth: 2, stroke: '#fff' },
             }}
             style={styles.chart}
             bezier

@@ -12,10 +12,10 @@ import {
   FlatList,
   Image,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { useNavigation, useFocusEffect, useRoute, RouteProp } from '@react-navigation/native';
+import { CommonActions, useNavigation, useFocusEffect, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
 import { auth, db } from '../firebase';
@@ -248,6 +248,7 @@ const AdaptWorkoutScreen: React.FC = () => {
   console.log('🔴 AdaptWorkoutScreen COMPONENT MOUNTED 🔴');
   const navigation = useNavigation<Nav>();
   const route = useRoute<AdaptRoute>();
+  const insets = useSafeAreaInsets();
   const routeDay = route.params?.day;
   const routeWeekIdx = route.params?.weekIdx;
   const routeDayIdx = route.params?.dayIdx;
@@ -269,6 +270,24 @@ const AdaptWorkoutScreen: React.FC = () => {
     dayIdx: number;
     weekNumber?: number;
   } | null>(null);
+
+  const openAdaptedWorkout = (params: RootStackParamList['WorkoutDetail']) => {
+    navigation.dispatch(
+      CommonActions.reset({
+        index: 1,
+        routes: [
+          {
+            name: 'AppDrawer',
+            params: {
+              screen: 'MainTabs',
+              params: { screen: 'Dashboard' },
+            },
+          },
+          { name: 'WorkoutDetail', params },
+        ],
+      })
+    );
+  };
 
   // ---------- load today's plan (enriched) + full library ----------
   const loadData = async (showLoadingSpinner = false) => {
@@ -674,7 +693,7 @@ const AdaptWorkoutScreen: React.FC = () => {
         setShowToast(true);
         
         setTimeout(() => {
-          navigation.navigate('WorkoutDetail', {
+          openAdaptedWorkout({
             day: aiData.days[dayIdx],
             weekIdx: 0,
             dayIdx,
@@ -710,7 +729,7 @@ const AdaptWorkoutScreen: React.FC = () => {
         setShowToast(true);
 
         setTimeout(() => {
-          navigation.navigate('WorkoutDetail', {
+          openAdaptedWorkout({
             day: data.days[dayIdx],
             weekIdx: data.currentWeek ?? 0,
             dayIdx,
@@ -764,7 +783,7 @@ const AdaptWorkoutScreen: React.FC = () => {
         setShowToast(true);
 
         setTimeout(() => {
-          navigation.navigate('WorkoutDetail', {
+          openAdaptedWorkout({
             day: targetDay,
             weekIdx: currentWeek - 1,
             dayIdx,
@@ -827,7 +846,7 @@ const AdaptWorkoutScreen: React.FC = () => {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#0f0f0f' }} edges={['top']}>
       <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
-        <ScrollView contentContainerStyle={styles.content}>
+        <ScrollView contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom + 32, 56) }]}>
           <View style={styles.topBar}>
             <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
               <Ionicons name="arrow-back" size={22} color="#fff" />

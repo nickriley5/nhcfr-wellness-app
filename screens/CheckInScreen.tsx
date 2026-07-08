@@ -99,6 +99,11 @@ const CheckInScreen = () => {
       showCustomToast('Check-in submitted!', 'success');
 
       setTimeout(() => {
+        if (navigation.canGoBack()) {
+          navigation.goBack();
+          return;
+        }
+
         navigation.navigate('AppDrawer', {
           screen: 'MainTabs',
           params: { screen: 'Dashboard' },

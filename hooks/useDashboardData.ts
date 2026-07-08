@@ -56,7 +56,22 @@ function sumMealsForToday(meals: any[]) {
   return totals;
 }
 
+const toFivePointScore = (value: unknown): number | null => {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) {
+    return null;
+  }
+
+  const normalized = Math.round(numeric);
+  if (normalized < 1 || normalized > 5) {
+    return null;
+  }
+
+  return normalized;
+};
+
 export function useDashboardData(view: 'week' | 'month' | 'all', bump: number = 0) {
+  const currentUid = auth.currentUser?.uid;
   const [moodData, setMoodData] = useState<number[]>([]);
   const [energyData, setEnergyData] = useState<number[]>([]);
   const [hasCheckedInToday, setHasCheckedInToday] = useState(true);
@@ -349,11 +364,20 @@ export function useDashboardData(view: 'week' | 'month' | 'all', bump: number = 
         );
         setHasCheckedInToday(hasToday);
 
-        // Use all entries (they're already filtered by date range)
-        setMoodData(entries.map((e: any) => Number(e.mood ?? 0)));
-        setEnergyData(entries.map((e: any) => Number(e.energy ?? 0)));
-        console.log(`📈 Set mood data: [${entries.map((e: any) => Number(e.mood ?? 0)).join(', ')}]`);
-        console.log(`⚡ Set energy data: [${entries.map((e: any) => Number(e.energy ?? 0)).join(', ')}]`);
+        const validCheckIns = entries.filter((entry: any) => {
+          const mood = toFivePointScore(entry.mood);
+          const energy = toFivePointScore(entry.energy);
+          return mood !== null && energy !== null;
+        });
+
+        const nextMoodData = validCheckIns.map((entry: any) => toFivePointScore(entry.mood) as number);
+        const nextEnergyData = validCheckIns.map((entry: any) => toFivePointScore(entry.energy) as number);
+
+        // Use only fully valid check-ins so charts never receive NaN or uneven series.
+        setMoodData(nextMoodData);
+        setEnergyData(nextEnergyData);
+        console.log(`📈 Set mood data: [${nextMoodData.join(', ')}]`);
+        console.log(`⚡ Set energy data: [${nextEnergyData.join(', ')}]`);
 
         // Profile completion + current weight
         const profileSnap = await getDoc(doc(db, 'users', user.uid));
@@ -508,7 +532,7 @@ export function useDashboardData(view: 'week' | 'month' | 'all', bump: number = 
         unsub();
       }
     };
-  }, [bump, auth.currentUser?.uid]); // Re-run when user changes
+  }, [bump, currentUid]); // Re-run when user changes
 
   return {
     moodData,

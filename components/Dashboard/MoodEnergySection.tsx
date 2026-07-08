@@ -19,14 +19,21 @@ export default function MoodEnergySection({
 }: Props) {
   const [chartWidth, setChartWidth] = React.useState(0);
   const ranges: Range[] = ['week', 'month', 'all'];
+  const sanitizeSeries = React.useCallback(
+    (series: number[]) => series.filter((value) => Number.isFinite(value) && value >= 1 && value <= 5),
+    []
+  );
 
   // Debug: Log when view or data changes
   React.useEffect(() => {
     console.log(`🔄 MoodEnergySection - view: ${view}, moodData: [${moodData.join(', ')}], energyData: [${energyData.join(', ')}]`);
   }, [view, moodData, energyData]);
 
+  const safeMoodData = sanitizeSeries(moodData);
+  const safeEnergyData = sanitizeSeries(energyData);
+
   // Keep both series the same length so lines align
-  const len = Math.min(moodData.length, energyData.length);
+  const len = Math.min(safeMoodData.length, safeEnergyData.length);
   const hasData = len > 0;
 
   // Labels are minimal to keep the card clean (you can swap in dates if desired)
@@ -36,8 +43,8 @@ export default function MoodEnergySection({
     ? {
         labels,
         datasets: [
-          { data: moodData.slice(-len), color: () => '#4FC3F7', strokeWidth: 3 }, // blue
-          { data: energyData.slice(-len), color: () => '#81C784', strokeWidth: 3 }, // green
+          { data: safeMoodData.slice(-len), color: () => '#4FC3F7', strokeWidth: 3 }, // blue
+          { data: safeEnergyData.slice(-len), color: () => '#81C784', strokeWidth: 3 }, // green
         ],
         legend: ['Mood', 'Energy'],
       }
@@ -84,7 +91,7 @@ export default function MoodEnergySection({
               decimalPlaces: 0,
               color: (o = 1) => `rgba(255,255,255,${o})`,
               labelColor: (o = 1) => `rgba(170,170,170,${o})`,
-              propsForDots: { r: '5', strokeWidth: '2', stroke: '#ffffff' },
+              propsForDots: { r: 5, strokeWidth: 2, stroke: '#ffffff' },
             }}
             style={styles.chart}
           />

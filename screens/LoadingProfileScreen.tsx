@@ -27,7 +27,7 @@ const dietaryPreferences = [
 
 const dietaryRestrictions = ['Gluten-Free', 'Dairy-Free', 'Low FODMAP', 'Nut Allergy', 'Soy-Free'];
 
-const ProfileSetupScreen = ({ navigation }: any) => {
+const ProfileSetupScreen = (_props: any) => {
   const [fullName, setFullName] = useState('');
   const [dob, setDob] = useState('');
   const [height, setHeight] = useState('');
@@ -64,8 +64,6 @@ const ProfileSetupScreen = ({ navigation }: any) => {
         profileComplete: true,
         createdAt: serverTimestamp(),
       });
-
-      navigation.replace('Main');
     } catch (error) {
       console.error(error);
       Alert.alert('Error', 'Failed to save profile');

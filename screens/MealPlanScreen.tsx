@@ -9,6 +9,7 @@ import {
   PermissionsAndroid,
   ActivityIndicator,
   Pressable,
+  InteractionManager,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -86,6 +87,7 @@ const MealPlanScreen: React.FC = () => {
   const [mealPlan, setMealPlan] = useState<MealPlanData | null>(null);
   const [loading, setLoading] = useState(true);
   const [initialLoad, setInitialLoad] = useState(true); // Track if this is the first load
+  const [layoutReady, setLayoutReady] = useState(false);
   const [initialDescribeQuery, setInitialDescribeQuery] = useState<string>('');
 
   const [selectedDate, _setSelectedDate] = useState(new Date());
@@ -115,9 +117,15 @@ const MealPlanScreen: React.FC = () => {
     React.useCallback(() => {
       console.log('🔥 MealPlanScreen focused - triggering data reload');
       setRefreshTrigger((prev: number) => prev + 1);
+      setLayoutReady(false);
+
+      const interactionTask = InteractionManager.runAfterInteractions(() => {
+        setLayoutReady(true);
+      });
       
       // Only reset modal states - don't set them to false which can cause flickering
       return () => {
+        interactionTask.cancel();
         console.log('🔥 MealPlanScreen unfocused - cleanup');
       };
     }, [])
@@ -748,6 +756,18 @@ const getCurrentPlannerMealType = (): 'breakfast' | 'lunch' | 'dinner' | 'snack'
     );
   }
 
+  if (!layoutReady) {
+    console.log('⏳ Rendering DEFERRED layout state');
+    return (
+      <LinearGradient colors={['#0f0f0f', '#1a1a1a']} style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#4FC3F7" />
+          <Text style={styles.loadingText}>Opening your meal plan...</Text>
+        </View>
+      </LinearGradient>
+    );
+  }
+
   console.log('🔥 MealPlanScreen RENDERING MAIN CONTENT');
 
   return (
@@ -825,9 +845,9 @@ const getCurrentPlannerMealType = (): 'breakfast' | 'lunch' | 'dinner' | 'snack'
       </ScrollView>
 
       {/* ✅ Log Food Button */}
-      <View style={styles.floatingButtonContainer}>
-        <View style={{ flex: 1 }}>
-          <LogFoodButton onPress={() => {
+        <View style={styles.floatingButtonContainer}>
+          <View style={{ flex: 1 }}>
+            <LogFoodButton onPress={() => {
             console.log('Log Food button pressed');
             console.log('Current modal states:', {
               showMealLoggingModal,
@@ -933,11 +953,13 @@ const getCurrentPlannerMealType = (): 'breakfast' | 'lunch' | 'dinner' | 'snack'
       )}
 
       {/* AI MEAL PLANNER MODAL */}
-      <AIMealPlanner
-        visible={showAIMealPlanner}
-        onClose={() => setShowAIMealPlanner(false)}
-        mealType={getCurrentPlannerMealType()}
-      />
+      {showAIMealPlanner && (
+        <AIMealPlanner
+          visible={true}
+          onClose={() => setShowAIMealPlanner(false)}
+          mealType={getCurrentPlannerMealType()}
+        />
+      )}
     </LinearGradient>
   );
 };
@@ -1032,7 +1054,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
-    gap: 16,
   },
   dateNavRow: {
     flexDirection: 'row',
@@ -1065,7 +1086,6 @@ mealMeta: {
     left: 20,
     right: 20,
     flexDirection: 'row',
-    gap: 12,
     alignItems: 'center',
   },
   aiMealButton: {
@@ -1080,6 +1100,7 @@ mealMeta: {
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.4,
     shadowRadius: 8,
+    marginLeft: 12,
   },
 
 });

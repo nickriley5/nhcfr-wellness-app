@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Pressable, Text, StyleSheet, Animated } from 'react-native';
+import { Pressable, Text, StyleSheet, View } from 'react-native';
 
 interface MacroCardProps {
   label: string;
@@ -25,7 +25,6 @@ const MacroCard: React.FC<MacroCardProps> = ({ label, logged, target, unit, vari
   }[variant];
 
   const [flipped, setFlipped] = useState(false);
-  const fadeAnim = useState(new Animated.Value(1))[0];
   const remaining = Math.max(0, target - logged);
   const overAmount = logged > target ? logged - target : 0; // ✅ Calculate how much over
 
@@ -34,16 +33,11 @@ const MacroCard: React.FC<MacroCardProps> = ({ label, logged, target, unit, vari
   const displayTextColor = isOverTarget ? '#F06292' : textColor; // Red if over target
   const remainingTextColor = remaining > 0 ? textColor : '#F06292';
 
-  const toggleFlip = () => {
-    Animated.sequence([
-      Animated.timing(fadeAnim, { toValue: 0, duration: 150, useNativeDriver: true }),
-      Animated.timing(fadeAnim, { toValue: 1, duration: 150, useNativeDriver: true }),
-    ]).start(() => setFlipped(!flipped));
-  };
+  const toggleFlip = () => setFlipped((current) => !current);
 
   return (
     <Pressable onPress={toggleFlip} style={[styles.macroCard, colorStyles]}>
-      <Animated.View style={[{ opacity: fadeAnim }, styles.animatedContainer]}>
+      <View style={styles.animatedContainer}>
         {!flipped ? (
           <>
             {/* ✅ FIXED: Show actual logged amount, not capped at target */}
@@ -73,7 +67,7 @@ const MacroCard: React.FC<MacroCardProps> = ({ label, logged, target, unit, vari
             </Text>
           </>
         )}
-      </Animated.View>
+      </View>
     </Pressable>
   );
 };

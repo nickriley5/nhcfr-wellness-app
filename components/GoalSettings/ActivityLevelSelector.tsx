@@ -44,18 +44,35 @@ const ActivityLevelSelector = ({
       </View>
 
       {showInfo && (
-        <Text style={styles.summary}>
-          Choose the level that best matches your <Text style={styles.boldText}>overall weekly activity</Text>:{'\n\n'}
-          🪑 <Text style={styles.boldText}>Sedentary</Text>: Desk job, minimal exercise (0-1 workouts/week){'\n'}
-          {'   '}Little daily movement, mostly sitting{'\n\n'}
-          🚶 <Text style={styles.boldText}>Light</Text>: Light exercise 1-3 days/week{'\n'}
-          {'   '}Walking, light cardio, or station duties without structured training{'\n\n'}
-          🏋️ <Text style={styles.boldText}>Moderate</Text>: Exercise 3-5 days/week{'\n'}
-          {'   '}Regular strength training, active job, or consistent fitness routine{'\n\n'}
-          💪 <Text style={styles.boldText}>Very Active</Text>: Intense training 6-7 days/week{'\n'}
-          {'   '}Daily workouts, physically demanding job, or competitive athlete{'\n\n'}
-          <Text style={styles.warningText}>⚠️ Choose based on your actual training frequency, not just your job title.</Text>
-        </Text>
+        <View style={styles.infoBlock}>
+          <Text style={styles.summary}>
+            Choose the level that best matches your <Text style={styles.boldText}>overall weekly activity</Text>:
+          </Text>
+
+          <Text style={styles.summary}>
+            {'\n'}🪑 <Text style={styles.boldText}>Sedentary</Text>: Desk job, minimal exercise (0-1 workouts/week)
+            {'\n'}Little daily movement, mostly sitting
+          </Text>
+
+          <Text style={styles.summary}>
+            {'\n'}🚶 <Text style={styles.boldText}>Light</Text>: Light exercise 1-3 days/week
+            {'\n'}Walking, light cardio, or station duties without structured training
+          </Text>
+
+          <Text style={styles.summary}>
+            {'\n'}🏋️ <Text style={styles.boldText}>Moderate</Text>: Exercise 3-5 days/week
+            {'\n'}Regular strength training, active job, or consistent fitness routine
+          </Text>
+
+          <Text style={styles.summary}>
+            {'\n'}💪 <Text style={styles.boldText}>Very Active</Text>: Intense training 6-7 days/week
+            {'\n'}Daily workouts, physically demanding job, or competitive athlete
+          </Text>
+
+          <Text style={styles.warningText}>
+            {'\n'}⚠️ Choose based on your actual training frequency, not just your job title.
+          </Text>
+        </View>
       )}
     </View>
   );
@@ -97,6 +114,9 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     flexWrap: 'nowrap',
     marginTop: 4,
+  },
+  infoBlock: {
+    marginTop: 8,
   },
   summary: { color: '#aaa', marginTop: 8, fontSize: 13, lineHeight: 20 },
   boldText: { fontWeight: '700', color: '#fff' },

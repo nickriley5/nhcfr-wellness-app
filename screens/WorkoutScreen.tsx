@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Modal,
   Alert,
+  InteractionManager,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { useNavigation, useFocusEffect, useRoute, RouteProp } from '@react-navigation/native';
@@ -103,11 +104,26 @@ const WorkoutScreen: React.FC = () => {
   const [selectedProgramForAction, setSelectedProgramForAction] = useState<PeriodizedProgram | null>(null);
   const [showProgramActionModal, setShowProgramActionModal] = useState(false);
   const [showFullProgramModal, setShowFullProgramModal] = useState(false);
+  const quickWorkoutHandledRef = useRef(false);
 
   useEffect(() => {
-    if (route.params?.openQuickWorkout) {
-      setShowAIAssistant(true);
-      navigation.setParams({ openQuickWorkout: false } as any);
+    if (route.params?.openQuickWorkout && !quickWorkoutHandledRef.current) {
+      quickWorkoutHandledRef.current = true;
+
+      const task = InteractionManager.runAfterInteractions(() => {
+        setShowAIAssistant(true);
+        requestAnimationFrame(() => {
+          navigation.setParams({ openQuickWorkout: false } as any);
+        });
+      });
+
+      return () => {
+        task.cancel();
+      };
+    }
+
+    if (!route.params?.openQuickWorkout) {
+      quickWorkoutHandledRef.current = false;
     }
   }, [route.params?.openQuickWorkout, navigation]);
 
