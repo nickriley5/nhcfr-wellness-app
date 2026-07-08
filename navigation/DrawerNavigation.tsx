@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, Image, StyleSheet } from 'react-native';
+import { Pressable, View, Text, Image, StyleSheet } from 'react-native';
 import {
   createDrawerNavigator,
   DrawerContentScrollView,
@@ -53,16 +53,16 @@ const TabNavigator: React.FC = () => {
   const insets = useSafeAreaInsets(); // ← this gets the bottom padding
 
   return (
-    <View style={[styles.flex1, { paddingBottom: insets.bottom }]}>
+    <View style={styles.flex1}>
       <Tab.Navigator
         screenOptions={({ route }) => ({
           headerShown: false,
           tabBarStyle: {
             backgroundColor: '#1e1e1e',
             borderTopWidth: 0,
-            paddingVertical: 10,
-            height: 25 + insets.bottom, // make room for gesture nav
-            paddingBottom: insets.bottom,
+            height: 64 + insets.bottom,
+            paddingTop: 8,
+            paddingBottom: Math.max(insets.bottom, 8),
           },
           tabBarActiveTintColor: '#d32f2f',
           tabBarInactiveTintColor: '#888',
@@ -240,11 +240,23 @@ const DrawerNavigation: React.FC = () => (
   >
     <Drawer.Screen
       name="MainTabs"
-      options={{
+      options={({ navigation }) => ({
+        headerShown: true,
+        headerTitle: '',
+        headerStyle: { backgroundColor: '#1e1e1e' },
+        headerLeft: () => (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open menu"
+            onPress={() => navigation.openDrawer()}
+            style={styles.menuButton}
+          >
+            <Feather name="menu" size={24} color="#fff" />
+          </Pressable>
+        ),
         drawerItemStyle: { height: 0 },
-        title: '', // ← hides label text if anything sneaks through
-        drawerLabel: () => null, // ← fully removes the label rendering
-      }}
+        drawerLabel: () => null,
+      })}
     >
       {() => <TabNavigator />}
     </Drawer.Screen>
@@ -268,6 +280,13 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     backgroundColor: '#1c1c1c',
     marginBottom: 10, // Add margin to keep it away from bottom
+  },
+  menuButton: {
+    minWidth: 48,
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 4,
   },
   drawerLabel: { color: '#fff' },
 });

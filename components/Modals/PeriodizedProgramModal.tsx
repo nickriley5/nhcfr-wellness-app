@@ -18,7 +18,7 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import { generatePeriodizedProgram, PeriodizedProgram } from '../../utils/ai/aiService';
 import { getCuratedExerciseList } from '../../utils/exerciseMatching';
 import { auth, db } from '../../firebase';
-import { collection, addDoc } from 'firebase/firestore';
+import { collection, addDoc, getDocs, updateDoc } from 'firebase/firestore';
 import Toast from 'react-native-toast-message';
 
 interface Props {
@@ -33,8 +33,14 @@ interface Props {
 }
 
 type TrainingAccess = 'bodyweight' | 'weighted' | 'mixed';
+type ProgramGoal = 'Build Strength' | 'Build Muscle' | 'Hybrid Athlete';
 
 const WEIGHTED_EQUIPMENT = ['dumbbells', 'kettlebells', 'barbell', 'pullup bar', 'full gym'];
+const GOAL_OPTIONS: Array<{ value: ProgramGoal; label: string }> = [
+  { value: 'Build Strength', label: 'Strength' },
+  { value: 'Build Muscle', label: 'Hypertrophy' },
+  { value: 'Hybrid Athlete', label: 'Hybrid Athlete' },
+];
 
 const getInitialTrainingAccess = (equipment: string[] = []): TrainingAccess => {
   const normalized = equipment.map(item => item.toLowerCase());
@@ -62,9 +68,16 @@ const getAutoPeriodizationModel = (
   goal: string,
   fitnessLevel: 'beginner' | 'intermediate' | 'advanced'
 ): 'linear' | 'undulating' | 'block' => {
-  if (goal === 'Improve VO2 Max') return 'block';
+  if (goal === 'Hybrid Athlete') return 'block';
   if (fitnessLevel === 'advanced') return 'undulating';
   return 'linear';
+};
+
+const getInitialGoal = (goals: string[] = []): ProgramGoal => {
+  const goalText = goals.join(' ').toLowerCase();
+  if (goalText.includes('muscle') || goalText.includes('hypertrophy')) return 'Build Muscle';
+  if (goalText.includes('hybrid') || goalText.includes('condition') || goalText.includes('endurance')) return 'Hybrid Athlete';
+  return 'Build Strength';
 };
 
 const PeriodizedProgramModal: React.FC<Props> = ({
@@ -81,7 +94,7 @@ const PeriodizedProgramModal: React.FC<Props> = ({
   const [progressPercent, setProgressPercent] = useState(0);
 
   // Form state
-  const [goal, setGoal] = useState(userProfile?.goals?.[0] || 'Build Strength');
+  const [goal, setGoal] = useState<ProgramGoal>(getInitialGoal(userProfile?.goals));
   const [fitnessLevel, setFitnessLevel] = useState<'beginner' | 'intermediate' | 'advanced'>(
     (userProfile?.experience?.toLowerCase() as 'beginner' | 'intermediate' | 'advanced') || 'intermediate'
   );
@@ -118,7 +131,7 @@ const PeriodizedProgramModal: React.FC<Props> = ({
           goal,
           experience: fitnessLevel,
           equipment: selectedEquipment,
-          totalWeeks: 4,
+          totalWeeks: parseInt(programLength, 10),
           daysPerWeek: parseInt(daysPerWeek),
           periodizationModel,
           availableExercises,
@@ -172,18 +185,23 @@ const PeriodizedProgramModal: React.FC<Props> = ({
 
     setLoading(true);
     try {
+      const existingPrograms = await getDocs(collection(db, 'users', uid, 'aiPrograms'));
+      await Promise.all(existingPrograms.docs.map(docSnap => updateDoc(docSnap.ref, { isActive: false })));
+
       // Save to aiPrograms collection
       const programRef = await addDoc(collection(db, 'users', uid, 'aiPrograms'), {
         ...generatedProgram,
         createdAt: new Date().toISOString(),
-        isActive: false, // User can activate it later
+        currentWeek: 1,
+        currentDay: 1,
+        isActive: true,
         isArchived: false, // Not archived initially
       });
 
       Toast.show({
         type: 'success',
         text1: 'Program Saved!',
-        text2: `${generatedProgram.programName} is ready to use`,
+        text2: `${generatedProgram.programName} is active`,
       });
 
       onProgramGenerated?.(programRef.id);
@@ -212,6 +230,8 @@ const PeriodizedProgramModal: React.FC<Props> = ({
     }
   }, [visible]);
 
+  const [programLength, setProgramLength] = useState('4');
+
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.overlay}>
@@ -233,9 +253,13 @@ const PeriodizedProgramModal: React.FC<Props> = ({
           <ScrollView
             ref={scrollRef}
             style={styles.content}
-            contentContainerStyle={styles.contentContainer}
+            contentContainerStyle={[
+              styles.contentContainer,
+              step === 'preview' && styles.previewContentContainer,
+            ]}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
+            nestedScrollEnabled
           >
             {/* SETUP STEP */}
             {step === 'setup' && (
@@ -246,14 +270,37 @@ const PeriodizedProgramModal: React.FC<Props> = ({
                 <View style={styles.inputGroup}>
                   <Text style={styles.label}>Primary Goal</Text>
                   <View style={styles.goalButtons}>
-                    {['Build Strength', 'Improve VO2 Max', 'Build Muscle', 'Fat Loss'].map(g => (
+                    {GOAL_OPTIONS.map(({ value, label }) => (
                       <Pressable
-                        key={g}
-                        style={[styles.goalButton, goal === g && styles.goalButtonActive]}
-                        onPress={() => setGoal(g)}
+                        key={value}
+                        style={[styles.goalButton, goal === value && styles.goalButtonActive]}
+                        onPress={() => setGoal(value)}
                       >
-                        <Text style={[styles.goalButtonText, goal === g && styles.goalButtonTextActive]}>
-                          {g}
+                        <Text style={[styles.goalButtonText, goal === value && styles.goalButtonTextActive]}>
+                          {label}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+
+                {/* Program Length */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Program Length</Text>
+                  <View style={styles.numberButtons}>
+                    {['4', '5', '6'].map(weeks => (
+                      <Pressable
+                        key={weeks}
+                        style={[styles.numberButton, programLength === weeks && styles.numberButtonActive]}
+                        onPress={() => setProgramLength(weeks)}
+                      >
+                        <Text
+                          style={[
+                            styles.numberButtonText,
+                            programLength === weeks && styles.numberButtonTextActive,
+                          ]}
+                        >
+                          {weeks}w
                         </Text>
                       </Pressable>
                     ))}
@@ -422,7 +469,7 @@ const PeriodizedProgramModal: React.FC<Props> = ({
                     <Text style={styles.infoTitle}>What is Periodization?</Text>
                     <Text style={styles.infoText}>
                       We auto-select progression style based on your goal and level. Programs are
-                      generated in focused 4-week blocks to keep quality and progression tight.
+                      generated in focused 4-6 week blocks to keep quality and progression tight.
                     </Text>
                   </View>
                 </View>
@@ -434,7 +481,7 @@ const PeriodizedProgramModal: React.FC<Props> = ({
             {step === 'generating' && (
               <View style={styles.generatingContainer}>
                 <ActivityIndicator size="large" color="#FF3C38" />
-                <Text style={styles.generatingTitle}>Creating Your First 4 Weeks...</Text>
+                <Text style={styles.generatingTitle}>Creating Your {programLength}-Week Program...</Text>
                 
                 {/* Progress Bar */}
                 <View style={styles.progressBarContainer}>
@@ -445,7 +492,7 @@ const PeriodizedProgramModal: React.FC<Props> = ({
                 <Text style={styles.progressPhaseText}>{progressPhase || 'Initializing...'}</Text>
                 
                 <Text style={styles.generatingSubtext}>
-                  We'll generate the next block when you complete these weeks
+                  Your program will be saved as soon as the plan is ready
                 </Text>
                 <Text style={styles.generatingHint}>
                   AI generation can take 45-90 seconds. Please keep this screen open.
@@ -455,7 +502,7 @@ const PeriodizedProgramModal: React.FC<Props> = ({
 
             {/* PREVIEW STEP */}
             {step === 'preview' && generatedProgram && (
-              <View>
+              <View style={styles.previewContainer}>
                 <View style={styles.programHeader}>
                   <Ionicons name="checkmark-circle" size={48} color="#4CAF50" />
                   <Text style={styles.programTitle}>{generatedProgram.programName}</Text>
@@ -501,36 +548,6 @@ const PeriodizedProgramModal: React.FC<Props> = ({
                   <Text style={styles.cardTitle}>📈 Progression Strategy</Text>
                   <Text style={styles.progressionText}>{generatedProgram.progressionPlan}</Text>
                 </View>
-
-                <View style={styles.buttonRow}>
-                  <Pressable
-                    style={styles.backButton}
-                    onPress={() => {
-                      setStep('setup');
-                      setGeneratedProgram(null);
-                    }}
-                  >
-                    <Text style={styles.backButtonText}>Edit Settings</Text>
-                  </Pressable>
-
-                  <Pressable
-                    style={styles.saveButton}
-                    onPress={handleSaveProgram}
-                    disabled={loading}
-                  >
-                    {loading ? (
-                      <ActivityIndicator color="#fff" />
-                    ) : (
-                      <>
-                        <Ionicons name="save" size={20} color="#fff" />
-                        <Text style={styles.saveButtonText}>Save Program</Text>
-                      </>
-                    )}
-                  </Pressable>
-                </View>
-                
-                {/* Bottom spacing for safe area */}
-                <View style={{ height: 40 }} />
               </View>
             )}
           </ScrollView>
@@ -541,6 +558,37 @@ const PeriodizedProgramModal: React.FC<Props> = ({
                 <Ionicons name="flash" size={20} color="#fff" />
                 <Text style={styles.generateButtonText}>Generate Program</Text>
               </Pressable>
+            </View>
+          )}
+
+          {step === 'preview' && generatedProgram && (
+            <View style={styles.footer}>
+              <View style={styles.buttonRow}>
+                <Pressable
+                  style={styles.backButton}
+                  onPress={() => {
+                    setStep('setup');
+                    setGeneratedProgram(null);
+                  }}
+                >
+                  <Text style={styles.backButtonText}>Edit Settings</Text>
+                </Pressable>
+
+                <Pressable
+                  style={styles.saveButton}
+                  onPress={handleSaveProgram}
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <>
+                      <Ionicons name="save" size={20} color="#fff" />
+                      <Text style={styles.saveButtonText}>Save Program</Text>
+                    </>
+                  )}
+                </Pressable>
+              </View>
             </View>
           )}
 
@@ -587,6 +635,12 @@ const styles = StyleSheet.create({
   contentContainer: {
     flexGrow: 1,
     paddingBottom: 120,
+  },
+  previewContentContainer: {
+    paddingBottom: 150,
+  },
+  previewContainer: {
+    paddingBottom: 16,
   },
   setupContainer: {
     paddingBottom: 24,

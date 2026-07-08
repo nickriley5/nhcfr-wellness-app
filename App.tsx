@@ -211,8 +211,8 @@ const AppNavigator = () => {
 />
     <Stack.Screen name="Goals" component={GoalsScreen} />
     <Stack.Screen name="EditProfile" component={EditProfileScreen} />
-    <Stack.Screen name="ProgramList" component={ProgramListScreen} />
-    <Stack.Screen name="ProgramPreview" component={ProgramPreviewScreen} />
+    <Stack.Screen name="ProgramList" component={ProgramListScreen} options={{ headerShown: false }} />
+    <Stack.Screen name="ProgramPreview" component={ProgramPreviewScreen} options={{ headerShown: false }} />
     <Stack.Screen name="MealPlan" component={MealPlanScreen} />
     <Stack.Screen name="MealGoalSettings" component={GoalSettingsScreen} />
     <Stack.Screen name="GoalSettings" component={GoalSettingsScreen} />

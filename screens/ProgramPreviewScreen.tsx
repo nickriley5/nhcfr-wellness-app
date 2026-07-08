@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, Pressable, StyleSheet, ScrollView, Alert } from 'react-native';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { CommonActions, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
 import { PROGRAM_TEMPLATES } from '../utils/ProgramTemplates';
@@ -10,6 +10,7 @@ import { resolveExerciseDetails } from '../utils/exerciseUtils';
 
 import { auth, db } from '../firebase';
 import { doc, setDoc, Timestamp } from 'firebase/firestore';
+import Toast from 'react-native-toast-message';
 
 type ProgramDay = {
   week: number;
@@ -130,30 +131,48 @@ const ProgramPreviewScreen: React.FC = () => {
         doc(db, 'users', uid, 'program', 'active'),
         {
           programId: program.id,
+          programName: program.name,
+          description: program.description,
+          durationWeeks: program.durationWeeks,
+          daysPerWeek: program.daysPerWeek,
           metadata: {
             currentDay: 1,
+            currentWeek: 1,
             startDate: Timestamp.now(),
+            sourceType: 'program',
+          },
+          template: {
+            id: program.id,
+            name: program.name,
+            description: program.description,
+            durationWeeks: program.durationWeeks,
+            daysPerWeek: program.daysPerWeek,
+            days: program.days,
           },
           days: program.days,
         },
         { merge: false }
       );
 
-      // Show success message before navigating
-      Alert.alert(
-        'Program Started! 🔥',
-        `${program.name} is now your active program. Ready to crush your first workout?`,
-        [
-          {
-            text: 'Let\'s Go!',
-            onPress: () => {
-              navigation.navigate('AppDrawer', {
+      Toast.show({
+        type: 'success',
+        text1: 'Program Started',
+        text2: `${program.name} is now active`,
+      });
+
+      navigation.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [
+            {
+              name: 'AppDrawer',
+              params: {
                 screen: 'MainTabs',
                 params: { screen: 'Workout', params: { openQuickWorkout: false } },
-              });
+              },
             },
-          },
-        ]
+          ],
+        })
       );
     } catch (err) {
       console.error('Error starting program:', err);

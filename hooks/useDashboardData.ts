@@ -191,25 +191,28 @@ export function useDashboardData(view: 'week' | 'month' | 'all', bump: number = 
           return;
         }
 
-        let hasProgram = progSnap.exists();
+        let hasProgram = false;
 
         if (progSnap.exists()) {
           const prog: any = progSnap.data();
-          const days: ProgramDay[] = prog.days || [];
+          const days: ProgramDay[] = Array.isArray(prog.days) ? prog.days : [];
           const curDay = prog.metadata?.currentDay ?? 1;
           const idx = Math.max(0, curDay - 1);
+          hasProgram = days.length > 0;
 
           if (days[idx]) {
             setTodayInfo({
               day: days[idx],
-              weekIdx: (days[idx] as any).week - 1,
-              dayIdx: (days[idx] as any).day - 1,
+              weekIdx: Math.max(0, Number((days[idx] as any).week ?? 1) - 1),
+              dayIdx: Math.max(0, Number((days[idx] as any).day ?? idx + 1) - 1),
               sourceType: 'program',
             });
           } else {
             setTodayInfo(null);
           }
-        } else {
+        }
+
+        if (!hasProgram) {
           // Check for active AI program if no prewritten program
           console.log('🔍 Checking for AI programs...');
           const aiProgramsRef = collection(db, 'users', user.uid, 'aiPrograms');

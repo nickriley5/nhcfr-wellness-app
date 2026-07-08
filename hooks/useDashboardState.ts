@@ -149,7 +149,9 @@ export function useDashboardState(bump: number, programExists: boolean) {
           return;
         }
 
-        let programData = programDoc.exists() ? programDoc.data() : null;
+        const storedProgramData = programDoc.exists() ? programDoc.data() : null;
+        const storedProgramDays = Array.isArray(storedProgramData?.days) ? storedProgramData.days : [];
+        let programData = storedProgramDays.length > 0 ? storedProgramData : null;
         let daysPerWeek = 4;
         let isAIProgram = false;
 
@@ -313,7 +315,12 @@ export function useDashboardState(bump: number, programExists: boolean) {
         if (progSnap.exists()) {
           // Prewritten program
           const prog: any = progSnap.data();
-          const days: any[] = prog.days || [];
+          const days: any[] = Array.isArray(prog.days) ? prog.days : [];
+          if (days.length === 0) {
+            setTomorrowInfo(null);
+            return;
+          }
+
           const curDay = prog.metadata?.currentDay ?? 1;
 
           // Get next day (tomorrow's workout)

@@ -290,8 +290,7 @@ export async function getWorkoutRecommendation(
 }
 
 /**
- * Generate initial 4-week training block
- * Generates weeks 1-4 so users can train before requesting the next block
+ * Generate a complete 4-6 week training program.
  */
 export async function generatePeriodizedProgram(
   programContext: {
@@ -308,8 +307,9 @@ export async function generatePeriodizedProgram(
   onProgress?: (phase: string, percent: number) => void
 ): Promise<PeriodizedProgram> {
   
-  onProgress?.('Creating your first 4 weeks...', 20);
-  const MAX_ALLOWLIST_EXERCISES = 90;
+  const generatedWeeks = Math.min(6, Math.max(4, Math.round(Number(programContext.totalWeeks) || 4)));
+  onProgress?.(`Creating your ${generatedWeeks}-week program...`, 20);
+  const MAX_ALLOWLIST_EXERCISES = 60;
 
   const normalizeLookupKey = (value: string): string =>
     value
@@ -350,6 +350,123 @@ export async function generatePeriodizedProgram(
   if (allowedById.size === 0) {
     throw new Error('No exercises available for ID-constrained program generation.');
   }
+
+  const buildLocalCardioSchedule = () => ({
+    frequency: 3,
+    weeks: Array.from({ length: generatedWeeks }, (_, idx) => ({
+      weekNumber: idx + 1,
+      sessions: [
+        {
+          dayOfWeek: 'Monday',
+          type: 'Run',
+          duration: 20 + idx * 2,
+          intensity: 'Zone 2',
+          notes: 'Steady aerobic base',
+          targetHeartRate: 'Zone 2',
+        },
+        {
+          dayOfWeek: 'Wednesday',
+          type: 'HIIT',
+          duration: 16 + idx,
+          intensity: 'Intervals',
+          notes: 'Short work capacity intervals',
+          circuit: {
+            rounds: 6 + Math.min(idx, 2),
+            workSec: 30,
+            restSec: 90,
+            exercises: ['Burpees', 'Mountain Climbers', 'Jump Rope', 'Step-Ups'],
+          },
+        },
+        {
+          dayOfWeek: 'Friday',
+          type: 'Row',
+          duration: 22 + idx * 2,
+          intensity: idx === generatedWeeks - 1 ? 'Easy' : 'Moderate',
+          notes: idx === generatedWeeks - 1 ? 'Deload pace' : 'Sustainable effort',
+        },
+      ],
+    })),
+  });
+
+  const buildFallbackProgram = (reason: string): PeriodizedProgram => {
+    console.warn('⚠️ Using local fallback program:', reason);
+    const phases =
+      generatedWeeks <= 4
+        ? [{ phaseName: 'Foundation', weekRange: `1-${generatedWeeks}`, focus: 'Build strength and work capacity', description: 'A reliable firefighter-focused training block.' }]
+        : [
+            { phaseName: 'Foundation', weekRange: '1-2', focus: 'Movement quality and base volume', description: 'Build technical consistency and aerobic support.' },
+            { phaseName: 'Build', weekRange: `3-${generatedWeeks - 1}`, focus: 'Strength and work capacity progression', description: 'Progress load, volume, and firefighter-specific conditioning.' },
+            { phaseName: 'Deload', weekRange: `${generatedWeeks}`, focus: 'Recover and consolidate', description: 'Reduce volume while keeping movement patterns sharp.' },
+          ];
+
+    const dayTemplates = [
+      { dayName: 'Lower Body Power & Carry', focus: 'Squat, hinge, carry' },
+      { dayName: 'Upper Body Strength', focus: 'Push, pull, press' },
+      { dayName: 'Hybrid Work Capacity', focus: 'Full-body circuits' },
+      { dayName: 'Posterior Chain & Core', focus: 'Hinge, pull, trunk' },
+      { dayName: 'Operational Conditioning', focus: 'Carries, steps, power' },
+      { dayName: 'Total Body Strength', focus: 'Balanced strength' },
+    ];
+
+    const pickExercise = (offset: number) => validAllowedExercises[offset % validAllowedExercises.length];
+    const weeks = Array.from({ length: generatedWeeks }, (_, weekIdx) => {
+      const isDeload = weekIdx === generatedWeeks - 1;
+      return {
+        weekNumber: weekIdx + 1,
+        phase: isDeload ? 'Deload' : weekIdx < 2 ? 'Foundation' : 'Build',
+        isDeload,
+        volumeMultiplier: isDeload ? 0.65 : 1 + weekIdx * 0.05,
+        days: Array.from({ length: programContext.daysPerWeek }, (_, dayIdx) => {
+          const template = dayTemplates[dayIdx % dayTemplates.length];
+          const baseOffset = weekIdx * programContext.daysPerWeek * 5 + dayIdx * 5;
+          return {
+            dayNumber: dayIdx + 1,
+            dayName: template.dayName,
+            focus: template.focus,
+            warmup: ['Dynamic Mobility', 'Activation Prep'],
+            exercises: Array.from({ length: 5 }, (_, exIdx) => {
+              const exercise = pickExercise(baseOffset + exIdx);
+              return {
+                id: exercise.id,
+                name: exercise.name,
+                sets: isDeload ? 2 : exIdx < 2 ? 4 : 3,
+                reps: isDeload ? '8 easy' : goalLower.includes('strength') && exIdx < 2 ? '4-6' : '8-12',
+                restSeconds: exIdx < 2 ? 120 : 75,
+                rpe: isDeload ? 5 : exIdx < 2 ? 8 : 7,
+                notes: exIdx === 0 ? 'Main lift' : 'Quality reps',
+              };
+            }),
+            cooldown: ['Easy Breathing', 'Mobility Reset'],
+            estimatedDuration: isDeload ? 35 : 50,
+          };
+        }),
+      };
+    });
+
+    return {
+      programName: `Firefighter ${programContext.goal} Program`,
+      totalWeeks: generatedWeeks,
+      periodizationModel: periodization,
+      phases,
+      weeks,
+      progressionPlan: `Complete this ${generatedWeeks}-week block. Add load when all sets hit the top of the rep range with clean form.`,
+      deloadStrategy: 'Final week: reduce volume, keep movement quality high, and recover for the next training cycle.',
+      cardioSchedule: programContext.includeCardio ? buildLocalCardioSchedule() : undefined,
+    };
+  };
+
+  const sendProgramAIMessage = (
+    messages: AIMessage[],
+    options: { temperature?: number; maxTokens?: number }
+  ): Promise<AIResponse> => {
+    const timeoutMs = 45000;
+    return Promise.race([
+      sendAIMessage(messages, 'gemini', options),
+      new Promise<AIResponse>((_, reject) => {
+        setTimeout(() => reject(new Error(`Program generation timed out after ${timeoutMs / 1000}s.`)), timeoutMs);
+      }),
+    ]);
+  };
 
   if (programContext.availableExercises && programContext.availableExercises.length > 0) {
     // Keep payload compact on mobile: id + canonical name only.
@@ -438,22 +555,22 @@ PROGRAM MUST INCLUDE (Every Week):
    - Week 3: Peak intensity (maintain volume, RPE 8-9)
    - Week 4: DELOAD (60-70% volume, RPE 5-6, recovery focus)`;
 
-  // Cardio prompt addition
-  const cardioPrompt = programContext.includeCardio 
-    ? `\n\nCARDIO: Include 2-3 cardio sessions per week. Use cardioSchedule with frequency, type (Run/Bike/Row/HIIT), duration, intensity (Easy/Moderate/Hard/Intervals/Zone 2). If type is HIIT/circuit/intervals, include a "circuit" object with rounds, workSec, restSec, and a list of 4-6 exercises.` 
+  // Cardio is attached locally after strength generation so program creation is faster and more reliable.
+  const cardioPrompt = programContext.includeCardio
+    ? '\n\nCARDIO: Do not include cardioSchedule in the JSON. The app will add cardio sessions separately.'
     : '';
 
   console.log('🏃 Cardio in aiService:', programContext.includeCardio);
   console.log('🏃 Cardio prompt:', cardioPrompt || '(none)');
 
-  const prompt = `Generate weeks 1-4 of a ${programContext.totalWeeks}-week FIREFIGHTER occupational fitness program.
+  const prompt = `Generate a complete ${generatedWeeks}-week FIREFIGHTER occupational fitness program.
 
 FIREFIGHTER PROFILE:
 Experience: ${programContext.experience}
 Primary Goal: ${programContext.goal}
 Available Equipment: ${programContext.equipment.join(', ')}
 Training Days: ${programContext.daysPerWeek} strength sessions per week
-${programContext.includeCardio ? 'PLUS 2-3 dedicated cardio/conditioning sessions' : ''}
+${programContext.includeCardio ? 'PLUS app-generated dedicated cardio/conditioning sessions' : ''}
 ${programContext.allowTwoADays ? 'Two-a-days are allowed for advanced users when useful.' : 'Do NOT schedule two-a-days.'}
 
 ${firefighterContext}
@@ -461,7 +578,7 @@ ${exerciseListText}
 ${cardioPrompt}
 
 PROGRAM DESIGN RULES:
-✅ Generate EXACTLY 4 weeks (weeks 1-4 only)
+✅ Generate EXACTLY ${generatedWeeks} weeks (weeks 1-${generatedWeeks})
 ✅ Each week has EXACTLY ${programContext.daysPerWeek} strength training days
 ✅ Each day has 4-6 main exercises
 ✅ CRITICAL: Use ONLY exercises from "AVAILABLE EXERCISES" list above
@@ -472,7 +589,7 @@ PROGRAM DESIGN RULES:
 ✅ Include 1-2 warmup exercises per day (mobility/activation)
 ✅ Include 1-2 cooldown exercises per day (stretching/recovery)
 ✅ Keep notes to 1-3 words maximum per exercise
-${programContext.includeCardio ? '✅ Include separate cardioSchedule with 2-3 sessions per week' : ''}
+✅ Do NOT include cardioSchedule; return strength program JSON only
 
 FIREFIGHTER-SPECIFIC REQUIREMENTS:
 🚒 Every week MUST include:
@@ -496,12 +613,12 @@ ${periodizationGuidance}
 RETURN FORMAT - Valid JSON Only:
 {
   "programName": "Firefighter [Goal] Program",
-  "totalWeeks": ${programContext.totalWeeks},
+  "totalWeeks": ${generatedWeeks},
   "periodizationModel": "${periodization}",
   "phases": [
     {
       "phaseName": "Foundation",
-      "weekRange": "1-4",
+      "weekRange": "1-${generatedWeeks}",
       "focus": "Build work capacity and movement quality",
       "description": "Establish baseline strength and conditioning for firefighter operations"
     }
@@ -592,34 +709,19 @@ RETURN FORMAT - Valid JSON Only:
       "days": []
     }
   ],
-  ${programContext.includeCardio ? `"cardioSchedule": {
-    "frequency": 3,
-    "weeks": [
-      {
-        "weekNumber": 1,
-        "sessions": [
-          {"dayOfWeek": "Monday", "type": "Run", "duration": 20, "intensity": "Easy", "notes": "Recovery pace"},
-          {"dayOfWeek": "Wednesday", "type": "HIIT", "duration": 15, "intensity": "Intervals", "notes": "8 rounds: 30s work/90s rest", "circuit": {"rounds": 8, "workSec": 30, "restSec": 90, "exercises": ["Burpees", "Kettlebell Swings", "Mountain Climbers", "Jump Rope"]}},
-          {"dayOfWeek": "Friday", "type": "Row", "duration": 25, "intensity": "Zone 2", "notes": "Steady state"}
-        ]
-      },
-      {"weekNumber": 2, "sessions": []},
-      {"weekNumber": 3, "sessions": []},
-      {"weekNumber": 4, "sessions": []}
-    ]
-  },` : ''}
   "progressionPlan": "Increase load 2-5% weekly. Add 1 rep when hitting top of rep range. Progress carries by distance or load.",
-  "deloadStrategy": "Week 4: Reduce volume 35%, maintain movement patterns, focus on quality and recovery for adaptation."
+  "deloadStrategy": "Final week: Reduce volume 35%, maintain movement patterns, focus on quality and recovery for adaptation."
 }
 
-🚒 Generate complete program with ALL ${programContext.daysPerWeek} days for ALL 4 weeks.
-${programContext.includeCardio ? '🏃 Include cardioSchedule with sessions for ALL 4 weeks.' : ''}
+🚒 Generate complete program with ALL ${programContext.daysPerWeek} days for ALL ${generatedWeeks} weeks.
+${generatedWeeks > 4 ? `🚒 Continue the "weeks" array through week ${generatedWeeks}; do not stop at week 4.` : ''}
+🏃 Do not include cardioSchedule in the JSON.
 🔥 Prioritize firefighter job-specific movements. This is for occupational readiness, not bodybuilding.`;
 
   try {
     onProgress?.('Generating workouts...', 50);
     
-    const response = await sendAIMessage(
+    const response = await sendProgramAIMessage(
       [
         { 
           role: 'system', 
@@ -637,7 +739,6 @@ Return ONLY valid, parseable JSON. No markdown formatting. Be concise in notes (
         },
         { role: 'user', content: prompt }
       ],
-      'gemini',
       { temperature: 0.45, maxTokens: 16384 }
     );
 
@@ -702,8 +803,8 @@ Return ONLY valid, parseable JSON. No markdown formatting. Be concise in notes (
     
     const validateProgram = (candidate: PeriodizedProgram): string[] => {
       const issues: string[] = [];
-      if (!Array.isArray(candidate.weeks) || candidate.weeks.length < 4) {
-        issues.push('Program must include weeks 1-4.');
+      if (!Array.isArray(candidate.weeks) || candidate.weeks.length !== generatedWeeks) {
+        issues.push(`Program must include exactly weeks 1-${generatedWeeks}.`);
       }
       candidate.weeks?.forEach((week) => {
         if (!Array.isArray(week.days) || week.days.length !== programContext.daysPerWeek) {
@@ -721,27 +822,27 @@ Return ONLY valid, parseable JSON. No markdown formatting. Be concise in notes (
           });
         });
       });
-      if (programContext.includeCardio) {
-        if (!candidate.cardioSchedule || !Array.isArray(candidate.cardioSchedule.weeks) || candidate.cardioSchedule.weeks.length < 4) {
-          issues.push('Cardio schedule is required for all 4 generated weeks when cardio is enabled.');
-        }
-      }
       return issues;
     };
 
     const normalizeProgramMetadata = (candidate: PeriodizedProgram): PeriodizedProgram => {
-      candidate.totalWeeks = programContext.totalWeeks;
+      candidate.totalWeeks = generatedWeeks;
       candidate.periodizationModel = periodization;
-      candidate.progressionPlan = 'Complete these 4 weeks, then generate the next block.';
+      candidate.progressionPlan = candidate.progressionPlan || `Complete this ${generatedWeeks}-week block, then reassess and generate the next training cycle.`;
+      candidate.cardioSchedule = programContext.includeCardio ? buildLocalCardioSchedule() : undefined;
       return candidate;
     };
 
     const parseProgramJsonWithRepair = async (rawContent: string): Promise<PeriodizedProgram> => {
+      if (!rawContent.trim().endsWith('}')) {
+        throw new Error('Program JSON response was incomplete.');
+      }
+
       try {
         return parseCleanJsonResponse<PeriodizedProgram>(rawContent);
       } catch (parseErr) {
         console.warn('⚠️ Initial program JSON parse failed. Attempting JSON repair pass...');
-        const parseRepairResponse = await sendAIMessage(
+        const parseRepairResponse = await sendProgramAIMessage(
           [
             {
               role: 'system',
@@ -758,7 +859,6 @@ Return ONLY valid, parseable JSON. No markdown formatting. Be concise in notes (
                 `Malformed JSON:\n${rawContent}`,
             },
           ],
-          'gemini',
           { temperature: 0.1, maxTokens: 16384 }
         );
 
@@ -790,7 +890,7 @@ Return ONLY valid, parseable JSON. No markdown formatting. Be concise in notes (
     let qualityIssues = validateProgram(program);
     if (qualityIssues.length > 0) {
       console.warn('⚠️ Program quality validation failed. Attempting one strict repair pass...', qualityIssues);
-      const repairResponse = await sendAIMessage(
+      const repairResponse = await sendProgramAIMessage(
         [
           {
             role: 'system',
@@ -798,10 +898,9 @@ Return ONLY valid, parseable JSON. No markdown formatting. Be concise in notes (
           },
           {
             role: 'user',
-            content: `Fix this program JSON to satisfy constraints with minimal edits.\nConstraints:\n- Exactly 4 weeks (1-4)\n- Exactly ${programContext.daysPerWeek} strength days per week\n- 4-6 exercises per day\n- Every exercise must include id and name\n- Every exercise id must be from the provided allowlist in the original prompt\n${programContext.includeCardio ? '- Include cardioSchedule for weeks 1-4' : ''}\n\nCurrent issues:\n${qualityIssues.join('\n')}\n\nJSON:\n${response.content}`,
+            content: `Fix this program JSON to satisfy constraints with minimal edits.\nConstraints:\n- Exactly ${generatedWeeks} weeks (1-${generatedWeeks})\n- Exactly ${programContext.daysPerWeek} strength days per week\n- 4-6 exercises per day\n- Every exercise must include id and name\n- Every exercise id must be from the provided allowlist in the original prompt\n- Do not include cardioSchedule\n\nCurrent issues:\n${qualityIssues.join('\n')}\n\nJSON:\n${response.content}`,
           },
         ],
-        'gemini',
         { temperature: 0.2, maxTokens: 16384 }
       );
 
@@ -842,7 +941,11 @@ Return ONLY valid, parseable JSON. No markdown formatting. Be concise in notes (
     return program;
     
   } catch (error) {
-    throw error;
+    const message = error instanceof Error ? error.message : String(error);
+    onProgress?.('Using reliable fallback...', 95);
+    const fallback = buildFallbackProgram(message);
+    onProgress?.('Complete!', 100);
+    return fallback;
   }
 }
 

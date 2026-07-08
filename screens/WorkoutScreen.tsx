@@ -30,7 +30,11 @@ interface StoredState {
   currentDayIndex: number;
 }
 
-const formatExerciseName = (id: string): string => {
+const formatExerciseName = (id?: string): string => {
+  if (!id) {
+    return 'Exercise';
+  }
+
   // Try to look up the actual exercise name from the database first
   const exercise = resolveExerciseDetails(id);
   if (exercise && exercise.name) {
@@ -43,7 +47,11 @@ const formatExerciseName = (id: string): string => {
     .replace(/\b\w/g, (c) => c.toUpperCase()); // capitalize each word
 };
 
-const formatWorkoutDescription = (repsOrDuration: string): string => {
+const formatWorkoutDescription = (repsOrDuration?: string): string => {
+  if (!repsOrDuration) {
+    return '';
+  }
+
   const text = repsOrDuration.toLowerCase();
 
   // Handle AMRAP formats
@@ -103,7 +111,6 @@ const WorkoutScreen: React.FC = () => {
   const [showArchived, setShowArchived] = useState(false);
   const [selectedProgramForAction, setSelectedProgramForAction] = useState<PeriodizedProgram | null>(null);
   const [showProgramActionModal, setShowProgramActionModal] = useState(false);
-  const [showFullProgramModal, setShowFullProgramModal] = useState(false);
   const quickWorkoutHandledRef = useRef(false);
 
   useEffect(() => {
@@ -382,7 +389,7 @@ const WorkoutScreen: React.FC = () => {
     if (!uid || !program.id) return;
 
     try {
-      const { updateDoc, Timestamp } = await import('firebase/firestore');
+      const { updateDoc } = await import('firebase/firestore');
       await updateDoc(doc(db, 'users', uid, 'aiPrograms', program.id), {
         isActive: false,
         isArchived: true,
@@ -438,7 +445,7 @@ const WorkoutScreen: React.FC = () => {
     if (!uid || !program.id) return;
 
     try {
-      const { updateDoc, Timestamp } = await import('firebase/firestore');
+      const { updateDoc } = await import('firebase/firestore');
       
       // Deactivate all other programs
       const allPrograms = await getDocs(collection(db, 'users', uid, 'aiPrograms'));
@@ -628,6 +635,14 @@ const WorkoutScreen: React.FC = () => {
       } else {
         setAiPrograms(programs);
       }
+
+      const prewrittenSnap = await getDoc(doc(db, 'users', uid, 'program', 'active'));
+      const prewrittenData = prewrittenSnap.exists() ? prewrittenSnap.data() : null;
+      if (Array.isArray(prewrittenData?.days) && prewrittenData.days.length > 0) {
+        console.log('📋 Pre-made program is active; skipping AI program activation');
+        setActiveAiProgram(null);
+        return;
+      }
       
       // Only proceed with activation if we didn't already reload
       if (needsUpdate) {
@@ -686,8 +701,13 @@ const WorkoutScreen: React.FC = () => {
       const snap = await getDoc(doc(db, 'users', uid, 'program', 'active'));
       if (snap.exists()) {
         const data = snap.data();
-        setState({ currentDayIndex: data.metadata.currentDay - 1 });
-        setDays(data.days as ProgramDay[]);
+        const programDays = Array.isArray(data.days) ? data.days : [];
+        const currentDay = Number(data.metadata?.currentDay ?? 1);
+        setState({ currentDayIndex: Math.max(0, currentDay - 1) });
+        setDays(programDays as ProgramDay[]);
+        if (programDays.length > 0) {
+          setActiveAiProgram(null);
+        }
       } else {
         setDays([]);
         setState({ currentDayIndex: 0 });
@@ -733,8 +753,13 @@ const WorkoutScreen: React.FC = () => {
         const snap = await getDoc(doc(db, 'users', uid, 'program', 'active'));
         if (snap.exists()) {
           const data = snap.data();
-          setState({ currentDayIndex: data.metadata.currentDay - 1 });
-          setDays(data.days as ProgramDay[]);
+          const programDays = Array.isArray(data.days) ? data.days : [];
+          const currentDay = Number(data.metadata?.currentDay ?? 1);
+          setState({ currentDayIndex: Math.max(0, currentDay - 1) });
+          setDays(programDays as ProgramDay[]);
+          if (programDays.length > 0) {
+            setActiveAiProgram(null);
+          }
         }
       } catch (err) {
         console.error('Error loading program:', err);
@@ -750,12 +775,9 @@ const WorkoutScreen: React.FC = () => {
 
     const map: Record<number, ProgramDay[]> = {};
     days.forEach((d) => {
-      const wk =
-        // prefer explicit field
-        // @ts-ignore (if you haven’t typed week yet)
-        d.week !== undefined ? d.week - 1
-        // fallback to “Week X” in title
-        : parseInt(d.title.match(/Week\s+(\d+)/)?.[1] ?? '1', 10) - 1;
+      const explicitWeek = Number((d as any).week);
+      const titleWeek = parseInt(d.title?.match(/Week\s+(\d+)/)?.[1] ?? '1', 10);
+      const wk = Math.max(0, (Number.isFinite(explicitWeek) ? explicitWeek : titleWeek) - 1);
 
       (map[wk] ||= []).push(d);
     });
@@ -766,8 +788,7 @@ const WorkoutScreen: React.FC = () => {
       .map((wk) =>
         [...map[wk]].sort(
           (a, b) =>
-            // @ts-ignore (if you haven’t typed day yet)
-            ((a.day ?? 0) as number) - ((b.day ?? 0) as number),
+            Number((a as any).day ?? 0) - Number((b as any).day ?? 0),
         ),
       );
 
@@ -794,7 +815,7 @@ const WorkoutScreen: React.FC = () => {
   }
 
   // Show AI program UI if available
-  if (activeAiProgram) {
+  if (activeAiProgram && days.length === 0) {
     const currentWeek = activeAiProgram.weeks.find(w => w.weekNumber === currentWeekNum);
     const currentDay = currentWeek?.days.find(d => d.dayNumber === currentDayNum);
     
@@ -805,9 +826,6 @@ const WorkoutScreen: React.FC = () => {
           <View style={styles.header}>
             <Text style={styles.title}>Your Program</Text>
             <View style={styles.headerIcons}>
-              <Pressable onPress={() => setShowFullProgramModal(true)} style={styles.iconButton}>
-                <Ionicons name="list" size={24} color="#4CAF50" />
-              </Pressable>
               <Pressable onPress={() => setShowProgramModal(true)} style={styles.iconButton}>
                 <Ionicons name="rocket" size={24} color="#FF9800" />
               </Pressable>
@@ -1224,113 +1242,12 @@ const WorkoutScreen: React.FC = () => {
           </Pressable>
         </Modal>
 
-        {/* FULL PROGRAM MODAL */}
-        <Modal
-          visible={showFullProgramModal}
-          animationType="slide"
-          onRequestClose={() => setShowFullProgramModal(false)}
-        >
-          <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
-            <View style={styles.fullProgramHeader}>
-              <Pressable onPress={() => setShowFullProgramModal(false)} style={styles.backButton}>
-                <Ionicons name="close" size={28} color="#fff" />
-              </Pressable>
-              <Text style={styles.fullProgramTitle}>{activeAiProgram.programName}</Text>
-              <View style={{ width: 40 }} />
-            </View>
-
-            <ScrollView contentContainerStyle={styles.fullProgramContent}>
-              <View style={styles.programOverview}>
-                <Text style={styles.programOverviewLabel}>Total Duration</Text>
-                <Text style={styles.programOverviewValue}>{activeAiProgram.totalWeeks} weeks</Text>
-                <Text style={styles.programOverviewLabel}>Model</Text>
-                <Text style={styles.programOverviewValue}>{activeAiProgram.periodizationModel}</Text>
-              </View>
-
-              {activeAiProgram.weeks.map((week, weekIdx) => (
-                <View key={weekIdx} style={styles.fullProgramWeek}>
-                  <View style={styles.fullProgramWeekHeader}>
-                    <Text style={styles.fullProgramWeekTitle}>Week {week.weekNumber}</Text>
-                    <Text style={styles.fullProgramWeekPhase}>{week.phase}</Text>
-                    {week.isDeload && (
-                      <View style={styles.deloadBadge}>
-                        <Text style={styles.deloadBadgeText}>Deload</Text>
-                      </View>
-                    )}
-                  </View>
-
-                  {week.days.map((day, dayIdx) => (
-                    <View key={dayIdx} style={styles.fullProgramDay}>
-                      <View style={styles.fullProgramDayHeader}>
-                        <View>
-                          <Text style={styles.fullProgramDayName}>Day {day.dayNumber}: {day.dayName}</Text>
-                          <Text style={styles.fullProgramDayFocus}>{day.focus}</Text>
-                        </View>
-                        <Text style={styles.fullProgramDayDuration}>{day.estimatedDuration}min</Text>
-                      </View>
-                      
-                      {day.exercises.map((ex, exIdx) => (
-                        <View key={exIdx} style={styles.fullProgramExercise}>
-                          <Text style={styles.fullProgramExerciseName}>{exIdx + 1}. {ex.name}</Text>
-                          <Text style={styles.fullProgramExerciseDetails}>
-                            {ex.sets} × {ex.reps} • {ex.restSeconds}s rest
-                            {ex.notes && ` • ${ex.notes}`}
-                          </Text>
-                        </View>
-                      ))}
-                    </View>
-                  ))}
-                </View>
-              ))}
-
-              {activeAiProgram.cardioSchedule && (
-                <View style={styles.fullProgramCardio}>
-                  <Text style={styles.fullProgramSectionTitle}>🏃 Cardio Schedule</Text>
-                  <Text style={styles.cardioFrequency}>
-                    {activeAiProgram.cardioSchedule.frequency} sessions per week
-                  </Text>
-
-                  {activeAiProgram.cardioSchedule.weeks.map((week, weekIdx) => (
-                    <View key={weekIdx} style={styles.fullProgramCardioWeek}>
-                      <Text style={styles.fullProgramWeekTitle}>Week {week.weekNumber}</Text>
-                      {week.sessions.map((session, sessIdx) => (
-                        <View key={sessIdx} style={styles.fullProgramCardioSession}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                            <Text style={styles.fullProgramCardioDay}>{session.dayOfWeek}</Text>
-                            {(() => {
-                              const completedCardioSessions = activeAiProgram.completedCardioSessions || [];
-                              const sessionKey = `week${week.weekNumber}-${session.dayOfWeek}`;
-                              const isCompleted = completedCardioSessions.includes(sessionKey);
-                              return (
-                                <Ionicons
-                                  name={isCompleted ? 'checkmark-circle' : 'ellipse-outline'}
-                                  size={16}
-                                  color={isCompleted ? '#4CAF50' : '#666'}
-                                />
-                              );
-                            })()}
-                          </View>
-                          <Text style={styles.fullProgramCardioDetails}>
-                            {session.type} • {session.duration}min • {session.intensity}
-                          </Text>
-                          {session.notes && (
-                            <Text style={styles.fullProgramCardioNotes}>{session.notes}</Text>
-                          )}
-                        </View>
-                      ))}
-                    </View>
-                  ))}
-                </View>
-              )}
-            </ScrollView>
-          </LinearGradient>
-        </Modal>
       </LinearGradient>
     );
   }
 
   // EMPTY STATE - No active program (show even if there are archived programs)
-  if (!activeAiProgram) {
+  if (!activeAiProgram && days.length === 0) {
     return (
       <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
         <ScrollView contentContainerStyle={styles.emptyStateContainer}>
@@ -1381,29 +1298,6 @@ const WorkoutScreen: React.FC = () => {
               </Text>
               <View style={styles.emptyCardButton}>
                 <Text style={styles.emptyCardButtonText}>Get Quick Workout</Text>
-                <Ionicons name="arrow-forward" size={18} color="#fff" />
-              </View>
-            </LinearGradient>
-          </Pressable>
-
-          {/* READY-TO-GO PROGRAMS CARD */}
-          <Pressable 
-            style={styles.emptyCard}
-            onPress={() => navigation.navigate('ProgramList')}
-          >
-            <LinearGradient
-              colors={['rgba(156, 39, 176, 0.15)', 'rgba(233, 30, 99, 0.15)']}
-              style={styles.emptyCardGradient}
-            >
-              <View style={styles.emptyCardIcon}>
-                <Ionicons name="list" size={32} color="#9C27B0" />
-              </View>
-              <Text style={styles.emptyCardTitle}>Ready-to-Go Programs</Text>
-              <Text style={styles.emptyCardDescription}>
-                Choose from professionally designed firefighter training programs
-              </Text>
-              <View style={styles.emptyCardButton}>
-                <Text style={styles.emptyCardButtonText}>Browse Programs</Text>
                 <Ionicons name="arrow-forward" size={18} color="#fff" />
               </View>
             </LinearGradient>
@@ -1520,12 +1414,6 @@ const WorkoutScreen: React.FC = () => {
           >
             <Ionicons name="rocket" size={20} color="#fff" style={{ marginRight: 8 }} />
             <Text style={styles.buttonText}>Generate AI Program</Text>
-          </Pressable>
-          <Pressable
-            style={[styles.generateButton, { backgroundColor: '#333', marginTop: 12 }]}
-            onPress={() => navigation.navigate('ProgramList')}
-          >
-            <Text style={styles.buttonText}>Browse Programs</Text>
           </Pressable>
         </View>
         
@@ -1739,7 +1627,7 @@ const WorkoutScreen: React.FC = () => {
           Toast.show({
             type: 'success',
             text1: 'Program Created!',
-            text2: 'Check your programs to activate it',
+            text2: 'Your new program is active',
           });
           setShowProgramModal(false);
         }}
@@ -2382,159 +2270,6 @@ dayTabText: {
   actionButtonCancel: {
     backgroundColor: '#333',
     justifyContent: 'center',
-  },
-  // Full Program Modal Styles
-  fullProgramHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    paddingTop: 50,
-    borderBottomWidth: 1,
-    borderBottomColor: '#333',
-  },
-  fullProgramTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#fff',
-  },
-  fullProgramContent: {
-    padding: 16,
-    paddingBottom: 40,
-  },
-  programOverview: {
-    backgroundColor: '#2a2a2a',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 20,
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  programOverviewLabel: {
-    fontSize: 12,
-    color: '#999',
-    marginBottom: 4,
-  },
-  programOverviewValue: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  fullProgramWeek: {
-    marginBottom: 24,
-    backgroundColor: '#1a1a1a',
-    borderRadius: 12,
-    padding: 16,
-  },
-  fullProgramWeekHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#333',
-  },
-  fullProgramWeekTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#FF3C38',
-  },
-  fullProgramWeekPhase: {
-    fontSize: 14,
-    color: '#999',
-  },
-  deloadBadge: {
-    backgroundColor: '#FF9800',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  deloadBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#fff',
-  },
-  fullProgramDay: {
-    marginBottom: 16,
-    backgroundColor: '#2a2a2a',
-    padding: 12,
-    borderRadius: 8,
-  },
-  fullProgramDayHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-  },
-  fullProgramDayName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  fullProgramDayFocus: {
-    fontSize: 14,
-    color: '#ccc',
-    marginTop: 2,
-  },
-  fullProgramDayDuration: {
-    fontSize: 14,
-    color: '#FF9800',
-    fontWeight: '500',
-  },
-  fullProgramExercise: {
-    marginBottom: 8,
-    paddingLeft: 8,
-  },
-  fullProgramExerciseName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#fff',
-    marginBottom: 2,
-  },
-  fullProgramExerciseDetails: {
-    fontSize: 13,
-    color: '#aaa',
-  },
-  fullProgramCardio: {
-    marginTop: 8,
-    backgroundColor: 'rgba(255, 107, 53, 0.1)',
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 107, 53, 0.3)',
-  },
-  fullProgramSectionTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#fff',
-    marginBottom: 8,
-  },
-  fullProgramCardioWeek: {
-    marginTop: 16,
-  },
-  fullProgramCardioSession: {
-    backgroundColor: '#2a2a2a',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 8,
-  },
-  fullProgramCardioDay: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#FF6B35',
-    marginBottom: 4,
-  },
-  fullProgramCardioDetails: {
-    fontSize: 14,
-    color: '#fff',
-    marginBottom: 2,
-  },
-  fullProgramCardioNotes: {
-    fontSize: 12,
-    color: '#999',
-    fontStyle: 'italic',
-    marginTop: 4,
   },
 });
 export default WorkoutScreen;

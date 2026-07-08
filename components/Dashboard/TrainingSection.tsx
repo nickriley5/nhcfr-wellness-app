@@ -102,9 +102,9 @@ export default function TrainingSection({
             </Text>
             <Pressable
               style={[styles.btn, styles.btnSecondary]}
-              onPress={() => navigation.navigate('ProgramList')}
+              onPress={() => navigation.navigate('Workout')}
             >
-              <Text style={styles.btnSecondaryText}>Browse Programs</Text>
+              <Text style={styles.btnSecondaryText}>Open Workout</Text>
             </Pressable>
           </>
         )}

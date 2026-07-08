@@ -327,7 +327,7 @@ export default function TodaysWorkoutCard({
             <>
               <Text style={dashboardStyles.workoutTitle}>No Workout Scheduled</Text>
               <Text style={dashboardStyles.helperText}>
-                Check your weekly schedule or browse available workouts.
+                Check your weekly schedule or open the Workout tab to generate a program.
               </Text>
               <View style={dashboardStyles.rowButtons}>
                 <Pressable
@@ -335,12 +335,6 @@ export default function TodaysWorkoutCard({
                   onPress={() => setShowEnvironmentCalendar(true)}
                 >
                   <Text style={dashboardStyles.btnSecondaryText}>Adjust Schedule</Text>
-                </Pressable>
-                <Pressable
-                  style={[dashboardStyles.btn, dashboardStyles.btnSecondary]}
-                  onPress={() => navigation.navigate('ProgramList')}
-                >
-                  <Text style={dashboardStyles.btnSecondaryText}>Browse Programs</Text>
                 </Pressable>
               </View>
             </>
