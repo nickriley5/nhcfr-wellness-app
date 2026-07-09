@@ -226,6 +226,23 @@ export function CustomDrawerContent(props: DrawerContentComponentProps) {
 // Move this function outside the DrawerNavigation component
 const renderCustomDrawerContent = (props: DrawerContentComponentProps) => <CustomDrawerContent {...props} />;
 
+const MainTabsHeader = ({ onOpenMenu }: { onOpenMenu: () => void }) => {
+  const insets = useSafeAreaInsets();
+
+  return (
+    <View style={[styles.appHeader, { paddingTop: insets.top }]}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Open menu"
+        onPress={onOpenMenu}
+        style={styles.menuButton}
+      >
+        <Feather name="menu" size={24} color="#fff" />
+      </Pressable>
+    </View>
+  );
+};
+
 const DrawerNavigation: React.FC = () => (
   <Drawer.Navigator
     initialRouteName="MainTabs"
@@ -242,18 +259,7 @@ const DrawerNavigation: React.FC = () => (
       name="MainTabs"
       options={({ navigation }) => ({
         headerShown: true,
-        headerTitle: '',
-        headerStyle: { backgroundColor: '#1e1e1e' },
-        headerLeft: () => (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Open menu"
-            onPress={() => navigation.openDrawer()}
-            style={styles.menuButton}
-          >
-            <Feather name="menu" size={24} color="#fff" />
-          </Pressable>
-        ),
+        header: () => <MainTabsHeader onOpenMenu={() => navigation.openDrawer()} />,
         drawerItemStyle: { height: 0 },
         drawerLabel: () => null,
       })}
@@ -287,6 +293,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 4,
+  },
+  appHeader: {
+    backgroundColor: '#1e1e1e',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
+    minHeight: 48,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
   },
   drawerLabel: { color: '#fff' },
 });

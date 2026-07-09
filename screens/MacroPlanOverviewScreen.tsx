@@ -230,7 +230,18 @@ const MacroPlanOverviewScreen = () => {
             text="Go to Meal Plan"
             variant="default"
             onPress={() => {
-              navigation.replace('MealPlan');
+              navigation.reset({
+                index: 0,
+                routes: [
+                  {
+                    name: 'AppDrawer',
+                    params: {
+                      screen: 'MainTabs',
+                      params: { screen: 'MealPlan' },
+                    },
+                  },
+                ],
+              });
             }}
           />
         </ScrollView>

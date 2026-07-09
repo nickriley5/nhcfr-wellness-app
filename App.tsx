@@ -13,7 +13,6 @@ import Toast from 'react-native-toast-message';
 // Screens
 import LoginScreen from './screens/LoginScreen';
 import RegisterScreen from './screens/RegisterScreen';
-import MealPlanScreen from './screens/MealPlanScreen';
 import CheckInScreen from './screens/CheckInScreen';
 import DrawerNavigation from './navigation/DrawerNavigation';
 import WorkoutDetailScreen from './screens/WorkoutDetailScreen';
@@ -115,7 +114,6 @@ export type RootStackParamList = {
   ProgramSelection: undefined;
   ProgramPreview: { programId: string };
   MacroCalculator: undefined;
-  MealPlan: undefined;
   MealGoalSettings: undefined;
   DietStyleSelection: undefined;
   GoalSettings: undefined;
@@ -213,7 +211,6 @@ const AppNavigator = () => {
     <Stack.Screen name="EditProfile" component={EditProfileScreen} />
     <Stack.Screen name="ProgramList" component={ProgramListScreen} options={{ headerShown: false }} />
     <Stack.Screen name="ProgramPreview" component={ProgramPreviewScreen} options={{ headerShown: false }} />
-    <Stack.Screen name="MealPlan" component={MealPlanScreen} />
     <Stack.Screen name="MealGoalSettings" component={GoalSettingsScreen} />
     <Stack.Screen name="GoalSettings" component={GoalSettingsScreen} />
     <Stack.Screen name="MacroPlanOverview" component={MacroPlanOverviewScreen} />
