@@ -18,6 +18,10 @@ interface TodaysWorkoutCardProps {
     currentDayName: string;
     isRestDay: boolean;
     todayEnvironment: string;
+    todayOverride?: {
+      type: 'rest';
+      reason?: string;
+    };
   } | null;
   todayWorkoutSummary: {
     isCompleted: boolean;
@@ -182,7 +186,7 @@ export default function TodaysWorkoutCard({
                 style={[dashboardStyles.btn, dashboardStyles.btnPrimary]}
                 onPress={() => setShowEnvironmentCalendar(true)}
               >
-                <Text style={dashboardStyles.btnPrimaryText}>Set Weekly Schedule</Text>
+                <Text style={dashboardStyles.btnPrimaryText}>Set My Weekly Schedule</Text>
               </Pressable>
             </>
           ) : programInfo.isRestDay ? (
@@ -190,9 +194,15 @@ export default function TodaysWorkoutCard({
               <Text style={dashboardStyles.workoutTitle}>
                 <Ionicons name="bed-outline" size={20} color="#d32f2f" /> Rest Day
               </Text>
-              <Text style={dashboardStyles.workoutMeta}>Recovery and restoration day</Text>
+              <Text style={dashboardStyles.workoutMeta}>
+                {programInfo.todayOverride?.type === 'rest'
+                  ? 'AI coach recovery override'
+                  : 'Recovery and restoration day'}
+              </Text>
               <Text style={dashboardStyles.helperText}>
-                Take time to rest, stretch, or do light activities. Your next workout is coming up!
+                {programInfo.todayOverride?.type === 'rest'
+                  ? 'Your scheduled workout is paused for today. Your weekly schedule is unchanged.'
+                  : 'Take time to rest, stretch, or do light activities. Your next workout is coming up!'}
               </Text>
               <Pressable
                 style={dashboardStyles.linkWrap}

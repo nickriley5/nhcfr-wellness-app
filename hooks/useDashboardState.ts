@@ -40,6 +40,10 @@ interface ProgramInfo {
   currentDayName: string;
   isRestDay: boolean;
   todayEnvironment: string;
+  todayOverride?: {
+    type: 'rest';
+    reason?: string;
+  };
 }
 
 interface TomorrowInfo {
@@ -101,6 +105,13 @@ interface ConsistencyData {
   hydrationDays: number;
   recentPRs: string[];
 }
+
+const getLocalDateId = (date = new Date()) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 export function useDashboardState(bump: number, programExists: boolean) {
   const [hydrationToday, setHydrationToday] = useState<HydrationState>({
@@ -221,6 +232,16 @@ export function useDashboardState(bump: number, programExists: boolean) {
 
         const profile = profileDoc.data();
         const hasSchedule = !!profile?.schedule?.environmentMap;
+        const todayOverrideId = getLocalDateId();
+        const todayOverrideSnap = await getDoc(doc(db, 'users', uid, 'dailyOverrides', todayOverrideId));
+        const todayOverride = todayOverrideSnap.exists() ? todayOverrideSnap.data() : null;
+        const restOverride =
+          todayOverride?.type === 'rest' && todayOverride?.source === 'ai-readiness'
+            ? {
+                type: 'rest' as const,
+                reason: typeof todayOverride.reason === 'string' ? todayOverride.reason : undefined,
+              }
+            : undefined;
 
         // Determine current day status
         const today = new Date().toLocaleDateString('en-US', { weekday: 'short' });
@@ -269,12 +290,19 @@ export function useDashboardState(bump: number, programExists: boolean) {
           }
         }
 
+        if (restOverride) {
+          isRestDay = true;
+          todayEnvironment = 'off';
+          currentDayName = 'Recovery Day';
+        }
+
         setProgramInfo({
           daysPerWeek,
           hasSchedule,
           currentDayName,
           isRestDay,
           todayEnvironment,
+          todayOverride: restOverride,
         });
       } catch (error) {
         logSafeError('Error loading program info:', error);

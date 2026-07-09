@@ -53,7 +53,7 @@ import { useDashboardState } from '../hooks/useDashboardState';
 import { dashboardStyles } from '../styles/DashboardScreen.styles';
 import { analyzeTrainingReadiness } from '../utils/ai/aiService';
 import { getAuth } from 'firebase/auth';
-import { getFirestore, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
+import { getFirestore, collection, query, where, orderBy, limit, getDocs, doc, setDoc } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
 
 const logSafeError = (label: string, err: unknown) => {
@@ -66,6 +66,13 @@ const logSafeError = (label: string, err: unknown) => {
   } catch {
     console.error(label, String(err));
   }
+};
+
+const getLocalDateId = (date = new Date()) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 };
 
 export default function DashboardScreen() {
@@ -452,13 +459,42 @@ export default function DashboardScreen() {
   };
 
   // ✅ Coach Recommendation Banner Handlers
-  const handleTakeRestDay = () => {
-    setShowCoachBanner(false);
-    Alert.alert(
-      '🛏️ Rest Day Confirmed',
-      'Smart choice! Your body will thank you. Focus on recovery today.',
-      [{ text: 'Got it', style: 'default' }]
-    );
+  const handleTakeRestDay = async () => {
+    const auth = getAuth(getApp());
+    const firestore = getFirestore(getApp());
+    const uid = auth.currentUser?.uid;
+    if (!uid) {
+      return;
+    }
+
+    try {
+      const todayOverrideId = getLocalDateId();
+      await setDoc(
+        doc(firestore, 'users', uid, 'dailyOverrides', todayOverrideId),
+        {
+          type: 'rest',
+          source: 'ai-readiness',
+          reason: coachRecommendation?.reasoning || coachRecommendation?.coachMessage || '',
+          createdAt: new Date(),
+        },
+        { merge: true }
+      );
+
+      setShowCoachBanner(false);
+      setBump(prev => prev + 1);
+      Alert.alert(
+        '🛏️ Rest Day Confirmed',
+        'Smart choice. Today has been marked as a recovery day, and your weekly schedule is unchanged.',
+        [{ text: 'Got it', style: 'default' }]
+      );
+    } catch (error) {
+      logSafeError('Error saving rest day override:', error);
+      Alert.alert(
+        'Could Not Save Rest Day',
+        'Please try again so the dashboard can update for today.',
+        [{ text: 'OK', style: 'default' }]
+      );
+    }
   };
 
   const handleTrainAnyway = () => {
@@ -585,9 +621,12 @@ export default function DashboardScreen() {
             style={dashboardStyles.headerScheduleButton}
             onPress={() => setShowEnvironmentCalendar(true)}
             accessibilityRole="button"
-            accessibilityLabel="Open schedule"
+            accessibilityLabel="Set weekly schedule"
           >
-            <Ionicons name="calendar-outline" size={22} color="#fff" />
+            <Ionicons name="calendar-outline" size={18} color="#fff" />
+            <Text style={dashboardStyles.headerScheduleButtonText}>
+              Set Weekly Schedule
+            </Text>
           </Pressable>
         </View>
 

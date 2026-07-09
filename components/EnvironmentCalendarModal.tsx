@@ -14,13 +14,6 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-const options = [
-  { label: 'Gym', value: 'gym', icon: 'dumbbell' },
-  { label: 'Station', value: 'station', icon: 'fire-truck' },
-  { label: 'Home', value: 'home', icon: 'home' },
-  { label: 'Off / Recovery', value: 'off', icon: 'bed' },
-];
-
 const EnvironmentCalendarModal = ({
   visible,
   onClose,
@@ -28,8 +21,11 @@ const EnvironmentCalendarModal = ({
   visible: boolean;
   onClose: () => void;
 }) => {
-  const [selections, setSelections] = useState<{ [key: string]: string }>({});
+  const [trainingDays, setTrainingDays] = useState<Set<string>>(new Set());
   const [requiredRestDays, setRequiredRestDays] = useState<number>(2);
+
+  const maxTrainingDays = Math.max(0, days.length - requiredRestDays);
+  const recoveryDays = days.length - trainingDays.size;
 
   useEffect(() => {
     const loadData = async () => {
@@ -38,43 +34,69 @@ const EnvironmentCalendarModal = ({
 
       const profileSnap = await getDoc(doc(db, 'users', uid));
       const profile = profileSnap.data();
+      const environmentMap = profile?.schedule?.environmentMap;
+      const savedTrainingDays = profile?.schedule?.trainingDays;
 
-      if (profile?.schedule?.environmentMap) {
-        setSelections(profile.schedule.environmentMap);
+      if (Array.isArray(savedTrainingDays)) {
+        setTrainingDays(
+          new Set(savedTrainingDays.filter((day: string) => days.includes(day)))
+        );
+      } else if (environmentMap) {
+        setTrainingDays(
+          new Set(days.filter((day) => environmentMap[day] && environmentMap[day] !== 'off'))
+        );
       } else {
-        setSelections({
-          Mon: 'gym',
-          Tue: 'station',
-          Wed: 'station',
-          Thu: 'home',
-          Fri: 'gym',
-          Sat: 'home',
-          Sun: 'off',
-        });
+        setTrainingDays(new Set(['Mon', 'Tue', 'Thu', 'Fri', 'Sat']));
       }
 
-      // Load rest days required from program
       if (profile?.programMeta?.restDaysRequired) {
         setRequiredRestDays(profile.programMeta.restDaysRequired);
       } else {
-        setRequiredRestDays(2); // fallback if not defined
+        setRequiredRestDays(2);
       }
     };
 
     if (visible) {loadData();}
   }, [visible]);
 
-  const handleSelect = (day: string, value: string) => {
-    setSelections((prev: { [key: string]: string }) => ({ ...prev, [day]: value }));
+  const handleToggleTrainingDay = (day: string) => {
+    setTrainingDays((prev) => {
+      const next = new Set(prev);
+
+      if (next.has(day)) {
+        next.delete(day);
+        return next;
+      }
+
+      if (next.size >= maxTrainingDays) {
+        Alert.alert(
+          'Recovery Built In',
+          `This program needs at least ${requiredRestDays} recovery day(s). Remove a training day before adding another.`
+        );
+        return prev;
+      }
+
+      next.add(day);
+      return next;
+    });
   };
 
   const handleSave = async () => {
-    const restDayCount = Object.values(selections).filter((v) => v === 'off').length;
+    const selectedTrainingDays = days.filter((day) => trainingDays.has(day));
+    const restDayCount = days.length - selectedTrainingDays.length;
 
     if (restDayCount < requiredRestDays) {
       Alert.alert(
         'Not Enough Rest Days',
         `This program requires at least ${requiredRestDays} rest day(s). Please adjust your selections.`
+      );
+      return;
+    }
+
+    if (selectedTrainingDays.length === 0) {
+      Alert.alert(
+        'Choose Training Days',
+        'Pick at least one day you usually want available for training.'
       );
       return;
     }
@@ -90,13 +112,14 @@ const EnvironmentCalendarModal = ({
         doc(db, 'users', uid),
         {
           schedule: {
-            environmentMap: selections,
+            environmentMap: buildEnvironmentMap(trainingDays),
+            trainingDays: selectedTrainingDays,
           },
         },
         { merge: true }
       );
 
-      Alert.alert('Success', 'Weekly schedule saved!');
+      Alert.alert('Schedule Saved', 'Your weekly training rhythm is ready.');
       onClose();
     } catch (error) {
       console.error('Error saving schedule:', error);
@@ -108,52 +131,82 @@ const EnvironmentCalendarModal = ({
     <Modal visible={visible} transparent animationType="slide">
       <View style={styles.overlay}>
         <View style={styles.container}>
-          <Text style={styles.title}>Set Weekly Training Environment</Text>
-          <ScrollView>
-            {days.map((day) => (
-              <View key={day} style={styles.row}>
-                <Text style={styles.dayLabel}>{day}</Text>
-                <View style={styles.iconRow}>
-                  {options.map((opt) => {
-                    const isSelected = selections[day] === opt.value;
-                    return (
-                      <Pressable
-                        key={opt.value}
-                        style={[
-                          styles.option,
-                          isSelected && styles.selectedOption,
-                        ]}
-                        onPress={() => handleSelect(day, opt.value)}
-                      >
-                        <MaterialCommunityIcons
-                          name={opt.icon}
-                          size={26}
-                          color={isSelected ? '#fff' : '#aaa'}
-                        />
-                        <Text
-                          style={[
-                            styles.optionText,
-                            isSelected && styles.selectedText,
-                          ]}
-                        >
-                          {opt.label}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
+          <View style={styles.header}>
+            <View style={styles.headerIcon}>
+              <MaterialCommunityIcons name="calendar-week" size={24} color="#fff" />
+            </View>
+            <View style={styles.headerCopy}>
+              <Text style={styles.eyebrow}>Weekly setup</Text>
+              <Text style={styles.title}>Training Rhythm</Text>
+            </View>
+          </View>
+
+          <ScrollView contentContainerStyle={styles.scrollContent}>
+            <View style={styles.summaryCard}>
+              <View style={styles.summaryItem}>
+                <Text style={styles.summaryValue}>{trainingDays.size}</Text>
+                <Text style={styles.summaryLabel}>Training days</Text>
               </View>
-            ))}
+              <View style={styles.summaryDivider} />
+              <View style={styles.summaryItem}>
+                <Text style={styles.summaryValue}>{recoveryDays}</Text>
+                <Text style={styles.summaryLabel}>Recovery days</Text>
+              </View>
+            </View>
+
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Days available</Text>
+                <Text style={styles.sectionMeta}>Max {maxTrainingDays} training</Text>
+              </View>
+              <View style={styles.dayGrid}>
+                {days.map((day) => {
+                  const isSelected = trainingDays.has(day);
+                  return (
+                    <Pressable
+                      key={day}
+                      style={[
+                        styles.dayChip,
+                        isSelected && styles.selectedDayChip,
+                      ]}
+                      onPress={() => handleToggleTrainingDay(day)}
+                    >
+                      <Text
+                        style={[
+                          styles.dayChipText,
+                          isSelected && styles.selectedDayChipText,
+                        ]}
+                      >
+                        {day}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.dayChipMeta,
+                          isSelected && styles.selectedDayChipMeta,
+                        ]}
+                      >
+                        {isSelected ? 'Train' : 'Recover'}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+
+            <View style={styles.recoveryNote}>
+              <MaterialCommunityIcons name="shield-check" size={18} color="#22c55e" />
+              <Text style={styles.recoveryNoteText}>
+                Minimum recovery stays locked at {requiredRestDays} day(s). Daily check-ins can still pause today without rewriting this rhythm.
+              </Text>
+            </View>
           </ScrollView>
-          <Text style={styles.requirementNote}>
-            Required Rest Days: {requiredRestDays} (Off / Recovery)
-          </Text>
+
           <View style={styles.buttonRow}>
             <Pressable style={styles.cancelButton} onPress={onClose}>
               <Text style={styles.btnText}>Cancel</Text>
             </Pressable>
             <Pressable style={styles.saveButton} onPress={handleSave}>
-              <Text style={styles.btnText}>Save</Text>
+              <Text style={styles.btnText}>Save Schedule</Text>
             </Pressable>
           </View>
         </View>
@@ -161,6 +214,13 @@ const EnvironmentCalendarModal = ({
     </Modal>
   );
 };
+
+const buildEnvironmentMap = (trainingDays: Set<string>) => (
+  days.reduce<{ [key: string]: string }>((acc, day) => {
+    acc[day] = trainingDays.has(day) ? 'gym' : 'off';
+    return acc;
+  }, {})
+);
 
 const styles = StyleSheet.create({
   overlay: {
@@ -170,65 +230,158 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   container: {
-    backgroundColor: '#1e1e2e',
-    borderRadius: 12,
-    padding: 20,
+    backgroundColor: '#111827',
+    borderRadius: 16,
+    padding: 18,
     maxHeight: '90%',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 18,
+  },
+  headerIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: '#d32f2f',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  headerCopy: {
+    flex: 1,
+  },
+  eyebrow: {
+    color: '#9ca3af',
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    marginBottom: 2,
   },
   title: {
     color: '#fff',
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: '700',
-    marginBottom: 16,
-    textAlign: 'center',
   },
-  requirementNote: {
-    color: '#ccc',
-    fontSize: 13,
-    textAlign: 'center',
-    marginTop: 8,
+  scrollContent: {
+    paddingBottom: 4,
   },
-  row: { marginBottom: 16 },
-  dayLabel: {
+  summaryCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0f172a',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#253044',
+    paddingVertical: 14,
+    marginBottom: 18,
+  },
+  summaryItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  summaryValue: {
     color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 8,
+    fontSize: 26,
+    fontWeight: '800',
   },
-  iconRow: {
+  summaryLabel: {
+    color: '#9ca3af',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  summaryDivider: {
+    width: 1,
+    height: 42,
+    backgroundColor: '#253044',
+  },
+  section: {
+    marginBottom: 20,
+  },
+  sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-  },
-  option: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: 10,
     alignItems: 'center',
-    padding: 10,
-    width: '23%',
+    marginBottom: 10,
   },
-  selectedOption: {
-    backgroundColor: '#d32f2f',
+  sectionTitle: {
+    color: '#f9fafb',
+    fontSize: 16,
+    fontWeight: '800',
+    marginBottom: 10,
   },
-  optionText: {
-    color: '#aaa',
+  sectionMeta: {
+    color: '#9ca3af',
     fontSize: 12,
-    marginTop: 6,
-    textAlign: 'center',
+    fontWeight: '700',
+    marginBottom: 10,
   },
-  selectedText: {
+  dayGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginHorizontal: -4,
+  },
+  dayChip: {
+    width: '31.8%',
+    minHeight: 74,
+    margin: 4,
+    borderRadius: 12,
+    backgroundColor: '#1f2937',
+    borderWidth: 1,
+    borderColor: '#374151',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectedDayChip: {
+    backgroundColor: '#d32f2f',
+    borderColor: '#ef4444',
+  },
+  dayChipText: {
+    color: '#f9fafb',
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  selectedDayChipText: {
     color: '#fff',
+  },
+  dayChipMeta: {
+    color: '#9ca3af',
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 4,
+  },
+  selectedDayChipMeta: {
+    color: '#fee2e2',
+  },
+  recoveryNote: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#10231b',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#1f5138',
+    padding: 12,
+  },
+  recoveryNoteText: {
+    flex: 1,
+    color: '#bbf7d0',
+    fontSize: 12,
     fontWeight: '600',
+    lineHeight: 17,
+    marginLeft: 8,
   },
   buttonRow: {
     flexDirection: 'row',
-    marginTop: 20,
+    marginTop: 18,
     justifyContent: 'space-between',
   },
   cancelButton: {
     flex: 1,
     marginRight: 10,
-    backgroundColor: '#555',
-    padding: 12,
+    backgroundColor: '#374151',
+    padding: 14,
     borderRadius: 8,
     alignItems: 'center',
   },
@@ -236,7 +389,7 @@ const styles = StyleSheet.create({
     flex: 1,
     marginLeft: 10,
     backgroundColor: '#d32f2f',
-    padding: 12,
+    padding: 14,
     borderRadius: 8,
     alignItems: 'center',
   },

@@ -27,7 +27,7 @@ export const dashboardStyles = StyleSheet.create({
     paddingRight: 16,
   },
   headerScheduleButton: {
-    width: 44,
+    width: 132,
     height: 44,
     backgroundColor: '#d32f2f',
     borderWidth: 1,
@@ -35,6 +35,16 @@ export const dashboardStyles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    flexDirection: 'row',
+    paddingHorizontal: 10,
+  },
+  headerScheduleButtonText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '800',
+    marginLeft: 6,
+    textAlign: 'center',
+    flexShrink: 1,
   },
   header: {
     fontSize: 30,
