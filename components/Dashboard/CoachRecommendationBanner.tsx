@@ -14,7 +14,7 @@ interface Props {
 
 export const CoachRecommendationBanner: React.FC<Props> = ({
   recommendation,
-  severity,
+  severity: _severity,
   coachMessage,
   onTakeRestDay,
   onTrainAnyway,

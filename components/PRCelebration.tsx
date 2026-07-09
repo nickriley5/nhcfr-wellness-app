@@ -26,7 +26,7 @@ const PRCelebration: React.FC<PRCelebrationProps> = ({ visible, messages, onClos
       }, 3000);
       return () => clearTimeout(timer);
     }
-  }, [visible, onClose]);
+  }, [visible, messages, onClose]);
 
   return (
     <Modal visible={visible} transparent animationType="fade">

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -6,7 +6,6 @@ import {
   Pressable,
   ScrollView,
   TextInput,
-  Alert,
   Vibration,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
@@ -18,27 +17,10 @@ import Sound from 'react-native-sound';
 import Video from 'react-native-video';
 import YoutubePlayer from 'react-native-youtube-iframe';
 import { auth, db } from '../firebase';
-import { doc, setDoc, Timestamp, collection, getDoc, getDocs, query, where, updateDoc } from 'firebase/firestore';
+import { doc, setDoc, Timestamp, collection, getDocs, query, where, updateDoc } from 'firebase/firestore';
 import Toast from 'react-native-toast-message';
 
 type CardioWorkoutRouteProp = RouteProp<RootStackParamList, 'CardioWorkout'>;
-
-interface CardioSession {
-  dayOfWeek: string;
-  type: string;
-  duration: number;
-  intensity: string;
-  notes?: string;
-  targetHeartRate?: string;
-  circuit?: {
-    rounds: number;
-    workSec: number;
-    restSec: number;
-    exercises: Array<string | { name: string; notes?: string }>;
-  };
-  warmup?: Array<string | { name: string; notes?: string }>;
-  cooldown?: Array<string | { name: string; notes?: string }>;
-}
 
 const CardioWorkoutScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -109,19 +91,25 @@ const CardioWorkoutScreen: React.FC = () => {
   const warmupList = normalizePrepList(session?.warmup);
   const cooldownList = normalizePrepList(session?.cooldown);
 
-  const intervalConfig = session?.circuit
-    ? {
-        rounds: session.circuit.rounds,
-        workSec: session.circuit.workSec,
-        restSec: session.circuit.restSec,
-      }
-    : parseIntervalNotes(session?.notes);
+  const intervalConfig = useMemo(
+    () => session?.circuit
+      ? {
+          rounds: session.circuit.rounds,
+          workSec: session.circuit.workSec,
+          restSec: session.circuit.restSec,
+        }
+      : parseIntervalNotes(session?.notes),
+    [session?.circuit, session?.notes]
+  );
 
-  const suggestedCircuit: Array<string | { name: string; notes?: string }> = session?.circuit?.exercises?.length
-    ? session.circuit.exercises
-    : isIntervalWorkout
-      ? ['Burpees', 'Kettlebell Swings', 'Mountain Climbers', 'Jump Rope', 'Air Squats']
-      : [];
+  const suggestedCircuit: Array<string | { name: string; notes?: string }> = useMemo(
+    () => session?.circuit?.exercises?.length
+      ? session.circuit.exercises
+      : isIntervalWorkout
+        ? ['Burpees', 'Kettlebell Swings', 'Mountain Climbers', 'Jump Rope', 'Air Squats']
+        : [],
+    [isIntervalWorkout, session?.circuit?.exercises]
+  );
 
   const isCircuitFormat = !!intervalConfig && suggestedCircuit.length > 0;
 
@@ -168,8 +156,11 @@ const CardioWorkoutScreen: React.FC = () => {
     return { name, notes, matched };
   };
 
-  const resolvedCircuit = suggestedCircuit.map(
-    (exercise: string | { name: string; notes?: string }) => resolveCircuitExercise(exercise)
+  const resolvedCircuit = useMemo(
+    () => suggestedCircuit.map(
+      (exercise: string | { name: string; notes?: string }) => resolveCircuitExercise(exercise)
+    ),
+    [suggestedCircuit]
   );
 
   const formatPrepLine = (item: { name: string; notes?: string }) =>
@@ -221,17 +212,17 @@ const CardioWorkoutScreen: React.FC = () => {
     };
   }, []);
 
-  const playBeep = () => {
+  const playBeep = useCallback(() => {
     const sound = beepRef.current;
     if (!sound) return;
     sound.stop(() => sound.play());
-  };
+  }, []);
 
-  const playBeepSequence = (count: number) => {
+  const playBeepSequence = useCallback((count: number) => {
     for (let i = 0; i < count; i += 1) {
       setTimeout(() => playBeep(), i * 200);
     }
-  };
+  }, [playBeep]);
 
   // Interval timer logic (HIIT/rounds)
   useEffect(() => {
@@ -308,7 +299,19 @@ const CardioWorkoutScreen: React.FC = () => {
     }, 250);
 
     return () => clearInterval(interval);
-  }, [intervalActive, intervalPaused, intervalPhase, intervalConfig, intervalRound]);
+  }, [
+    intervalActive,
+    intervalConfig,
+    intervalElapsedMs,
+    intervalExerciseIndex,
+    intervalPaused,
+    intervalPhase,
+    intervalRound,
+    isCircuitFormat,
+    playBeep,
+    playBeepSequence,
+    resolvedCircuit.length,
+  ]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);

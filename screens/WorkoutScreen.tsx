@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -21,6 +21,7 @@ import type { ProgramDay } from '../types/Exercise';
 import Toast from 'react-native-toast-message';
 // import { regenerateActiveProgram } from '../utils/programService';
 import { resolveExerciseDetails } from '../utils/exerciseUtils';
+import { resolveExercise } from '../utils/exerciseMatching';
 import AIWorkoutAssistant from '../components/AIWorkoutAssistant';
 import PeriodizedProgramModal from '../components/Modals/PeriodizedProgramModal';
 import type { PeriodizedProgram } from '../utils/ai/aiService';
@@ -94,7 +95,6 @@ const WorkoutScreen: React.FC = () => {
   const [selectedWeekIdx, setSelectedWeekIdx] = useState(0);
   const [showAIAssistant, setShowAIAssistant] = useState(false);
   const [selectedDayIdx, setSelectedDayIdx] = useState(0);
-  const [showFullSchedule, setShowFullSchedule] = useState(false);
   const [showProgramModal, setShowProgramModal] = useState(false);
   const [userProfile, setUserProfile] = useState<any>(null);
   
@@ -479,83 +479,8 @@ const WorkoutScreen: React.FC = () => {
     }
   };
 
-  // Check if program is completed and prompt for next action
-  const checkProgramCompletion = async () => {
-    if (!activeAiProgram || !activeAiProgram.id) return;
-    
-    const currentWeek = activeAiProgram.currentWeek || currentWeekNum;
-    const totalGeneratedWeeks = activeAiProgram.weeks.length;
-    const totalPlannedWeeks = activeAiProgram.totalWeeks;
-    
-    // Check if user completed all generated weeks
-    if (currentWeek > totalGeneratedWeeks) {
-      const uid = auth.currentUser?.uid;
-      if (!uid) return;
-      
-      // Check if program is fully complete or needs more weeks
-      if (totalGeneratedWeeks >= totalPlannedWeeks) {
-        // Program is complete!
-        Alert.alert(
-          '🎉 Program Completed!',
-          `Congratulations! You've completed ${activeAiProgram.programName}. What would you like to do next?`,
-          [
-            {
-              text: 'Archive & Build New Program',
-              onPress: async () => {
-                const { updateDoc, Timestamp } = await import('firebase/firestore');
-                await updateDoc(doc(db, 'users', uid, 'aiPrograms', activeAiProgram.id!), {
-                  isActive: false,
-                  isArchived: true,
-                  completedAt: Timestamp.now(),
-                  archivedAt: Timestamp.now(),
-                });
-                setShowProgramModal(true);
-                fetchAiPrograms();
-              },
-            },
-            {
-              text: 'Restart This Program',
-              onPress: () => {
-                setCurrentWeekNum(1);
-                setCurrentDayNum(1);
-              },
-            },
-            { text: 'Maybe Later', style: 'cancel' },
-          ]
-        );
-      } else {
-        // Need to generate next block of weeks
-        Alert.alert(
-          '📈 Ready for More?',
-          `You've completed ${totalGeneratedWeeks} weeks. Generate the next block to continue your progress!`,
-          [
-            {
-              text: 'Generate Next 2 Weeks',
-              onPress: () => {
-                Toast.show({
-                  type: 'info',
-                  text1: 'Coming Soon',
-                  text2: 'Next block generation feature in development',
-                });
-                // TODO: Implement next block generation
-              },
-            },
-            { text: 'Not Yet', style: 'cancel' },
-          ]
-        );
-      }
-    }
-  };
-
-  // Check completion on week/day change
-  useEffect(() => {
-    if (activeAiProgram) {
-      checkProgramCompletion();
-    }
-  }, [currentWeekNum, currentDayNum]);
-
   // Load AI-generated programs
-  const fetchAiPrograms = async () => {
+  const fetchAiPrograms = useCallback(async () => {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
     
@@ -691,7 +616,82 @@ const WorkoutScreen: React.FC = () => {
     } catch (err) {
       console.error('Error loading AI programs:', err);
     }
-  };
+  }, []);
+
+  // Check if program is completed and prompt for next action
+  const checkProgramCompletion = useCallback(async () => {
+    if (!activeAiProgram || !activeAiProgram.id) return;
+    
+    const currentWeek = activeAiProgram.currentWeek || currentWeekNum;
+    const totalGeneratedWeeks = activeAiProgram.weeks.length;
+    const totalPlannedWeeks = activeAiProgram.totalWeeks;
+    
+    // Check if user completed all generated weeks
+    if (currentWeek > totalGeneratedWeeks) {
+      const uid = auth.currentUser?.uid;
+      if (!uid) return;
+      
+      // Check if program is fully complete or needs more weeks
+      if (totalGeneratedWeeks >= totalPlannedWeeks) {
+        // Program is complete!
+        Alert.alert(
+          '🎉 Program Completed!',
+          `Congratulations! You've completed ${activeAiProgram.programName}. What would you like to do next?`,
+          [
+            {
+              text: 'Archive & Build New Program',
+              onPress: async () => {
+                const { updateDoc, Timestamp } = await import('firebase/firestore');
+                await updateDoc(doc(db, 'users', uid, 'aiPrograms', activeAiProgram.id!), {
+                  isActive: false,
+                  isArchived: true,
+                  completedAt: Timestamp.now(),
+                  archivedAt: Timestamp.now(),
+                });
+                setShowProgramModal(true);
+                fetchAiPrograms();
+              },
+            },
+            {
+              text: 'Restart This Program',
+              onPress: () => {
+                setCurrentWeekNum(1);
+                setCurrentDayNum(1);
+              },
+            },
+            { text: 'Maybe Later', style: 'cancel' },
+          ]
+        );
+      } else {
+        // Need to generate next block of weeks
+        Alert.alert(
+          '📈 Ready for More?',
+          `You've completed ${totalGeneratedWeeks} weeks. Generate the next block to continue your progress!`,
+          [
+            {
+              text: 'Generate Next 2 Weeks',
+              onPress: () => {
+                Toast.show({
+                  type: 'info',
+                  text1: 'Coming Soon',
+                  text2: 'Next block generation feature in development',
+                });
+                // TODO: Implement next block generation
+              },
+            },
+            { text: 'Not Yet', style: 'cancel' },
+          ]
+        );
+      }
+    }
+  }, [activeAiProgram, currentWeekNum, fetchAiPrograms]);
+
+  // Check completion on week/day change
+  useEffect(() => {
+    if (activeAiProgram) {
+      checkProgramCompletion();
+    }
+  }, [activeAiProgram, checkProgramCompletion, currentDayNum, currentWeekNum]);
 
   // Load legacy program structure (backward compatibility)
   const fetchProgram = async () => {
@@ -721,7 +721,7 @@ const WorkoutScreen: React.FC = () => {
     fetchAiPrograms(); 
     fetchProgram();
     fetchRecentWorkout();
-  }, []);
+  }, [fetchAiPrograms]);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -729,7 +729,7 @@ const WorkoutScreen: React.FC = () => {
       fetchProgram();
       fetchRecentWorkout();
       return () => {};
-    }, [])
+    }, [fetchAiPrograms])
   );
 
   // Load user profile
@@ -877,6 +877,7 @@ const WorkoutScreen: React.FC = () => {
                       
                       // Helper to convert exercise name to ID format (fallback if id not present)
                       const nameToId = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+                      const resolveExerciseId = (name: string) => resolveExercise(name)?.id || nameToId(name);
                       
                       // Convert AI program day to ProgramDay format for WorkoutDetail screen
                       const programDay: ProgramDay = {
@@ -887,8 +888,8 @@ const WorkoutScreen: React.FC = () => {
                         type: 'training',
                         phase: 'Strength',
                         warmup: currentDay.warmup.map(w => ({ 
-                          id: nameToId(w),
-                          exerciseId: nameToId(w),
+                          id: resolveExerciseId(w),
+                          exerciseId: resolveExerciseId(w),
                           sets: 1,
                           repsOrDuration: '5-10 reps',
                           rpe: 5
@@ -903,8 +904,8 @@ const WorkoutScreen: React.FC = () => {
                           notes: ex.notes || '',
                         })),
                         cooldown: currentDay.cooldown.map(c => ({ 
-                          id: nameToId(c),
-                          exerciseId: nameToId(c),
+                          id: resolveExerciseId(c),
+                          exerciseId: resolveExerciseId(c),
                           sets: 1,
                           repsOrDuration: '30-60 sec',
                           rpe: 5
@@ -1579,33 +1580,6 @@ const WorkoutScreen: React.FC = () => {
         )}
       </ScrollView>
 
-      {/* FULL-SCHEDULE MODAL */}
-      <Modal visible={showFullSchedule} animationType="slide">
-        <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
-          <View style={styles.modalHeader}>
-            <Pressable onPress={() => setShowFullSchedule(false)} style={styles.backButton}>
-              <Ionicons name="arrow-back" size={24} color="#fff" />
-              <Text style={styles.backText}>Back</Text>
-            </Pressable>
-            <Text style={styles.title}>Full Schedule</Text>
-            <View style={{ width: 80 }} />
-          </View>
-
-          <ScrollView contentContainerStyle={styles.content}>
-            {weeksArr.map((week, wi) => (
-              <View key={wi} style={styles.weekBlock}>
-                <Text style={styles.weekHeader}>Week {wi + 1}</Text>
-                {week.map((day, di) => (
-                  <Text key={di} style={styles.dayItem}>
-                    {day.title}
-                  </Text>
-                ))}
-              </View>
-            ))}
-          </ScrollView>
-        </LinearGradient>
-      </Modal>
-
       {/* AI WORKOUT ASSISTANT MODAL */}
       <AIWorkoutAssistant
         visible={showAIAssistant}
@@ -1887,27 +1861,6 @@ dayTabText: {
     alignItems: 'center',
   },
   detailButtonText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    padding: 16,
-    alignItems: 'center',
-    paddingTop: 50,
-  },
-  backButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    width: 80,
-  },
-  backText: {
-    color: '#fff',
-    fontSize: 16,
-    marginLeft: 8,
-  },
-  weekBlock: { marginBottom: 16 },
-  weekHeader: { fontSize: 18, color: '#d32f2f', fontWeight: '600' },
-  dayItemLegacy: { color: '#fff', marginLeft: 12, marginVertical: 2 },
 
   generateButton: {
     marginTop: 20,

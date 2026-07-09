@@ -351,8 +351,6 @@ export function calculateFirefighterMacros(params: {
   adjustments: string[];
 } {
   // Calculate lean body mass
-  const leanMassLbs = params.bodyWeightLbs * (1 - params.bodyfatPercent / 100);
-
   // TDEE calculation with firefighter occupational activity
   const baseMultiplier = 1.2; // Sedentary baseline
   const occupationalMultiplier = {

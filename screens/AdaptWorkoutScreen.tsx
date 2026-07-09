@@ -1,5 +1,5 @@
 // screens/AdaptWorkoutScreen.tsx
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -258,7 +258,7 @@ const AdaptWorkoutScreen: React.FC = () => {
   const [adapted, setAdapted] = useState<ExerciseCard[]>([]);
   const [library, setLibrary] = useState<ExerciseCard[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [_refreshing, setRefreshing] = useState(false);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [currentIndex, setCurrentIndex] = useState<number | null>(null);
@@ -290,7 +290,7 @@ const AdaptWorkoutScreen: React.FC = () => {
   };
 
   // ---------- load today's plan (enriched) + full library ----------
-  const loadData = async (showLoadingSpinner = false) => {
+  const loadData = useCallback(async (showLoadingSpinner = false) => {
     if (showLoadingSpinner) {
       setLoading(true);
     } else {
@@ -320,6 +320,7 @@ const AdaptWorkoutScreen: React.FC = () => {
         let dayIdx = 0;
         let currentProgramDay = 1;
         let totalProgramDays = 0;
+        let loadedSourceType: 'ai' | 'program' | 'aiProgram' | null = null;
 
         if (routeSourceType === 'ai' && routeWorkoutId) {
           console.log('AdaptWorkout: Loading AI workout by explicit workoutId');
@@ -345,6 +346,7 @@ const AdaptWorkoutScreen: React.FC = () => {
             workoutId: routeWorkoutId,
             dayIdx,
           });
+          loadedSourceType = 'ai';
         } else if (routeDay) {
           console.log('AdaptWorkout: Using workout passed from route context');
           blocks = routeDay.exercises ?? [];
@@ -361,6 +363,7 @@ const AdaptWorkoutScreen: React.FC = () => {
                 ? routeWeekNumber || (routeWeekIdx ?? 0) + 1
                 : undefined,
           });
+          loadedSourceType = routeSourceType || 'program';
         } else {
           // Check for AI workouts first (takes precedence)
           const todayStart = new Date();
@@ -398,6 +401,7 @@ const AdaptWorkoutScreen: React.FC = () => {
             workoutId: latestAiWorkout.id,
             dayIdx: 0,
           });
+          loadedSourceType = 'ai';
         } else if (!routeDay) {
           // Fall back to active program
           console.log('AdaptWorkout: Using active program');
@@ -417,6 +421,7 @@ const AdaptWorkoutScreen: React.FC = () => {
               type: 'program',
               dayIdx,
             });
+            loadedSourceType = 'program';
           } else {
             // Fall back to active aiProgram (periodized program structure)
             console.log('AdaptWorkout: Checking active aiPrograms');
@@ -450,14 +455,15 @@ const AdaptWorkoutScreen: React.FC = () => {
               dayIdx,
               weekNumber: currentWeek,
             });
+            loadedSourceType = 'aiProgram';
           }
         }
         console.log('AdaptWorkout: Exercises count:', blocks.length);
 
         if (blocks.length === 0) {
-          const dayLabel = activeWorkoutSource?.type === 'ai' ? 1 : currentProgramDay;
+          const dayLabel = loadedSourceType === 'ai' ? 1 : currentProgramDay;
           const suffix =
-            activeWorkoutSource?.type === 'ai'
+            loadedSourceType === 'ai'
               ? 'AI workout had no exercises for today.'
               : `Total days in program: ${totalProgramDays}`;
           Alert.alert('No Exercises', `No exercises found for day ${dayLabel}. ${suffix}`);
@@ -564,12 +570,20 @@ const AdaptWorkoutScreen: React.FC = () => {
         if (showLoadingSpinner) setLoading(false);
         else setRefreshing(false);
       }
-    };
+    }, [
+      navigation,
+      routeDay,
+      routeDayIdx,
+      routeSourceType,
+      routeWeekIdx,
+      routeWeekNumber,
+      routeWorkoutId,
+    ]);
   
   // Initial load
   useEffect(() => {
     loadData(true);
-  }, []);
+  }, [loadData]);
 
   // Refocus load
   useFocusEffect(
@@ -577,7 +591,7 @@ const AdaptWorkoutScreen: React.FC = () => {
       if (!loading) {
         loadData(false);
       }
-    }, [loading])
+    }, [loadData, loading])
   );
 
   // ---------- suggestions tailored to the selected exercise ----------

@@ -194,8 +194,8 @@ export function evaluatePerformance(
   exerciseName: string,
   userWeight?: number,
   userReps?: number,
-  userTime?: string,
-  userDistance?: string
+  _userTime?: string,
+  _userDistance?: string
 ): {
   level: 'below-minimal' | 'minimal' | 'proficient' | 'elite';
   benchmark: FirefighterBenchmark | null;

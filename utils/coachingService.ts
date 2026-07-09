@@ -4,7 +4,7 @@
  */
 
 import { auth, db } from '../firebase';
-import { collection, query, orderBy, limit, getDocs, where } from 'firebase/firestore';
+import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
 import { getWorkoutAdjustments } from './ai/aiService';
 
 /**
@@ -138,7 +138,7 @@ export async function generateCoachingAdvice(scheduledWorkout: {
 /**
  * Check if a coaching session should be shown (once per workout)
  */
-export function shouldShowCoaching(workoutId: string): boolean {
+export function shouldShowCoaching(_workoutId: string): boolean {
   // Use sessionStorage-like mechanism to track if coaching was shown
   // For React Native, we'll track this in the component state
   // This is just a helper to determine logic

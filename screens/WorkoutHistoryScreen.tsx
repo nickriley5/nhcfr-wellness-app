@@ -57,7 +57,7 @@ const WorkoutHistoryScreen: React.FC = () => {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showLastThree, setShowLastThree] = useState<Record<string, boolean>>({});
-  const [refreshing, setRefreshing] = useState(false);
+  const [_refreshing, setRefreshing] = useState(false);
 
   // Helper function to get readable exercise name
   const getExerciseName = (exerciseId: string): string => {

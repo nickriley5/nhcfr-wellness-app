@@ -139,7 +139,6 @@ export default function DashboardScreen() {
     todayWorkoutSummary,
     todayCardioSummary,
     cardioScheduleInfo,
-    consistencyData,
     updateHydrationGoal,
     updateContainerSize,
     addHydration,
@@ -166,12 +165,11 @@ export default function DashboardScreen() {
     adjustedIntensity?: number;
   } | null>(null);
   const [showCoachBanner, setShowCoachBanner] = useState(false);
-  const [isAnalyzingReadiness, setIsAnalyzingReadiness] = useState(false);
-  const [hasAnalyzedToday, setHasAnalyzedToday] = useState(false);
+  const [_isAnalyzingReadiness, setIsAnalyzingReadiness] = useState(false);
   const readinessAnalysisInFlightRef = useRef(false);
 
   // ✅ WEEKLY PROGRESSION STATES
-  const [weeklyProgression, setWeeklyProgression] = useState<{
+  const [weeklyProgression, _setWeeklyProgression] = useState<{
     weekNumber: number;
     coachMessage: string;
     summary: string;
@@ -302,7 +300,7 @@ export default function DashboardScreen() {
         }
 
         // Don't analyze if currently in progress (state + sync ref guard)
-        if (isAnalyzingReadiness || readinessAnalysisInFlightRef.current) {
+        if (readinessAnalysisInFlightRef.current) {
           console.log('⏭️ AI analysis already in progress');
           return;
         }
@@ -380,7 +378,7 @@ export default function DashboardScreen() {
     };
 
     checkTodaysReadiness();
-  }, [bump]); // Runs on dashboard focus, but AsyncStorage prevents duplicates
+  }, [bump, programInfo]); // Runs on dashboard focus, but AsyncStorage prevents duplicates
 
   // Environment helper functions
   const getEnvironmentIcon = (environment: string) => {
@@ -569,21 +567,27 @@ export default function DashboardScreen() {
     }, 300);
   };
 
+  const dashboardDateLabel = new Date().toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
+  });
+
   return (
     <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={dashboardStyles.screen}>
       <ScrollView contentContainerStyle={dashboardStyles.content}>
-        {/* Header with Calendar Button */}
         <View style={dashboardStyles.headerRow}>
           <View style={dashboardStyles.headerContent}>
-            <Text style={dashboardStyles.header}>Your Dashboard</Text>
-            <Text style={dashboardStyles.subheader}>Train for duty. Fuel for life.</Text>
+            <Text style={dashboardStyles.header}>Today</Text>
+            <Text style={dashboardStyles.subheader}>{dashboardDateLabel}</Text>
           </View>
           <Pressable
             style={dashboardStyles.headerScheduleButton}
             onPress={() => setShowEnvironmentCalendar(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Open schedule"
           >
-            <Ionicons name="calendar-outline" size={24} color="#d32f2f" />
-            <Text style={dashboardStyles.headerScheduleText}>Schedule</Text>
+            <Ionicons name="calendar-outline" size={22} color="#fff" />
           </Pressable>
         </View>
 

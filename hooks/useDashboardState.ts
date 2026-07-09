@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { auth, db } from '../firebase';
 import { doc, getDoc, collection, query, where, limit, getDocs, orderBy, setDoc, updateDoc } from 'firebase/firestore';
+import { resolveExercise } from '../utils/exerciseMatching';
 
 const logSafeError = (label: string, err: unknown) => {
   if (err instanceof Error) {
@@ -310,7 +311,6 @@ export function useDashboardState(bump: number, programExists: boolean) {
         }
 
         let nextWorkoutDay: any = null;
-        let isAIProgram = false;
 
         if (progSnap.exists()) {
           // Prewritten program
@@ -341,7 +341,6 @@ export function useDashboardState(bump: number, programExists: boolean) {
               
               if (activePrograms.length > 0) {
                 const aiProgram = activePrograms[0].data() as any;
-                isAIProgram = true;
                 
                 // Get current position in program
                 const currentWeek = aiProgram.currentWeek || 1;
@@ -367,11 +366,12 @@ export function useDashboardState(bump: number, programExists: boolean) {
                 if (nextDayData) {
                   // Convert to expected format
                   const nameToId = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+                  const resolveExerciseId = (name: string) => resolveExercise(name)?.id || nameToId(name);
                   
                   nextWorkoutDay = {
                     title: `${nextDayData.dayName} - Week ${nextWeek}`,
                     warmup: nextDayData.warmup?.map((w: string) => ({ 
-                      exerciseId: nameToId(w), 
+                      exerciseId: resolveExerciseId(w), 
                       repsOrDuration: '5-10 reps' 
                     })) || [],
                     exercises: nextDayData.exercises?.map((ex: any) => ({
@@ -382,7 +382,7 @@ export function useDashboardState(bump: number, programExists: boolean) {
                       notes: ex.notes || '',
                     })) || [],
                     cooldown: nextDayData.cooldown?.map((c: string) => ({ 
-                      exerciseId: nameToId(c), 
+                      exerciseId: resolveExerciseId(c), 
                       repsOrDuration: '30-60 sec' 
                     })) || [],
                     week: nextWeek,

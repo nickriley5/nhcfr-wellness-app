@@ -423,7 +423,7 @@ export async function generatePeriodizedProgram(
             dayNumber: dayIdx + 1,
             dayName: template.dayName,
             focus: template.focus,
-            warmup: ['Dynamic Mobility', 'Activation Prep'],
+            warmup: ['Seated Forward Fold', 'Walking High Knees'],
             exercises: Array.from({ length: 5 }, (_, exIdx) => {
               const exercise = pickExercise(baseOffset + exIdx);
               return {
@@ -436,7 +436,7 @@ export async function generatePeriodizedProgram(
                 notes: exIdx === 0 ? 'Main lift' : 'Quality reps',
               };
             }),
-            cooldown: ['Easy Breathing', 'Mobility Reset'],
+            cooldown: ['Diaphragmatic Breathing', 'Cooldown Walk'],
             estimatedDuration: isDeload ? 35 : 50,
           };
         }),

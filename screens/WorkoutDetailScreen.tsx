@@ -15,13 +15,12 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { auth, db } from '../firebase';
-import { doc, setDoc, Timestamp, collection, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
+import { doc, setDoc, Timestamp, collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
 import Toast from 'react-native-toast-message';
 import Video from 'react-native-video';
 import YoutubePlayer from 'react-native-youtube-iframe';
 import { resolveExercise } from '../utils/exerciseMatching';
 import { exercises } from '../data/exercises';
-import type { Exercise } from '../types/Exercise';
 import PRCelebration from '../components/PRCelebration';
 
 type WorkoutDetailRoute = RouteProp<RootStackParamList, 'WorkoutDetail'>;
@@ -56,7 +55,7 @@ const WorkoutDetailScreen: React.FC = () => {
   const [showSwapModal, setShowSwapModal] = useState(false);
   const [swapModalExercise, setSwapModalExercise] = useState<ExerciseData | null>(null);
   const [restTimer, setRestTimer] = useState(0);
-  const [restTargetExercise, setRestTargetExercise] = useState<string | null>(null);
+  const [_restTargetExercise, setRestTargetExercise] = useState<string | null>(null);
   const [isResting, setIsResting] = useState(false);
   const [workoutStartTime] = useState(Date.now());
   const [notes, setNotes] = useState('');
