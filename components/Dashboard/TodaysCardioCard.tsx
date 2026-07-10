@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { NavigationProp } from '@react-navigation/native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { dashboardStyles } from '../../styles/DashboardScreen.styles';
@@ -53,12 +53,32 @@ export default function TodaysCardioCard({
     : null;
 
   const todaySession = cardioScheduleInfo?.todaySession;
+  const isCompleted = todayCardioSummary?.isCompleted;
+  const flexibleSession: CardioSession = {
+    dayOfWeek: new Date().toLocaleDateString('en-US', { weekday: 'long' }),
+    type: 'Flexible Cardio',
+    duration: 30,
+    intensity: 'Moderate',
+    notes: 'Choose the cardio option that fits your equipment and energy today.',
+  };
+  const startCardioSession = (session: CardioSession) => {
+    navigation.navigate('CardioWorkout', {
+      session,
+      weekNumber: cardioScheduleInfo?.currentWeek || 1,
+    });
+  };
+  const actionSession = todaySession && !isCompleted ? todaySession : flexibleSession;
+  const actionText = todaySession && !isCompleted
+    ? 'Start Cardio'
+    : isCompleted
+    ? 'Do More Cardio'
+    : 'Do Cardio Today';
 
   return (
     <View style={dashboardStyles.horizontalCard}>
       <Text style={dashboardStyles.tileHeader}>Today's Cardio</Text>
 
-      {todayCardioSummary?.isCompleted ? (
+      {isCompleted && todayCardioSummary ? (
         <>
           <Text style={dashboardStyles.workoutTitle}>
             ✅ {todayCardioSummary.dayTitle} Complete
@@ -118,17 +138,6 @@ export default function TodaysCardioCard({
           {weeklyProgressText && (
             <Text style={dashboardStyles.helperText}>{weeklyProgressText}</Text>
           )}
-          <Pressable
-            style={[dashboardStyles.btn, dashboardStyles.btnPrimary, { width: '100%' }]}
-            onPress={() =>
-              navigation.navigate('CardioWorkout', {
-                session: todaySession,
-                weekNumber: cardioScheduleInfo?.currentWeek || 1,
-              })
-            }
-          >
-            <Text style={dashboardStyles.btnPrimaryText}>Start Cardio</Text>
-          </Pressable>
         </>
       ) : cardioScheduleInfo ? (
         <>
@@ -136,25 +145,29 @@ export default function TodaysCardioCard({
           {weeklyProgressText && (
             <Text style={dashboardStyles.workoutMeta}>{weeklyProgressText}</Text>
           )}
-          <Pressable
-            style={dashboardStyles.linkWrap}
-            onPress={() =>
-              navigation
-                .getParent()
-                ?.navigate('WorkoutHistory')
-            }
-          >
-            <Text style={dashboardStyles.linkText}>View History</Text>
-          </Pressable>
         </>
       ) : (
         <>
           <Text style={dashboardStyles.workoutTitle}>No Cardio Plan</Text>
           <Text style={dashboardStyles.helperText}>
-            Add cardio sessions to track weekly progress.
+            Start a flexible session and customize it to your equipment.
           </Text>
         </>
       )}
+
+      <Pressable
+        style={[dashboardStyles.btn, dashboardStyles.btnPrimary, styles.cardActionButton]}
+        onPress={() => startCardioSession(actionSession)}
+      >
+        <Text style={dashboardStyles.btnPrimaryText}>{actionText}</Text>
+      </Pressable>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  cardActionButton: {
+    marginTop: 12,
+    width: '100%',
+  },
+});
