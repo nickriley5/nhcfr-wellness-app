@@ -17,8 +17,14 @@ import Sound from 'react-native-sound';
 import Video from 'react-native-video';
 import YoutubePlayer from 'react-native-youtube-iframe';
 import { auth, db } from '../firebase';
-import { doc, setDoc, Timestamp, collection, getDocs, query, where, updateDoc } from 'firebase/firestore';
+import { doc, setDoc, Timestamp, collection, getDocs, getDoc, query, where, updateDoc } from 'firebase/firestore';
 import Toast from 'react-native-toast-message';
+import {
+  CARDIO_MODALITIES,
+  CardioGoalMode,
+  getHiitTemplateForModality,
+  getInitialCardioModalityId,
+} from '../utils/cardioTemplates';
 
 type CardioWorkoutRouteProp = RouteProp<RootStackParamList, 'CardioWorkout'>;
 
@@ -40,6 +46,8 @@ const CardioWorkoutScreen: React.FC = () => {
   const [feeling, setFeeling] = useState<'easy' | 'moderate' | 'hard' | 'max' | null>(null);
   const [userNotes, setUserNotes] = useState('');
   const [roundsCompleted, setRoundsCompleted] = useState('');
+  const [showOptionalData, setShowOptionalData] = useState(false);
+  const [profileWeightLbs, setProfileWeightLbs] = useState<number | null>(null);
   const [intervalActive, setIntervalActive] = useState(false);
   const [intervalPaused, setIntervalPaused] = useState(true);
   const [intervalPhase, setIntervalPhase] = useState<'work' | 'rest'>('work');
@@ -47,17 +55,26 @@ const CardioWorkoutScreen: React.FC = () => {
   const [intervalRound, setIntervalRound] = useState(1);
   const [intervalExerciseIndex, setIntervalExerciseIndex] = useState(0);
   const [intervalElapsedMs, setIntervalElapsedMs] = useState(0);
+  const [customRounds, setCustomRounds] = useState('');
+  const [customWorkSec, setCustomWorkSec] = useState('');
+  const [customRestSec, setCustomRestSec] = useState('');
+  const [selectedModalityId, setSelectedModalityId] = useState(() => getInitialCardioModalityId(session?.type));
+  const [goalMode, setGoalMode] = useState<CardioGoalMode>('time');
+  const [targetDuration, setTargetDuration] = useState(session?.duration ? String(session.duration) : '');
+  const [targetDistance, setTargetDistance] = useState('');
   const intervalLastTickRef = useRef<number | null>(null);
   const intervalCountdownRef = useRef<string | null>(null);
   const beepRef = useRef<any>(null);
   const [expandedVideos, setExpandedVideos] = useState<Set<string>>(new Set());
 
-  // Detect if this is an interval/HIIT workout
-  const isIntervalWorkout = !!session?.circuit ||
-    session?.type?.toLowerCase().includes('hiit') || 
-    session?.type?.toLowerCase().includes('circuit') ||
-    session?.intensity?.toLowerCase().includes('interval') ||
-    session?.notes?.toLowerCase().includes('rounds');
+  const selectedModality = CARDIO_MODALITIES.find(option => option.id === selectedModalityId) || CARDIO_MODALITIES[0];
+  const selectedHiitTemplate = getHiitTemplateForModality(selectedModalityId);
+  const isIntervalWorkout = selectedModality.category === 'hiit';
+
+  useEffect(() => {
+    setGoalMode(selectedModality.defaultGoalMode);
+    setExpandedVideos(new Set());
+  }, [selectedModality.defaultGoalMode, selectedModalityId]);
 
   const parseIntervalNotes = (notes?: string) => {
     if (!notes) return null;
@@ -91,24 +108,71 @@ const CardioWorkoutScreen: React.FC = () => {
   const warmupList = normalizePrepList(session?.warmup);
   const cooldownList = normalizePrepList(session?.cooldown);
 
-  const intervalConfig = useMemo(
-    () => session?.circuit
-      ? {
+  const baseIntervalConfig = useMemo(
+    () => {
+      if (!isIntervalWorkout) return null;
+      if (session?.circuit && selectedModalityId === getInitialCardioModalityId(session?.type)) {
+        return {
           rounds: session.circuit.rounds,
           workSec: session.circuit.workSec,
           restSec: session.circuit.restSec,
-        }
-      : parseIntervalNotes(session?.notes),
-    [session?.circuit, session?.notes]
+        };
+      }
+      return parseIntervalNotes(session?.notes) || {
+        rounds: selectedHiitTemplate.rounds,
+        workSec: selectedHiitTemplate.workSec,
+        restSec: selectedHiitTemplate.restSec,
+      };
+    },
+    [isIntervalWorkout, selectedHiitTemplate, selectedModalityId, session?.circuit, session?.notes, session?.type]
   );
 
+  useEffect(() => {
+    if (!baseIntervalConfig) return;
+    setCustomRounds(String(baseIntervalConfig.rounds));
+    setCustomWorkSec(String(baseIntervalConfig.workSec));
+    setCustomRestSec(String(baseIntervalConfig.restSec));
+  }, [baseIntervalConfig]);
+
+  useEffect(() => {
+    const loadProfileWeight = async () => {
+      const uid = auth.currentUser?.uid;
+      if (!uid) return;
+      try {
+        const profileSnap = await getDoc(doc(db, 'users', uid));
+        const profile = profileSnap.data();
+        const rawWeight = Number(profile?.currentWeight || profile?.weight);
+        if (Number.isFinite(rawWeight) && rawWeight > 0) {
+          setProfileWeightLbs(rawWeight);
+        }
+      } catch (error) {
+        console.warn('Could not load profile weight for cardio estimate:', error);
+      }
+    };
+
+    loadProfileWeight();
+  }, []);
+
+  const intervalConfig = useMemo(() => {
+    if (!baseIntervalConfig) return null;
+    const rounds = parseInt(customRounds, 10);
+    const workSec = parseInt(customWorkSec, 10);
+    const restSec = parseInt(customRestSec, 10);
+
+    return {
+      rounds: Number.isFinite(rounds) && rounds > 0 ? rounds : baseIntervalConfig.rounds,
+      workSec: Number.isFinite(workSec) && workSec > 0 ? workSec : baseIntervalConfig.workSec,
+      restSec: Number.isFinite(restSec) && restSec >= 0 ? restSec : baseIntervalConfig.restSec,
+    };
+  }, [baseIntervalConfig, customRestSec, customRounds, customWorkSec]);
+
   const suggestedCircuit: Array<string | { name: string; notes?: string }> = useMemo(
-    () => session?.circuit?.exercises?.length
+    () => isIntervalWorkout && session?.circuit?.exercises?.length && selectedModalityId === getInitialCardioModalityId(session?.type)
       ? session.circuit.exercises
       : isIntervalWorkout
-        ? ['Burpees', 'Kettlebell Swings', 'Mountain Climbers', 'Jump Rope', 'Air Squats']
+        ? selectedHiitTemplate.exercises
         : [],
-    [isIntervalWorkout, session?.circuit?.exercises]
+    [isIntervalWorkout, selectedHiitTemplate.exercises, selectedModalityId, session?.circuit?.exercises, session?.type]
   );
 
   const isCircuitFormat = !!intervalConfig && suggestedCircuit.length > 0;
@@ -169,7 +233,7 @@ const CardioWorkoutScreen: React.FC = () => {
   const buildCardioContext = () => {
     if (!session) return 'No cardio session loaded.';
     const lines = [
-      `Cardio: ${session.type} (${session.duration} min, ${session.intensity})`,
+      `Cardio: ${selectedModality.label} (${plannedDurationMinutes || session.duration} min, ${session.intensity})`,
       `Day: ${session.dayOfWeek} • Week ${weekNumber}`,
       session.notes ? `Coach Notes: ${session.notes}` : 'Coach Notes: none',
       warmupList.length ? `Warm-Up: ${warmupList.map(formatPrepLine).join('; ')}` : 'Warm-Up: none',
@@ -319,6 +383,67 @@ const CardioWorkoutScreen: React.FC = () => {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const getEstimatedCalories = (minutes: number) => {
+    const weightLbs = profileWeightLbs || 185;
+    const weightKg = weightLbs * 0.453592;
+    const intensityText = `${session?.type || ''} ${session?.intensity || ''} ${session?.notes || ''}`.toLowerCase();
+    const feelingMet = feeling === 'easy'
+      ? 4.5
+      : feeling === 'moderate'
+      ? 6.5
+      : feeling === 'hard'
+      ? 8.5
+      : feeling === 'max'
+      ? 10.5
+      : null;
+    let met = feelingMet || 6.5;
+
+    if (!feelingMet) {
+      if (isIntervalWorkout) {
+        met = 9.5;
+      } else if (intensityText.includes('zone 2') || intensityText.includes('easy')) {
+        met = 5.5;
+      } else if (intensityText.includes('hard') || intensityText.includes('high')) {
+        met = 8.5;
+      } else if (intensityText.includes('run')) {
+        met = 9;
+      } else if (intensityText.includes('row') || intensityText.includes('bike') || intensityText.includes('assault')) {
+        met = 7;
+      } else if (intensityText.includes('walk')) {
+        met = 3.8;
+      }
+    }
+
+    return Math.max(1, Math.round((met * 3.5 * weightKg * minutes) / 200));
+  };
+
+  const getDerivedMinutes = () => {
+    if (isIntervalWorkout && intervalConfig) {
+      return Math.max(1, Math.ceil(intervalElapsedMs / 60000));
+    }
+    return Math.max(1, Math.ceil(elapsedSeconds / 60));
+  };
+
+  const hasTimedWork = elapsedSeconds > 0 || intervalElapsedMs > 0;
+  const plannedDurationMinutes = parseInt(targetDuration, 10) || Number(session?.duration) || 0;
+  const goalUsesDistance = !isIntervalWorkout && (goalMode === 'distance' || goalMode === 'both');
+  const previewMinutes = actualDuration
+    ? parseInt(actualDuration, 10) || getDerivedMinutes()
+    : hasTimedWork
+    ? getDerivedMinutes()
+    : plannedDurationMinutes || getDerivedMinutes();
+  const estimatedCalories = getEstimatedCalories(previewMinutes);
+
+  const getAutoPace = (completedDistance: number, minutes: number) => {
+    if (!completedDistance || !minutes) {
+      return null;
+    }
+    const totalSecondsPerUnit = Math.round((minutes * 60) / completedDistance);
+    const paceMinutes = Math.floor(totalSecondsPerUnit / 60);
+    const paceSeconds = totalSecondsPerUnit % 60;
+    return `${paceMinutes}:${paceSeconds.toString().padStart(2, '0')}/mi`;
+  };
+
   const handleStartStop = () => {
     if (hasStopped) {
       return;
@@ -423,24 +548,40 @@ const CardioWorkoutScreen: React.FC = () => {
         return;
       }
 
-      const derivedMinutes = isIntervalWorkout && intervalConfig
-        ? Math.max(1, Math.ceil(intervalElapsedMs / 60000))
-        : Math.max(1, Math.ceil(elapsedSeconds / 60));
-      const finalDuration = actualDuration ? parseInt(actualDuration) : derivedMinutes;
+      const derivedMinutes = getDerivedMinutes();
+      const finalDuration = actualDuration ? parseInt(actualDuration, 10) : derivedMinutes;
+      const finalCalories = calories ? parseInt(calories, 10) : getEstimatedCalories(finalDuration);
+      const completedDistance = distance ? parseFloat(distance) : null;
+      const finalPace = pace || (completedDistance ? getAutoPace(completedDistance, finalDuration) : null);
 
       const cardioData = {
-        dayTitle: `${session.type} - ${session.dayOfWeek}`,
-        type: session.type,
-        plannedDuration: session.duration,
+        dayTitle: `${selectedModality.label} - ${session.dayOfWeek}`,
+        type: selectedModality.label,
+        originalType: session.type,
+        selectedModalityId,
+        hiitTemplateId: isIntervalWorkout ? selectedHiitTemplate.id : null,
+        plannedDuration: plannedDurationMinutes || session.duration,
+        targetDistance: targetDistance ? parseFloat(targetDistance) : null,
+        completedDistance,
+        goalMode,
         actualDuration: finalDuration,
         plannedIntensity: session.intensity,
         perceivedFeeling: feeling,
-        roundsCompleted: roundsCompleted ? parseInt(roundsCompleted) : null,
-        distance: distance ? parseFloat(distance) : null,
-        pace: pace || null,
-        avgHeartRate: avgHeartRate ? parseInt(avgHeartRate) : null,
-        maxHeartRate: maxHeartRate ? parseInt(maxHeartRate) : null,
-        calories: calories ? parseInt(calories) : null,
+        roundsCompleted: roundsCompleted ? parseInt(roundsCompleted, 10) : null,
+        intervalSettings: intervalConfig
+          ? {
+              rounds: intervalConfig.rounds,
+              workSec: intervalConfig.workSec,
+              restSec: intervalConfig.restSec,
+            }
+          : null,
+        distance: completedDistance,
+        pace: finalPace,
+        paceSource: pace ? 'manual' : finalPace ? 'calculated' : null,
+        avgHeartRate: avgHeartRate ? parseInt(avgHeartRate, 10) : null,
+        maxHeartRate: maxHeartRate ? parseInt(maxHeartRate, 10) : null,
+        calories: finalCalories,
+        caloriesSource: calories ? 'manual' : 'estimated',
         notes: userNotes || session.notes || '',
         completedAt: Timestamp.now(),
         weekNumber,
@@ -480,7 +621,7 @@ const CardioWorkoutScreen: React.FC = () => {
       Toast.show({
         type: 'success',
         text1: '🎉 Cardio Complete!',
-        text2: `${session.type} - ${finalDuration} minutes`,
+        text2: `${selectedModality.label} - ${finalDuration} minutes`,
         visibilityTime: 3000,
       });
 
@@ -534,14 +675,14 @@ const CardioWorkoutScreen: React.FC = () => {
           <View style={styles.sessionHeader}>
             <Ionicons name="fitness" size={32} color="#FF6B35" />
             <View style={{ flex: 1 }}>
-              <Text style={styles.sessionType}>{session.type}</Text>
+              <Text style={styles.sessionType}>{selectedModality.label}</Text>
               <Text style={styles.sessionDay}>{session.dayOfWeek} • Week {weekNumber}</Text>
             </View>
           </View>
           <View style={styles.sessionDetails}>
             <View style={styles.sessionDetail}>
               <Text style={styles.sessionDetailLabel}>Planned Duration</Text>
-              <Text style={styles.sessionDetailValue}>{session.duration} min</Text>
+              <Text style={styles.sessionDetailValue}>{plannedDurationMinutes || session.duration} min</Text>
             </View>
             <View style={styles.sessionDetail}>
               <Text style={styles.sessionDetailLabel}>Target Intensity</Text>
@@ -553,6 +694,97 @@ const CardioWorkoutScreen: React.FC = () => {
               <Text style={styles.sessionNotesLabel}>Coach Notes:</Text>
               <Text style={styles.sessionNotesText}>{session.notes}</Text>
             </View>
+          )}
+        </View>
+
+        <View style={styles.customizeCard}>
+          <View style={styles.customizeHeader}>
+            <Text style={styles.dataCardTitle}>Customize Today</Text>
+            <Text style={styles.customizeSubtitle}>Match the plan to your equipment and time</Text>
+          </View>
+
+          <Text style={styles.inputLabel}>Cardio option</Text>
+          <View style={styles.modalityGrid}>
+            {CARDIO_MODALITIES.map(option => (
+              <Pressable
+                key={option.id}
+                style={[
+                  styles.modalityChip,
+                  selectedModalityId === option.id && styles.modalityChipActive,
+                ]}
+                onPress={() => {
+                  if (intervalActive) return;
+                  setSelectedModalityId(option.id);
+                }}
+              >
+                <Ionicons
+                  name={option.icon as any}
+                  size={17}
+                  color={selectedModalityId === option.id ? '#fff' : '#FFB74D'}
+                />
+                <Text
+                  style={[
+                    styles.modalityChipText,
+                    selectedModalityId === option.id && styles.modalityChipTextActive,
+                  ]}
+                >
+                  {option.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+
+          {isIntervalWorkout ? (
+            <View style={styles.templateSummary}>
+              <Text style={styles.templateTitle}>{selectedHiitTemplate.label}</Text>
+              <Text style={styles.templateText}>{selectedHiitTemplate.equipment}</Text>
+            </View>
+          ) : (
+            <>
+              <Text style={styles.inputLabel}>Goal type</Text>
+              <View style={styles.goalModeRow}>
+                {(['time', 'distance', 'both'] as CardioGoalMode[]).map(mode => (
+                  <Pressable
+                    key={mode}
+                    style={[styles.goalModeChip, goalMode === mode && styles.goalModeChipActive]}
+                    onPress={() => setGoalMode(mode)}
+                  >
+                    <Text style={[styles.goalModeText, goalMode === mode && styles.goalModeTextActive]}>
+                      {mode === 'time' ? 'Time' : mode === 'distance' ? 'Distance' : 'Both'}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              <View style={styles.inputRow}>
+                {(goalMode === 'time' || goalMode === 'both') && (
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Target Time (min)</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder={String(session.duration)}
+                      placeholderTextColor="#666"
+                      keyboardType="numeric"
+                      value={targetDuration}
+                      onChangeText={setTargetDuration}
+                    />
+                  </View>
+                )}
+                {(goalMode === 'distance' || goalMode === 'both') && (
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Target Distance</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="3.0 mi"
+                      placeholderTextColor="#666"
+                      keyboardType="numeric"
+                      value={targetDistance}
+                      onChangeText={setTargetDistance}
+                    />
+                  </View>
+                )}
+              </View>
+            </>
           )}
         </View>
 
@@ -628,6 +860,18 @@ const CardioWorkoutScreen: React.FC = () => {
               </Pressable>
             </View>
           )}
+        </View>
+
+        <View style={styles.estimateCard}>
+          <View style={styles.estimateTextBlock}>
+            <Text style={styles.estimateLabel}>Estimated Burn</Text>
+            <Text style={styles.estimateHelper}>
+              Based on duration, intensity, and {profileWeightLbs ? 'profile weight' : 'default body weight'}
+            </Text>
+          </View>
+          <Text style={styles.estimateValue}>
+            {calories ? calories : estimatedCalories} cal
+          </Text>
         </View>
 
         {/* HIIT CIRCUIT DETAILS */}
@@ -712,6 +956,46 @@ const CardioWorkoutScreen: React.FC = () => {
             <Text style={styles.intervalMeta}>
               {intervalConfig.rounds} rounds • {intervalConfig.workSec}s work / {intervalConfig.restSec}s rest
             </Text>
+            <View style={styles.intervalSettingsCard}>
+              <View style={styles.intervalSettingsHeader}>
+                <Text style={styles.intervalSettingsTitle}>Adjust Intervals</Text>
+                <Text style={styles.intervalSettingsHint}>
+                  {intervalActive ? 'Pause or reset to change timing' : 'Customize before start'}
+                </Text>
+              </View>
+              <View style={styles.inputRow}>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Rounds</Text>
+                  <TextInput
+                    style={[styles.input, intervalActive && styles.inputDisabled]}
+                    keyboardType="numeric"
+                    value={customRounds}
+                    onChangeText={setCustomRounds}
+                    editable={!intervalActive}
+                  />
+                </View>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Work (sec)</Text>
+                  <TextInput
+                    style={[styles.input, intervalActive && styles.inputDisabled]}
+                    keyboardType="numeric"
+                    value={customWorkSec}
+                    onChangeText={setCustomWorkSec}
+                    editable={!intervalActive}
+                  />
+                </View>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Rest (sec)</Text>
+                  <TextInput
+                    style={[styles.input, intervalActive && styles.inputDisabled]}
+                    keyboardType="numeric"
+                    value={customRestSec}
+                    onChangeText={setCustomRestSec}
+                    editable={!intervalActive}
+                  />
+                </View>
+              </View>
+            </View>
             <View style={styles.intervalDisplay}>
               {isCircuitFormat && resolvedCircuit[intervalExerciseIndex] && (
                 <Text style={styles.intervalExerciseText}>
@@ -762,110 +1046,134 @@ const CardioWorkoutScreen: React.FC = () => {
 
         {/* WORKOUT DATA */}
         <View style={styles.dataCard}>
-          <Text style={styles.dataCardTitle}>Workout Data (Optional)</Text>
-          
-          <View style={styles.inputRow}>
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Actual Duration (min)</Text>
-              <TextInput
-                style={styles.input}
-                placeholder={session.duration.toString()}
-                placeholderTextColor="#666"
-                keyboardType="numeric"
-                value={actualDuration}
-                onChangeText={setActualDuration}
-              />
+          <Pressable style={styles.optionalHeader} onPress={() => setShowOptionalData(prev => !prev)}>
+            <View>
+              <Text style={[styles.dataCardTitle, styles.optionalTitle]}>Optional Workout Data</Text>
+              <Text style={styles.optionalSubtitle}>
+                {goalUsesDistance
+                  ? 'Add completed distance to calculate pace'
+                  : 'Add distance, heart rate, or override the estimate'}
+              </Text>
             </View>
-            {isIntervalWorkout ? (
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Rounds Completed</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="8"
-                  placeholderTextColor="#666"
-                  keyboardType="numeric"
-                  value={roundsCompleted}
-                  onChangeText={setRoundsCompleted}
-                />
-              </View>
-            ) : (
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Distance</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="3.5 mi"
-                  placeholderTextColor="#666"
-                  keyboardType="numeric"
-                  value={distance}
-                  onChangeText={setDistance}
-                />
-              </View>
-            )}
-          </View>
+            <Ionicons
+              name={showOptionalData ? 'chevron-up' : 'chevron-down'}
+              size={22}
+              color="#fff"
+            />
+          </Pressable>
 
-          {!isIntervalWorkout && (
-            <View style={styles.inputRow}>
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Avg Pace</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="8:30/mi"
-                  placeholderTextColor="#666"
-                  value={pace}
-                  onChangeText={setPace}
-                />
+          {showOptionalData && (
+            <>
+              <View style={styles.inputRow}>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Actual Duration (min)</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder={session.duration.toString()}
+                    placeholderTextColor="#666"
+                    keyboardType="numeric"
+                    value={actualDuration}
+                    onChangeText={setActualDuration}
+                  />
+                </View>
+                {isIntervalWorkout ? (
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Rounds Completed</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder={String(intervalConfig?.rounds || 8)}
+                      placeholderTextColor="#666"
+                      keyboardType="numeric"
+                      value={roundsCompleted}
+                      onChangeText={setRoundsCompleted}
+                    />
+                  </View>
+                ) : (
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>
+                      {goalUsesDistance ? 'Completed Distance' : 'Distance'}
+                    </Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder={targetDistance || '3.5 mi'}
+                      placeholderTextColor="#666"
+                      keyboardType="numeric"
+                      value={distance}
+                      onChangeText={setDistance}
+                    />
+                  </View>
+                )}
               </View>
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Calories</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="300"
-                  placeholderTextColor="#666"
-                  keyboardType="numeric"
-                  value={calories}
-                  onChangeText={setCalories}
-                />
+
+              {!isIntervalWorkout && (
+                <View style={styles.inputRow}>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Avg Pace</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder={
+                        distance
+                          ? getAutoPace(parseFloat(distance), previewMinutes) || '8:30/mi'
+                          : 'Auto from distance + timer'
+                      }
+                      placeholderTextColor="#666"
+                      value={pace}
+                      onChangeText={setPace}
+                    />
+                  </View>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Calories</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder={String(estimatedCalories)}
+                      placeholderTextColor="#666"
+                      keyboardType="numeric"
+                      value={calories}
+                      onChangeText={setCalories}
+                    />
+                  </View>
+                </View>
+              )}
+
+              <View style={styles.inputRow}>
+                {isIntervalWorkout && (
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Calories</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder={String(estimatedCalories)}
+                      placeholderTextColor="#666"
+                      keyboardType="numeric"
+                      value={calories}
+                      onChangeText={setCalories}
+                    />
+                  </View>
+                )}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Avg HR (bpm)</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="145"
+                    placeholderTextColor="#666"
+                    keyboardType="numeric"
+                    value={avgHeartRate}
+                    onChangeText={setAvgHeartRate}
+                  />
+                </View>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Max HR (bpm)</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="165"
+                    placeholderTextColor="#666"
+                    keyboardType="numeric"
+                    value={maxHeartRate}
+                    onChangeText={setMaxHeartRate}
+                  />
+                </View>
               </View>
-            </View>
+            </>
           )}
-
-          <View style={styles.inputRow}>
-            {isIntervalWorkout && (
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Calories</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="300"
-                  placeholderTextColor="#666"
-                  keyboardType="numeric"
-                  value={calories}
-                  onChangeText={setCalories}
-                />
-              </View>
-            )}
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Avg HR (bpm)</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="145"
-                placeholderTextColor="#666"
-                keyboardType="numeric"
-                value={avgHeartRate}
-                onChangeText={setAvgHeartRate}
-              />
-            </View>
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Max HR (bpm)</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="165"
-                placeholderTextColor="#666"
-                keyboardType="numeric"
-                value={maxHeartRate}
-                onChangeText={setMaxHeartRate}
-              />
-            </View>
-          </View>
         </View>
 
         {/* FEELING */}
@@ -1016,6 +1324,95 @@ const styles = StyleSheet.create({
     color: '#e0e0e0',
     fontStyle: 'italic',
   },
+  customizeCard: {
+    backgroundColor: '#1f1f1f',
+    padding: 16,
+    borderRadius: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 152, 0, 0.28)',
+  },
+  customizeHeader: {
+    marginBottom: 12,
+  },
+  customizeSubtitle: {
+    color: '#aaa',
+    fontSize: 12,
+    marginTop: -10,
+  },
+  modalityGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 14,
+  },
+  modalityChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#141414',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#333',
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  modalityChipActive: {
+    backgroundColor: '#FF6B35',
+    borderColor: '#FF6B35',
+  },
+  modalityChipText: {
+    color: '#ddd',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  modalityChipTextActive: {
+    color: '#fff',
+  },
+  goalModeRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  goalModeChip: {
+    flex: 1,
+    backgroundColor: '#141414',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#333',
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  goalModeChipActive: {
+    backgroundColor: '#2a1b1b',
+    borderColor: '#FF6B35',
+  },
+  goalModeText: {
+    color: '#bbb',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  goalModeTextActive: {
+    color: '#fff',
+  },
+  templateSummary: {
+    backgroundColor: '#141414',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#333',
+    padding: 12,
+  },
+  templateTitle: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  templateText: {
+    color: '#FFB74D',
+    fontSize: 12,
+    fontWeight: '600',
+  },
   timerCard: {
     backgroundColor: '#2a2a2a',
     padding: 24,
@@ -1096,6 +1493,40 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#aaa',
     textAlign: 'center',
+  },
+  estimateCard: {
+    backgroundColor: '#1f1f1f',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(76, 175, 80, 0.35)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  estimateTextBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  estimateLabel: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  estimateHelper: {
+    color: '#aaa',
+    fontSize: 12,
+    flexShrink: 1,
+  },
+  estimateValue: {
+    color: '#4CAF50',
+    fontSize: 22,
+    fontWeight: '800',
+    flexShrink: 0,
+    textAlign: 'right',
   },
   prepCard: {
     backgroundColor: '#1f1f1f',
@@ -1251,6 +1682,32 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 12,
   },
+  intervalSettingsCard: {
+    backgroundColor: '#141414',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#333',
+    marginBottom: 14,
+  },
+  intervalSettingsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 10,
+  },
+  intervalSettingsTitle: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  intervalSettingsHint: {
+    color: '#999',
+    fontSize: 11,
+    textAlign: 'right',
+    flexShrink: 1,
+  },
   intervalDisplay: {
     alignItems: 'center',
     gap: 8,
@@ -1295,6 +1752,19 @@ const styles = StyleSheet.create({
     color: '#fff',
     marginBottom: 16,
   },
+  optionalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  optionalTitle: {
+    marginBottom: 4,
+  },
+  optionalSubtitle: {
+    color: '#aaa',
+    fontSize: 12,
+  },
   inputRow: {
     flexDirection: 'row',
     gap: 12,
@@ -1316,6 +1786,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     borderWidth: 1,
     borderColor: '#444',
+  },
+  inputDisabled: {
+    opacity: 0.55,
   },
   feelingCard: {
     backgroundColor: '#2a2a2a',
