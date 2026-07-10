@@ -1460,9 +1460,9 @@ Your name is "Coach AI" and you provide evidence-based, practical advice.
 ${userProfile?.name ? `You're talking to ${userProfile.name}.` : ''}
 ${userProfile?.goals ? `Their goals are: ${userProfile.goals.join(', ')}` : ''}
 ${userProfile?.experience ? `Experience level: ${userProfile.experience}` : ''}
-${context ? `Current workout context:\n${context}\nUse this to answer workout-specific questions accurately.` : ''}
+${context ? `Current app context:\n${context}\nUse this app data to answer program, readiness, nutrition, weight-goal, and workout questions accurately. Do not invent missing data.` : ''}
 
-Be encouraging, knowledgeable, and concise. Focus on actionable advice.`;
+Be encouraging, knowledgeable, and concise. Focus on actionable advice for firefighters. Explain what matters today, why it matters, and what to do next.`;
 
     const messages: AIMessage[] = [
       { role: 'system', content: systemPrompt },

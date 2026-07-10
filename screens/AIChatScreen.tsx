@@ -39,6 +39,8 @@ import {
   increment,
 } from 'firebase/firestore';
 import { chatWithCoach, AIMessage } from '../utils/ai/aiService';
+import { buildCoachContext } from '../utils/ai/coachContext';
+import PageHelpButton from '../components/Common/PageHelpButton';
 import Toast from 'react-native-toast-message';
 
 interface ChatMessage extends AIMessage {
@@ -319,6 +321,11 @@ const AIChatScreen = () => {
         .map(m => ({ role: m.role, content: m.content }));
 
       const threadContext = threads.find(t => t.id === threadId)?.context || workoutContext;
+      const coachContext = await buildCoachContext(uid, userMessage);
+      const combinedContext = [
+        coachContext,
+        threadContext ? `SCREEN-SPECIFIC CONTEXT:\n${threadContext}` : '',
+      ].filter(Boolean).join('\n\n');
 
       // Get AI response
       const aiResponse = await chatWithCoach(
@@ -329,7 +336,7 @@ const AIChatScreen = () => {
           goals: userProfile?.goals,
           experience: userProfile?.experienceLevel,
         },
-        threadContext
+        combinedContext
       );
 
       // Add AI response to Firestore
@@ -402,9 +409,35 @@ const AIChatScreen = () => {
               {activeThread ? 'Workout-aware coaching' : 'Powered by advanced AI'}
             </Text>
           </View>
-          <Pressable onPress={handleNewChat} style={styles.newChatButton}>
-            <Ionicons name="add" size={22} color="#fff" />
-          </Pressable>
+          <View style={styles.headerActions}>
+            <PageHelpButton
+              pageKey="ai-coach-chat"
+              title="AI Coach Tips"
+              intro="Use this like a firefighter-specific duty fitness coach. Ask direct questions and it will use your app data when available."
+              placement="inline"
+              tips={[
+                {
+                  title: 'It can use your app data',
+                  body: 'The coach can reference your profile, active program, current weight, weight goal, meal plan, meal logs, readiness check, recent workouts, and PRs.',
+                },
+                {
+                  title: 'Ask operational questions',
+                  body: 'Try: "Am I on track with my weight goal?", "Explain my current program", or "Based on readiness, should I train today?"',
+                },
+                {
+                  title: 'Ask for adjustments',
+                  body: 'Try: "I only have 25 minutes", "I slept 4 hours", "I need to eat out", or "What should I change this week?"',
+                },
+                {
+                  title: 'Missing data matters',
+                  body: 'If meals, weigh-ins, or check-ins are missing, the coach should tell you what to log instead of guessing.',
+                },
+              ]}
+            />
+            <Pressable onPress={handleNewChat} style={styles.newChatButton}>
+              <Ionicons name="add" size={22} color="#fff" />
+            </Pressable>
+          </View>
         </View>
 
         {!activeThreadId ? (
@@ -576,6 +609,12 @@ const styles = StyleSheet.create({
   newChatButton: {
     width: 40,
     alignItems: 'flex-end',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    width: 88,
   },
   headerTitleContainer: {
     flex: 1,

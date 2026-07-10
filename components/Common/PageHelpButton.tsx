@@ -23,9 +23,18 @@ type PageHelpButtonProps = {
   tips: PageHelpTip[];
   top?: number;
   right?: number;
+  placement?: 'floating' | 'inline';
 };
 
-const PageHelpButton = ({ pageKey, title, intro, tips, top = 14, right = 16 }: PageHelpButtonProps) => {
+const PageHelpButton = ({
+  pageKey,
+  title,
+  intro,
+  tips,
+  top = 14,
+  right = 16,
+  placement = 'floating',
+}: PageHelpButtonProps) => {
   const [visible, setVisible] = useState(false);
   const [shouldPulse, setShouldPulse] = useState(false);
   const pulse = useRef(new Animated.Value(0)).current;
@@ -98,10 +107,13 @@ const PageHelpButton = ({ pageKey, title, intro, tips, top = 14, right = 16 }: P
     inputRange: [0, 1],
     outputRange: [0.55, 0],
   });
+  const anchorStyle = placement === 'inline'
+    ? styles.inlineAnchor
+    : [styles.anchor, { top, right }];
 
   return (
     <>
-      <View pointerEvents="box-none" style={[styles.anchor, { top, right }]}>
+      <View pointerEvents="box-none" style={anchorStyle}>
         {shouldPulse && (
           <Animated.View
             pointerEvents="none"
@@ -177,6 +189,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  inlineAnchor: {
+    width: 42,
+    height: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   button: {
     width: 42,
     height: 42,
@@ -207,8 +225,10 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.72)',
     justifyContent: 'flex-end',
+    alignItems: 'stretch',
   },
   card: {
+    width: '100%',
     maxHeight: '82%',
     backgroundColor: '#161616',
     borderTopLeftRadius: 20,
@@ -223,6 +243,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     marginBottom: 14,
+    width: '100%',
   },
   headerIcon: {
     width: 42,
@@ -235,18 +256,22 @@ const styles = StyleSheet.create({
   },
   headerText: {
     flex: 1,
+    flexShrink: 1,
+    minWidth: 0,
     paddingRight: 8,
   },
   title: {
     color: '#fff',
     fontSize: 20,
     fontWeight: '800',
+    flexShrink: 1,
   },
   intro: {
     color: '#b8b8b8',
     fontSize: 13,
     lineHeight: 19,
     marginTop: 4,
+    flexShrink: 1,
   },
   closeButton: {
     width: 36,
@@ -258,11 +283,14 @@ const styles = StyleSheet.create({
   },
   tipList: {
     marginTop: 2,
+    width: '100%',
   },
   tipListContent: {
     paddingBottom: 8,
+    width: '100%',
   },
   tipItem: {
+    width: '100%',
     backgroundColor: '#202020',
     borderRadius: 12,
     borderWidth: 1,
@@ -275,11 +303,13 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     marginBottom: 5,
+    flexShrink: 1,
   },
   tipBody: {
     color: '#cfcfcf',
     fontSize: 13,
     lineHeight: 19,
+    flexShrink: 1,
   },
   doneButton: {
     marginTop: 12,
