@@ -8,9 +8,17 @@ import {
   ActivityIndicator,
   ScrollView,
   Alert,
+  Platform,
+  PermissionsAndroid,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { launchImageLibrary } from 'react-native-image-picker';
+import {
+  CameraOptions,
+  ImageLibraryOptions,
+  ImagePickerResponse,
+  launchCamera,
+  launchImageLibrary,
+} from 'react-native-image-picker';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
@@ -30,11 +38,6 @@ type UserProfile = {
   bodyFatPct?: number;
   createdAt?: { toDate: () => Date };
   updatedAt?: { toDate: () => Date };
-  totalWorkouts?: number;
-};
-
-const getRank = (count: number): string => {
-  return count >= 100 ? 'Ironclad' : count >= 50 ? 'Veteran' : 'Rookie';
 };
 
 const completionFieldsFilled = (profile: UserProfile | null): number => {
@@ -93,15 +96,90 @@ const ProfileScreen = () => {
     });
   }, [navigation]);
 
-  const updateProfilePicture = async () => {
-    const result = await launchImageLibrary({ mediaType: 'photo', quality: 0.7, selectionLimit: 1 });
-    if (result.assets?.length) {
-      const photoUri = result.assets[0].uri;
-      const uid = auth.currentUser?.uid;
-      if (!uid || !photoUri) return;
-      await updateDoc(doc(db, 'users', uid), { profilePicture: photoUri });
-      setProfile((prev) => (prev ? { ...prev, profilePicture: photoUri } : null));
+  const requestCameraPermission = async (): Promise<boolean> => {
+    if (Platform.OS === 'ios') {
+      return true;
     }
+
+    try {
+      const cameraPermission = PermissionsAndroid.PERMISSIONS.CAMERA;
+      const alreadyGranted = await PermissionsAndroid.check(cameraPermission);
+      if (alreadyGranted) {
+        return true;
+      }
+
+      const result = await PermissionsAndroid.request(cameraPermission, {
+        title: 'Camera Access',
+        message: 'Allow camera access to take your profile photo?',
+        buttonNeutral: 'Ask Later',
+        buttonNegative: 'No',
+        buttonPositive: 'Yes',
+      });
+
+      return result === PermissionsAndroid.RESULTS.GRANTED;
+    } catch {
+      Alert.alert('Camera Error', 'Unable to request camera permission.');
+      return false;
+    }
+  };
+
+  const saveProfilePicture = async (photoUri?: string) => {
+    const uid = auth.currentUser?.uid;
+    if (!uid || !photoUri) {
+      return;
+    }
+
+    await updateDoc(doc(db, 'users', uid), { profilePicture: photoUri });
+    setProfile((prev) => (prev ? { ...prev, profilePicture: photoUri } : null));
+  };
+
+  const handleImagePickerResponse = async (
+    response: ImagePickerResponse,
+    errorTitle: string
+  ) => {
+    if (response.didCancel) {
+      return;
+    }
+    if (response.errorMessage) {
+      Alert.alert(errorTitle, response.errorMessage);
+      return;
+    }
+
+    await saveProfilePicture(response.assets?.[0]?.uri);
+  };
+
+  const openCamera = async () => {
+    const hasPermission = await requestCameraPermission();
+    if (!hasPermission) {
+      Alert.alert('Camera Access Needed', 'Camera access is required to take a new profile photo.');
+      return;
+    }
+
+    const options: CameraOptions = { mediaType: 'photo', quality: 0.7, maxWidth: 1024, maxHeight: 1024 };
+    launchCamera(options, (response) => {
+      handleImagePickerResponse(response, 'Camera Error');
+    });
+  };
+
+  const openImageLibrary = async () => {
+    const options: ImageLibraryOptions = {
+      mediaType: 'photo',
+      quality: 0.7,
+      selectionLimit: 1,
+      maxWidth: 1024,
+      maxHeight: 1024,
+    };
+    launchImageLibrary(options, (response) => {
+      handleImagePickerResponse(response, 'Gallery Error');
+    });
+  };
+
+  const updateProfilePicture = () => {
+    Alert.alert('Change Profile Photo', 'Choose a photo source', [
+      { text: 'Take Photo', onPress: openCamera },
+      { text: 'Choose from Gallery', onPress: openImageLibrary },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
   };
 
   if (loading) {
@@ -113,7 +191,6 @@ const ProfileScreen = () => {
   }
 
   const firstName = profile?.fullName?.split(' ')[0] || 'Firefighter';
-  const workouts = profile?.totalWorkouts || 0;
   const completionPercent = Math.round((completionFieldsFilled(profile) / 6) * 100);
 
   return (
@@ -133,7 +210,6 @@ const ProfileScreen = () => {
         </Pressable>
 
         <Text style={styles.name}>Hello, {firstName} 👋</Text>
-        <Text style={styles.rankText}>Rank: {getRank(workouts)}</Text>
         <Text style={styles.joinDate}>Member since {joinDate}</Text>
 
         {profile?.updatedAt?.toDate && (
@@ -215,7 +291,6 @@ const styles = StyleSheet.create({
   },
   changePhoto: { color: '#4fc3f7', fontSize: 12, marginBottom: 12 },
   name: { fontSize: 20, fontWeight: '700', color: '#fff', marginBottom: 4 },
-  rankText: { fontSize: 14, color: '#ccc', marginBottom: 2 },
   joinDate: { fontSize: 12, color: '#888', marginBottom: 10 },
   progressBarContainer: {
     height: 6,

@@ -223,11 +223,11 @@ const MacroPlanOverviewScreen = () => {
           </View>
 
           <Text style={styles.infoText}>
-            Your personalized nutrition plan is ready! You can now log meals and track your progress from the Meal Plan tab.
+            Your personalized nutrition plan is ready. Head to your meal log to track meals and progress.
           </Text>
 
           <DashboardButton
-            text="Go to Meal Plan"
+            text="Log Your Meals"
             variant="default"
             onPress={() => {
               navigation.reset({
