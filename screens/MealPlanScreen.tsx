@@ -36,6 +36,7 @@ import MealLoggingModal, { MealContext } from '../components/mealplan/MealLoggin
 import DescribeMealModal from '../components/mealplan/DescribeMealModal';
 import QuickFavoritesModal from '../components/mealplan/QuickFavorites';
 import MealEditModal from '../components/mealplan/MealEditModal';
+import PageHelpButton from '../components/Common/PageHelpButton';
 import { calculateItemMacros, sumMacros, validateMealAccuracy } from '../utils/precisionMath';
 import AIMealPlanner from '../components/AIMealPlanner';
 
@@ -866,6 +867,26 @@ const getCurrentPlannerMealType = (): 'breakfast' | 'lunch' | 'dinner' | 'snack'
           <Ionicons name="sparkles" size={24} color="#fff" />
         </Pressable>
       </View>
+
+      <PageHelpButton
+        pageKey="meal-plan"
+        title="Meal Plan Tips"
+        intro="Use this page to log what you ate and compare it to your daily macro targets."
+        tips={[
+          {
+            title: 'Macros update as you log',
+            body: 'Calories, protein, carbs, and fat move as meals are added. The goal is steady accuracy, not perfect numbers every meal.',
+          },
+          {
+            title: 'Use the green log button',
+            body: 'Tap Log Food to describe a meal, use a photo, or pick a favorite. This is the main meal logging workflow.',
+          },
+          {
+            title: 'Use sparkles for meal ideas',
+            body: 'The AI meal planner can suggest food at home or eating out based on the macros you still need today.',
+          },
+        ]}
+      />
 
       {/* ✅ MODALS - Only render one at a time to prevent crashes */}
       {(() => {

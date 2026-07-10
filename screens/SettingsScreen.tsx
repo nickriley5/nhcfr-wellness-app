@@ -14,6 +14,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
 import { auth, db } from '../firebase';
 import { doc, deleteDoc } from 'firebase/firestore';
+import PageHelpButton from '../components/Common/PageHelpButton';
 
 const SettingsScreen = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -176,6 +177,26 @@ const SettingsScreen = () => {
       <Section title="App Info">
         <SettingsButton icon="information-circle" label="Version 1.0.0" disabled />
       </Section>
+
+      <PageHelpButton
+        pageKey="settings"
+        title="Settings Tips"
+        intro="Use Settings for cleanup tasks. Most buttons here change saved plans, so read the prompt before confirming."
+        tips={[
+          {
+            title: 'Archive before deleting',
+            body: 'For workout programs, archive is safer than delete. Archived programs can be resumed later.',
+          },
+          {
+            title: 'Reset meal plan starts fresh',
+            body: 'Reset Meal Plan removes the active nutrition plan so you can generate a new one from your goals.',
+          },
+          {
+            title: 'Support is for stuck points',
+            body: 'Use Contact Support if something looks wrong or a saved plan does not load correctly.',
+          },
+        ]}
+      />
     </ScrollView>
   );
 };

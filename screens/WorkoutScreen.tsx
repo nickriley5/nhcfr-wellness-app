@@ -24,6 +24,7 @@ import { resolveExerciseDetails } from '../utils/exerciseUtils';
 import { resolveExercise } from '../utils/exerciseMatching';
 import AIWorkoutAssistant from '../components/AIWorkoutAssistant';
 import PeriodizedProgramModal from '../components/Modals/PeriodizedProgramModal';
+import PageHelpButton from '../components/Common/PageHelpButton';
 import type { PeriodizedProgram } from '../utils/ai/aiService';
 
 
@@ -805,6 +806,29 @@ const WorkoutScreen: React.FC = () => {
     setSelectedDayIdx(Math.max(0, remaining));
   }, [state, days]);
 
+  const renderWorkoutHelp = () => (
+    <PageHelpButton
+      pageKey="workout"
+      title="Workout Tips"
+      intro="Use this page to start a planned program, generate a new one, or grab a quick session."
+      top={70}
+      tips={[
+        {
+          title: 'Program is the long-term plan',
+          body: 'Generate Program builds a multi-week plan. Use this when you want the app to manage progression over time.',
+        },
+        {
+          title: 'Quick Workout is for today only',
+          body: 'Use Quick Workout when you need one session right now. Pick time, focus, and style, then apply it.',
+        },
+        {
+          title: 'Use the icons',
+          body: 'Rocket builds or manages programs, sparkles opens quick workout, calendar shows history, and book opens the exercise library.',
+        },
+      ]}
+    />
+  );
+
   /* ───────── 3. RENDER ───────── */
   if (loading) {
     return (
@@ -1125,6 +1149,8 @@ const WorkoutScreen: React.FC = () => {
           )}
         </ScrollView>
 
+      {renderWorkoutHelp()}
+
       {/* AI ASSISTANT MODAL */}
       <AIWorkoutAssistant
         visible={showAIAssistant}
@@ -1381,6 +1407,8 @@ const WorkoutScreen: React.FC = () => {
           )}
         </ScrollView>
 
+        {renderWorkoutHelp()}
+
         {/* AI ASSISTANT MODAL */}
         <AIWorkoutAssistant
           visible={showAIAssistant}
@@ -1579,6 +1607,8 @@ const WorkoutScreen: React.FC = () => {
           <Text style={styles.subtitle}>No workout for this day.</Text>
         )}
       </ScrollView>
+
+      {renderWorkoutHelp()}
 
       {/* AI WORKOUT ASSISTANT MODAL */}
       <AIWorkoutAssistant

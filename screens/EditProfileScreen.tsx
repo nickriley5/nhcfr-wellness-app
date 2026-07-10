@@ -14,6 +14,7 @@ import { auth, db } from '../firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import Toast from '../components/Toast';
 import DashboardButton from '../components/Common/DashboardButton';
+import PageHelpButton from '../components/Common/PageHelpButton';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const EditProfileScreen = () => {
@@ -196,6 +197,26 @@ const EditProfileScreen = () => {
           variant="redSolid"
         />
       </ScrollView>
+
+      <PageHelpButton
+        pageKey="edit-profile"
+        title="Edit Profile Tips"
+        intro="These fields power calorie targets, readiness context, and estimates across the app."
+        tips={[
+          {
+            title: 'Use real current numbers',
+            body: 'Height and weight should be current. If weight changes later, update it or log weigh-ins from the dashboard.',
+          },
+          {
+            title: 'Date format matters',
+            body: 'Enter birthday as MM/DD/YYYY. The app uses age for nutrition and calorie estimates.',
+          },
+          {
+            title: 'Save before leaving',
+            body: 'Tap Save Changes after edits. Leaving without saving keeps the old profile data.',
+          },
+        ]}
+      />
     </SafeAreaView>
 
       {showToast && (

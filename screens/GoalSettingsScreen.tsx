@@ -24,6 +24,7 @@ import ActivityLevelSelector from '../components/GoalSettings/ActivityLevelSelec
 // ⛔️ Removed DietMethodSelector (Zone) – we’re standard-only now
 import PreferencesSection from '../components/GoalSettings/PreferencesSection';
 import AppButton from '../components/Common/AppButton';
+import PageHelpButton from '../components/Common/PageHelpButton';
 
 /**
  * Props for GoalSettingsScreen
@@ -508,6 +509,25 @@ const GoalSettingsScreen: React.FC<GoalSettingsProps> = ({
             />
           </ScrollView>
         </KeyboardAvoidingView>
+        <PageHelpButton
+          pageKey="goal-settings"
+          title="Goal Setup Tips"
+          intro="This page builds the nutrition target. Accurate inputs make the meal plan more useful."
+          tips={[
+            {
+              title: 'Pick the real goal',
+              body: 'Fat loss, maintenance, or muscle gain changes the calorie target and the way the workout program is tailored.',
+            },
+            {
+              title: 'Rate controls aggressiveness',
+              body: 'A slower weekly rate is easier to recover from. A faster rate may require bigger food changes and can affect performance.',
+            },
+            {
+              title: 'Activity level matters',
+              body: 'Choose the level that matches your normal week, including shift work and training. This drives calorie estimates.',
+            },
+          ]}
+        />
       </LinearGradient>
     </SafeAreaView>
   );

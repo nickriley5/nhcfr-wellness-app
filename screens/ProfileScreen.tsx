@@ -27,6 +27,7 @@ import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import Toast from '../components/Toast';
 import DashboardButton from '../components/Common/DashboardButton';
 import BodyFatCalculatorModal from '../components/Modals/BodyFatCalculatorModal';
+import PageHelpButton from '../components/Common/PageHelpButton';
 
 type UserProfile = {
   fullName?: string;
@@ -269,6 +270,26 @@ const ProfileScreen = () => {
       {showToast && (
         <Toast message="Body fat updated successfully!" onClose={() => setShowToast(false)} />
       )}
+
+      <PageHelpButton
+        pageKey="profile"
+        title="Profile Tips"
+        intro="Keep this accurate so nutrition, readiness, and calorie estimates have the right baseline."
+        tips={[
+          {
+            title: 'Update weight when it changes',
+            body: 'Your current weight helps calorie estimates and meal targets stay realistic.',
+          },
+          {
+            title: 'Photo is optional',
+            body: 'Tap Change Photo to use the camera or gallery. This only changes your profile picture.',
+          },
+          {
+            title: 'Body fat is an estimate',
+            body: 'Use Update if you want a rough body fat estimate. It helps nutrition planning, but it does not need to be perfect.',
+          },
+        ]}
+      />
     </ScrollView>
   );
 };

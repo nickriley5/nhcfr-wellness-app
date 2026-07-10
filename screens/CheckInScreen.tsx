@@ -27,6 +27,7 @@ import { RootStackParamList } from '../App';
 import Toast from '../components/Toast';
 import DashboardButton from '../components/Common/DashboardButton';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import PageHelpButton from '../components/Common/PageHelpButton';
 
 const scaleValues = [1, 2, 3, 4, 5];
 
@@ -322,6 +323,26 @@ const CheckInScreen = () => {
           onClose={() => setShowToast(false)}
         />
       )}
+
+      <PageHelpButton
+        pageKey="readiness-check"
+        title="Readiness Check Tips"
+        intro="Answer honestly. This is how the app decides whether to push, lighten, or recommend recovery."
+        tips={[
+          {
+            title: 'Use today, not your best day',
+            body: 'Rate sleep, soreness, stress, energy, mood, and readiness based on how you feel right now.',
+          },
+          {
+            title: 'You can redo it',
+            body: 'If you tapped the wrong score or your day changes, update readiness. The dashboard can re-check the coach recommendation.',
+          },
+          {
+            title: 'Shift matters',
+            body: 'Mark recent shift/call volume when it applies. A slammed shift should influence training decisions.',
+          },
+        ]}
+      />
     </ScrollView>
   );
 };

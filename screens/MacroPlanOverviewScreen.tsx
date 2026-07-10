@@ -20,6 +20,7 @@ import MacroDayEditor from '../components/MacroDayEditor';
 import DashboardButton from '../components/Common/DashboardButton';
 import { useAuth } from '../providers/AuthProvider';
 import { calculateCalories } from '../components/macroUtils';
+import PageHelpButton from '../components/Common/PageHelpButton';
 
 // Enable LayoutAnimation on Android for smooth transitions
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -245,6 +246,25 @@ const MacroPlanOverviewScreen = () => {
             }}
           />
         </ScrollView>
+        <PageHelpButton
+          pageKey="macro-overview"
+          title="Macro Plan Tips"
+          intro="This screen previews and adjusts the nutrition targets before you start logging meals."
+          tips={[
+            {
+              title: 'The top numbers are your targets',
+              body: 'Calories and macros are the daily targets the meal log compares against.',
+            },
+            {
+              title: 'Edit one day or the whole week',
+              body: 'Use the day editor to adjust a selected day. Apply to all when you want the same macro setup every day.',
+            },
+            {
+              title: 'Log Your Meals starts tracking',
+              body: 'After reviewing the plan, tap Log Your Meals to go to the meal log and start entering food.',
+            },
+          ]}
+        />
       </LinearGradient>
     </SafeAreaView>
   );

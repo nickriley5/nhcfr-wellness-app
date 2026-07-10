@@ -11,6 +11,7 @@ import {
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { auth, db } from '../firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
+import PageHelpButton from './Common/PageHelpButton';
 
 const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -209,6 +210,26 @@ const EnvironmentCalendarModal = ({
               <Text style={styles.btnText}>Save Schedule</Text>
             </Pressable>
           </View>
+          <PageHelpButton
+            pageKey="weekly-schedule"
+            title="Weekly Schedule Tips"
+            intro="Set the normal weekly rhythm. Daily readiness can still adjust today without changing this plan."
+            top={16}
+            tips={[
+              {
+                title: 'Red days are training days',
+                body: 'Tap days you usually want available for workouts. Untapped days become recovery days.',
+              },
+              {
+                title: 'Rest days are protected',
+                body: 'The app keeps the required number of recovery days based on the program so the schedule does not get overloaded.',
+              },
+              {
+                title: 'This is your normal week',
+                body: 'Use this for the usual plan. If one day goes sideways, the readiness check can recommend rest without rewriting the whole week.',
+              },
+            ]}
+          />
         </View>
       </View>
     </Modal>

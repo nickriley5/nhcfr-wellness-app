@@ -48,6 +48,7 @@ import DescribeMealModal from '../components/mealplan/DescribeMealModal';
 import QuickFavoritesModal from '../components/mealplan/QuickFavorites';
 import EnvironmentCalendarModal from '../components/EnvironmentCalendarModal';
 import HydrationSettingsModal from '../components/Modals/HydrationSettingsModal';
+import PageHelpButton from '../components/Common/PageHelpButton';
 import { useDashboardData } from '../hooks/useDashboardData';
 import { useDashboardState } from '../hooks/useDashboardState';
 import { dashboardStyles } from '../styles/DashboardScreen.styles';
@@ -780,6 +781,31 @@ export default function DashboardScreen() {
           </ScrollView>
         </View>
       </ScrollView>
+
+      <PageHelpButton
+        pageKey="dashboard"
+        title="Dashboard Tips"
+        intro="This is your shift-start overview. Check it first, then move into training or food logging."
+        top={72}
+        tips={[
+          {
+            title: 'Start with readiness',
+            body: 'Complete the readiness check once per day. If you redo it, the coach can update the recommendation for today.',
+          },
+          {
+            title: 'Set the weekly schedule',
+            body: 'Use Set Weekly Schedule to mark training days, rest days, and cardio days. The cards use that schedule to show the right actions.',
+          },
+          {
+            title: 'Use the cards as shortcuts',
+            body: 'Training, cardio, nutrition, and weight cards are buttons. Tap the card action that matches what you want to do now.',
+          },
+          {
+            title: 'Weight ETA needs logs',
+            body: 'The weight card can estimate a goal date after it has a target and enough weigh-ins to see a trend.',
+          },
+        ]}
+      />
 
       {/* ✅ CONDITIONALLY RENDER MODALS - only mount when visible to prevent view recycling crashes */}
       {showMealLoggingModal && (

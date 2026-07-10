@@ -18,6 +18,7 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import LinearGradient from 'react-native-linear-gradient';
 import { RootStackParamList } from '../App';
 import { resolveExerciseDetails } from '../utils/exerciseUtils';
+import PageHelpButton from '../components/Common/PageHelpButton';
 
 const screenWidth = Dimensions.get('window').width - 40;
 type ProgressScreenRouteProp = RouteProp<RootStackParamList, 'ProgressChart'>;
@@ -306,6 +307,25 @@ const ProgressChartScreen: React.FC = () => {
           />
         )}
       </ScrollView>
+      <PageHelpButton
+        pageKey="progress-chart"
+        title="Progress Chart Tips"
+        intro="This chart shows whether an exercise is moving in the right direction over time."
+        tips={[
+          {
+            title: 'Pick the metric',
+            body: 'Weight shows load, reps shows total reps, and volume shows weight multiplied by reps across the workout.',
+          },
+          {
+            title: 'Use the date range',
+            body: '7D is recent, 30D is short-term trend, and ALL shows the full history for this exercise.',
+          },
+          {
+            title: 'More logs make it smarter',
+            body: 'One workout gives a starting point. Several completed workouts create a real trend.',
+          },
+        ]}
+      />
     </View>
     </SafeAreaView>
   );

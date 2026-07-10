@@ -25,6 +25,7 @@ import {
   getHiitTemplateForModality,
   getInitialCardioModalityId,
 } from '../utils/cardioTemplates';
+import PageHelpButton from '../components/Common/PageHelpButton';
 
 type CardioWorkoutRouteProp = RouteProp<RootStackParamList, 'CardioWorkout'>;
 
@@ -1225,6 +1226,27 @@ const CardioWorkoutScreen: React.FC = () => {
           <Text style={styles.completeButtonText}>Complete Workout</Text>
         </Pressable>
       </ScrollView>
+
+      <PageHelpButton
+        pageKey="cardio-workout"
+        title="Cardio Tips"
+        intro="Customize the cardio session to match the equipment and time you actually have today."
+        top={104}
+        tips={[
+          {
+            title: 'Pick the tool you have',
+            body: 'Run, row, bike, assault bike, stairs, and HIIT all work. Choose what is available and the screen will adjust.',
+          },
+          {
+            title: 'Time, distance, or both',
+            body: 'Use time for simple sessions, distance for target work, or both when you want the app to estimate pace and calories better.',
+          },
+          {
+            title: 'Calories are estimates',
+            body: 'Without a wearable, calories are based on body weight, duration, distance, and effort. Treat them as a solid estimate, not a lab number.',
+          },
+        ]}
+      />
     </LinearGradient>
   );
 };
