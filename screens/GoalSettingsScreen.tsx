@@ -12,7 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
 import Slider from '@react-native-community/slider';
 import { auth, db } from '../firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
 import { format, addDays } from 'date-fns';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -242,6 +242,14 @@ const GoalSettingsScreen: React.FC<GoalSettingsProps> = ({
           : goalType === 'muscle_gain'
           ? 'muscle'
           : 'maintain';
+      const signedWeeklyGoal =
+        convertedGoalType === 'fatloss'
+          ? -rate
+          : convertedGoalType === 'muscle'
+          ? rate
+          : 0;
+      const goalStartDate = new Date();
+      const goalTargetDate = addDays(goalStartDate, weeks * 7);
 
       const mealPlanData = {
         calorieTarget,
@@ -291,6 +299,22 @@ const GoalSettingsScreen: React.FC<GoalSettingsProps> = ({
         { merge: true }
       );
       console.log('✅ Profile updates saved successfully!');
+
+      await setDoc(
+        doc(db, 'users', uid, 'goals', 'weight'),
+        {
+          currentWeight: weight,
+          startWeight: weight,
+          targetWeight,
+          weeklyGoal: signedWeeklyGoal,
+          weeklyRate: rate,
+          goalType: convertedGoalType,
+          startDate: Timestamp.fromDate(goalStartDate),
+          targetDate: Timestamp.fromDate(goalTargetDate),
+          updatedAt: Timestamp.fromDate(new Date()),
+        },
+        { merge: true }
+      );
 
       // ✅ If opened as a modal → call Dashboard callback
       if (onGenerated) {

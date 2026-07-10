@@ -19,6 +19,7 @@ interface WeightEntry {
 
 interface WeightGoal {
   currentWeight: number;
+  startWeight?: number;
   targetWeight: number;
   weeklyGoal: number; // pounds per week (positive for gain, negative for loss)
   startDate: Date;
@@ -33,7 +34,7 @@ interface MacroPlan {
   lastAdjustment?: Date;
 }
 
-interface ProgressAnalysis {
+export interface ProgressAnalysis {
   weeksPassed: number;
   expectedWeightChange: number;
   actualWeightChange: number;
@@ -43,6 +44,70 @@ interface ProgressAnalysis {
   warningMessage?: string;
   projectedGoalDate?: Date;
 }
+
+export interface MacroAdjustmentRecommendation {
+  analysis: ProgressAnalysis;
+  previousCalories: number;
+  newCalories: number;
+  previousProteinGrams: number;
+  newProteinGrams: number;
+  previousCarbGrams: number;
+  newCarbGrams: number;
+  previousFatGrams: number;
+  newFatGrams: number;
+  calorieDelta: number;
+}
+
+const asDate = (value: any): Date | undefined => {
+  if (!value) {
+    return undefined;
+  }
+
+  if (value instanceof Date) {
+    return value;
+  }
+
+  if (typeof value.toDate === 'function') {
+    return value.toDate();
+  }
+
+  return undefined;
+};
+
+const clamp = (value: number, min: number, max: number) => (
+  Math.max(min, Math.min(max, value))
+);
+
+const buildMacroAdjustment = (
+  currentPlan: MacroPlan,
+  analysis: ProgressAnalysis
+): MacroAdjustmentRecommendation => {
+  let newCalorieTarget = currentPlan.calorieTarget;
+  if (analysis.recommendedAction === 'increase_calories') {
+    newCalorieTarget += analysis.adjustmentAmount;
+  } else if (analysis.recommendedAction === 'decrease_calories') {
+    newCalorieTarget -= analysis.adjustmentAmount;
+  }
+
+  newCalorieTarget = Math.round(clamp(newCalorieTarget, 1200, 4000));
+
+  const calorieDelta = newCalorieTarget - currentPlan.calorieTarget;
+  const carbCalorieChange = calorieDelta * 0.7;
+  const fatCalorieChange = calorieDelta * 0.3;
+
+  return {
+    analysis,
+    previousCalories: currentPlan.calorieTarget,
+    newCalories: newCalorieTarget,
+    previousProteinGrams: currentPlan.proteinGrams,
+    newProteinGrams: Math.max(80, Math.round(currentPlan.proteinGrams)),
+    previousCarbGrams: currentPlan.carbGrams,
+    newCarbGrams: Math.max(75, Math.round(currentPlan.carbGrams + carbCalorieChange / 4)),
+    previousFatGrams: currentPlan.fatGrams,
+    newFatGrams: Math.max(40, Math.round(currentPlan.fatGrams + fatCalorieChange / 9)),
+    calorieDelta,
+  };
+};
 
 /**
  * Analyzes weight progress vs goals and determines if nutrition adjustments are needed
@@ -55,9 +120,10 @@ export async function analyzeWeightProgress(uid: string): Promise<ProgressAnalys
       return null;
     }
 
+    const goalData = goalDoc.data();
     const weightGoal = {
-      ...goalDoc.data(),
-      startDate: goalDoc.data()?.startDate?.toDate() || new Date(),
+      ...goalData,
+      startDate: asDate(goalData.startDate) || new Date(),
     } as WeightGoal;
 
     // Get recent weight entries (last 4 weeks for trending)
@@ -97,40 +163,42 @@ export async function analyzeWeightProgress(uid: string): Promise<ProgressAnalys
     const actualWeightChange = latestEntry.weight - earliestEntry.weight;
     const expectedWeightChange = weightGoal.weeklyGoal * weeksPassed;
     const progressRate = expectedWeightChange !== 0 ? actualWeightChange / expectedWeightChange : 1;
+    const actualWeeklyRate = actualWeightChange / weeksPassed;
+    const targetWeeklyRate = weightGoal.weeklyGoal;
+    const toleranceLbs = Math.max(0.2, Math.abs(targetWeeklyRate) * 0.25);
 
     // Determine recommended action based on progress rate
     let recommendedAction: ProgressAnalysis['recommendedAction'] = 'maintain';
     let adjustmentAmount = 0;
     let warningMessage: string | undefined;
 
-    const tolerance = 0.25; // 25% tolerance
     const isLosingWeight = weightGoal.weeklyGoal < 0;
     const isGainingWeight = weightGoal.weeklyGoal > 0;
 
     if (isLosingWeight) {
       // Fat loss goals
-      if (progressRate > 1 + tolerance) {
+      if (actualWeeklyRate < targetWeeklyRate - toleranceLbs) {
         // Losing too fast
         recommendedAction = 'increase_calories';
-        adjustmentAmount = Math.min(200, Math.abs(actualWeightChange - expectedWeightChange) * 100);
+        adjustmentAmount = Math.round(clamp(Math.abs(targetWeeklyRate - actualWeeklyRate) * 500, 100, 250));
         warningMessage = 'You\'re losing weight faster than planned. Consider increasing calories to maintain muscle mass and avoid metabolic slowdown.';
-      } else if (progressRate < 1 - tolerance) {
+      } else if (actualWeeklyRate > targetWeeklyRate + toleranceLbs) {
         // Losing too slow
         recommendedAction = 'decrease_calories';
-        adjustmentAmount = Math.min(300, Math.abs(expectedWeightChange - actualWeightChange) * 150);
+        adjustmentAmount = Math.round(clamp(Math.abs(targetWeeklyRate - actualWeeklyRate) * 500, 100, 250));
         warningMessage = 'Progress is slower than planned. A small calorie reduction may help get back on track.';
       }
     } else if (isGainingWeight) {
       // Muscle gain goals
-      if (progressRate > 1 + tolerance) {
+      if (actualWeeklyRate > targetWeeklyRate + toleranceLbs) {
         // Gaining too fast
         recommendedAction = 'decrease_calories';
-        adjustmentAmount = Math.min(250, Math.abs(actualWeightChange - expectedWeightChange) * 125);
+        adjustmentAmount = Math.round(clamp(Math.abs(targetWeeklyRate - actualWeeklyRate) * 500, 100, 250));
         warningMessage = 'You\'re gaining weight faster than planned. Reducing calories slightly may help minimize fat gain.';
-      } else if (progressRate < 1 - tolerance) {
+      } else if (actualWeeklyRate < targetWeeklyRate - toleranceLbs) {
         // Gaining too slow
         recommendedAction = 'increase_calories';
-        adjustmentAmount = Math.min(400, Math.abs(expectedWeightChange - actualWeightChange) * 200);
+        adjustmentAmount = Math.round(clamp(Math.abs(targetWeeklyRate - actualWeeklyRate) * 500, 100, 300));
         warningMessage = 'Progress is slower than planned. Increasing calories may help reach your muscle-building goals.';
       }
     }
@@ -157,7 +225,7 @@ export async function analyzeWeightProgress(uid: string): Promise<ProgressAnalys
     return {
       weeksPassed: totalWeeksSinceStart,
       expectedWeightChange: weightGoal.weeklyGoal * totalWeeksSinceStart,
-      actualWeightChange: latestEntry.weight - weightGoal.currentWeight,
+      actualWeightChange: latestEntry.weight - (weightGoal.startWeight || weightGoal.currentWeight),
       progressRate,
       recommendedAction,
       adjustmentAmount,
@@ -171,83 +239,78 @@ export async function analyzeWeightProgress(uid: string): Promise<ProgressAnalys
 }
 
 /**
- * Automatically adjusts macro plan based on weight progress analysis
+ * Builds a macro adjustment recommendation without applying it.
  */
-export async function adjustMacroPlansIfNeeded(uid: string, forceAdjust = false): Promise<boolean> {
+export async function getMacroAdjustmentRecommendation(
+  uid: string,
+  forceAdjust = false
+): Promise<MacroAdjustmentRecommendation | null> {
   try {
     const analysis = await analyzeWeightProgress(uid);
     if (!analysis || analysis.recommendedAction === 'maintain') {
-      return false;
+      return null;
     }
 
     // Get current macro plan
     const macroPlanDoc = await getDoc(doc(db, 'users', uid, 'mealPlan', 'active'));
     if (!macroPlanDoc.exists()) {
-      return false;
+      return null;
     }
 
     const currentPlan = macroPlanDoc.data() as MacroPlan;
 
     // Check if we've adjusted recently (prevent over-adjustment)
-    const lastAdjustment = currentPlan.lastAdjustment;
+    const lastAdjustment = asDate(currentPlan.lastAdjustment);
     if (!forceAdjust && lastAdjustment) {
       const daysSinceLastAdjustment = (Date.now() - lastAdjustment.getTime()) / (24 * 60 * 60 * 1000);
       if (daysSinceLastAdjustment < 7) {
-        return false; // Don't adjust more than once per week
+        return null; // Don't adjust more than once per week
       }
     }
 
     // Skip if extreme case requiring manual intervention
     if (analysis.recommendedAction === 'slow_down') {
-      return false;
+      return null;
     }
 
-    // Calculate new calorie target
-    let newCalorieTarget = currentPlan.calorieTarget;
-    if (analysis.recommendedAction === 'increase_calories') {
-      newCalorieTarget += analysis.adjustmentAmount;
-    } else if (analysis.recommendedAction === 'decrease_calories') {
-      newCalorieTarget -= analysis.adjustmentAmount;
-    }
+    return buildMacroAdjustment(currentPlan, analysis);
+  } catch (error) {
+    console.error('Error building macro adjustment recommendation:', error);
+    return null;
+  }
+}
 
-    // Ensure reasonable bounds
-    newCalorieTarget = Math.max(1200, Math.min(4000, newCalorieTarget));
-
-    // Recalculate macros maintaining proportions
-    const currentCalories = currentPlan.calorieTarget;
-    const calorieDelta = newCalorieTarget - currentCalories;
-
-    // Distribute calorie change: 50% carbs, 30% fats, 20% protein
-    const carbCalorieChange = calorieDelta * 0.5;
-    const fatCalorieChange = calorieDelta * 0.3;
-    const proteinCalorieChange = calorieDelta * 0.2;
-
-    const newProteinGrams = Math.max(80, Math.round(currentPlan.proteinGrams + proteinCalorieChange / 4));
-    const newCarbGrams = Math.max(50, Math.round(currentPlan.carbGrams + carbCalorieChange / 4));
-    const newFatGrams = Math.max(30, Math.round(currentPlan.fatGrams + fatCalorieChange / 9));
-
+/**
+ * Applies an approved macro adjustment recommendation.
+ */
+export async function applyMacroAdjustment(
+  uid: string,
+  recommendation: MacroAdjustmentRecommendation
+): Promise<boolean> {
+  try {
     // Update macro plan
     const updatedPlan = {
-      ...currentPlan,
-      calorieTarget: newCalorieTarget,
-      proteinGrams: newProteinGrams,
-      carbGrams: newCarbGrams,
-      fatGrams: newFatGrams,
-      lastAdjustment: new Date(),
-      adjustmentReason: `Auto-adjusted based on weight progress (${analysis.recommendedAction})`,
+      calorieTarget: recommendation.newCalories,
+      proteinGrams: recommendation.newProteinGrams,
+      carbGrams: recommendation.newCarbGrams,
+      fatGrams: recommendation.newFatGrams,
+      lastAdjustment: Timestamp.fromDate(new Date()),
+      adjustmentReason: `Approved adjustment based on weight progress (${recommendation.analysis.recommendedAction})`,
+      previousCalorieTarget: recommendation.previousCalories,
     };
 
-    await setDoc(doc(db, 'users', uid, 'mealPlan', 'active'), updatedPlan);
+    await setDoc(doc(db, 'users', uid, 'mealPlan', 'active'), updatedPlan, { merge: true });
 
     // Log the adjustment for tracking
     await setDoc(doc(db, 'users', uid, 'nutritionAdjustments', Date.now().toString()), {
-      date: new Date(),
-      previousCalories: currentCalories,
-      newCalories: newCalorieTarget,
-      adjustmentAmount: calorieDelta,
-      reason: analysis.recommendedAction,
-      progressRate: analysis.progressRate,
-      autoAdjusted: true,
+      date: Timestamp.fromDate(new Date()),
+      previousCalories: recommendation.previousCalories,
+      newCalories: recommendation.newCalories,
+      adjustmentAmount: recommendation.calorieDelta,
+      reason: recommendation.analysis.recommendedAction,
+      progressRate: recommendation.analysis.progressRate,
+      autoAdjusted: false,
+      userApproved: true,
     });
 
     return true;
@@ -255,6 +318,39 @@ export async function adjustMacroPlansIfNeeded(uid: string, forceAdjust = false)
     console.error('Error adjusting macro plans:', error);
     return false;
   }
+}
+
+export async function declineMacroAdjustment(
+  uid: string,
+  recommendation: MacroAdjustmentRecommendation
+): Promise<void> {
+  try {
+    await setDoc(doc(db, 'users', uid, 'nutritionAdjustments', Date.now().toString()), {
+      date: Timestamp.fromDate(new Date()),
+      previousCalories: recommendation.previousCalories,
+      newCalories: recommendation.newCalories,
+      adjustmentAmount: recommendation.calorieDelta,
+      reason: recommendation.analysis.recommendedAction,
+      progressRate: recommendation.analysis.progressRate,
+      autoAdjusted: false,
+      userApproved: false,
+    });
+  } catch (error) {
+    console.error('Error logging declined macro adjustment:', error);
+  }
+}
+
+/**
+ * Legacy helper for explicit manual checks. Prefer getMacroAdjustmentRecommendation
+ * followed by applyMacroAdjustment when the UI can ask the user first.
+ */
+export async function adjustMacroPlansIfNeeded(uid: string, forceAdjust = false): Promise<boolean> {
+  const recommendation = await getMacroAdjustmentRecommendation(uid, forceAdjust);
+  if (!recommendation) {
+    return false;
+  }
+
+  return applyMacroAdjustment(uid, recommendation);
 }
 
 /**

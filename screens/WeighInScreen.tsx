@@ -26,7 +26,13 @@ import {
   limit,
   getDocs,
 } from 'firebase/firestore';
-import { getNutritionGuidance } from '../utils/adaptiveNutrition';
+import {
+  applyMacroAdjustment,
+  declineMacroAdjustment,
+  getMacroAdjustmentRecommendation,
+  getNutritionGuidance,
+  MacroAdjustmentRecommendation,
+} from '../utils/adaptiveNutrition';
 
 interface WeightGoal {
   currentWeight: number;
@@ -118,10 +124,15 @@ const WeighInScreen = () => {
       if (weightGoal) {
         await setDoc(
           doc(db, 'users', uid, 'goals', 'weight'),
-          { currentWeight: weightValue },
+          {
+            latestWeight: weightValue,
+            lastWeighInAt: Timestamp.fromDate(new Date()),
+          },
           { merge: true }
         );
       }
+
+      const macroRecommendation = await getMacroAdjustmentRecommendation(uid);
 
       // Show success and provide feedback
       let message = 'Weight logged successfully!';
@@ -138,12 +149,21 @@ const WeighInScreen = () => {
         }
       }
 
-      Alert.alert('Weight Logged! 📊', message, [
-        {
-          text: 'View Dashboard',
-          onPress: () => navigation.goBack(),
-        },
-      ]);
+      if (macroRecommendation) {
+        Alert.alert('Weight Logged! 📊', message, [
+          {
+            text: 'Review Macro Change',
+            onPress: () => promptMacroAdjustment(uid, macroRecommendation),
+          },
+        ]);
+      } else {
+        Alert.alert('Weight Logged! 📊', message, [
+          {
+            text: 'View Dashboard',
+            onPress: () => navigation.goBack(),
+          },
+        ]);
+      }
 
       setWeight('');
       setNotes('');
@@ -154,6 +174,45 @@ const WeighInScreen = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const promptMacroAdjustment = (
+    uid: string,
+    recommendation: MacroAdjustmentRecommendation
+  ) => {
+    const direction = recommendation.calorieDelta > 0 ? 'increase' : 'decrease';
+    const absoluteCalories = Math.abs(recommendation.calorieDelta);
+
+    Alert.alert(
+      'Macro Adjustment Recommended',
+      `Based on your recent weight trend, the app recommends a ${direction} of ${absoluteCalories} calories/day.\n\nCalories: ${recommendation.previousCalories} → ${recommendation.newCalories}\nProtein: ${recommendation.previousProteinGrams}g → ${recommendation.newProteinGrams}g\nCarbs: ${recommendation.previousCarbGrams}g → ${recommendation.newCarbGrams}g\nFat: ${recommendation.previousFatGrams}g → ${recommendation.newFatGrams}g`,
+      [
+        {
+          text: 'Keep Current Plan',
+          style: 'cancel',
+          onPress: async () => {
+            await declineMacroAdjustment(uid, recommendation);
+            navigation.goBack();
+          },
+        },
+        {
+          text: 'Apply Changes',
+          onPress: async () => {
+            const applied = await applyMacroAdjustment(uid, recommendation);
+            if (applied) {
+              Alert.alert('Meal Plan Updated', 'Your macro targets have been updated.', [
+                {
+                  text: 'View Dashboard',
+                  onPress: () => navigation.goBack(),
+                },
+              ]);
+            } else {
+              navigation.goBack();
+            }
+          },
+        },
+      ]
+    );
   };
 
   const getWeightChangeDisplay = () => {

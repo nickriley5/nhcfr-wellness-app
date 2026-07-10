@@ -12,7 +12,13 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import { auth } from '../../firebase';
-import { shouldPromptWeighIn, adjustMacroPlansIfNeeded } from '../../utils/adaptiveNutrition';
+import {
+  applyMacroAdjustment,
+  declineMacroAdjustment,
+  getMacroAdjustmentRecommendation,
+  MacroAdjustmentRecommendation,
+  shouldPromptWeighIn,
+} from '../../utils/adaptiveNutrition';
 
 interface WeighInReminderProps {
   visible?: boolean;
@@ -67,13 +73,15 @@ const WeighInReminder: React.FC<WeighInReminderProps> = ({ visible, onClose }) =
 
     try {
       setCheckingAutoAdjust(true);
-      const adjusted = await adjustMacroPlansIfNeeded(uid);
+      const recommendation = await getMacroAdjustmentRecommendation(uid);
 
-      if (adjusted) {
+      if (recommendation) {
+        promptMacroAdjustment(uid, recommendation);
+      } else {
         Alert.alert(
-          'Nutrition Plan Updated! 🎯',
-          'Your macro targets have been automatically adjusted based on your recent progress. Check your meal plan for the new targets.',
-          [{ text: 'Got it!' }]
+          'No Adjustment Needed',
+          'Your current macro targets look appropriate based on the available weigh-in data.',
+          [{ text: 'Got it' }]
         );
       }
     } catch (error) {
@@ -81,6 +89,37 @@ const WeighInReminder: React.FC<WeighInReminderProps> = ({ visible, onClose }) =
     } finally {
       setCheckingAutoAdjust(false);
     }
+  };
+
+  const promptMacroAdjustment = (
+    uid: string,
+    recommendation: MacroAdjustmentRecommendation
+  ) => {
+    const direction = recommendation.calorieDelta > 0 ? 'increase' : 'decrease';
+    const absoluteCalories = Math.abs(recommendation.calorieDelta);
+
+    Alert.alert(
+      'Macro Adjustment Recommended',
+      `Based on your recent weight trend, the app recommends a ${direction} of ${absoluteCalories} calories/day.\n\nCalories: ${recommendation.previousCalories} → ${recommendation.newCalories}\nProtein: ${recommendation.previousProteinGrams}g → ${recommendation.newProteinGrams}g\nCarbs: ${recommendation.previousCarbGrams}g → ${recommendation.newCarbGrams}g\nFat: ${recommendation.previousFatGrams}g → ${recommendation.newFatGrams}g`,
+      [
+        {
+          text: 'Keep Current Plan',
+          style: 'cancel',
+          onPress: () => {
+            declineMacroAdjustment(uid, recommendation);
+          },
+        },
+        {
+          text: 'Apply Changes',
+          onPress: async () => {
+            const applied = await applyMacroAdjustment(uid, recommendation);
+            if (applied) {
+              Alert.alert('Meal Plan Updated', 'Your macro targets have been updated.');
+            }
+          },
+        },
+      ]
+    );
   };
 
   if (!showReminder) {
@@ -151,7 +190,7 @@ const WeighInReminder: React.FC<WeighInReminderProps> = ({ visible, onClose }) =
               style={styles.autoAdjustIcon}
             />
             <Text style={styles.autoAdjustText}>
-              {checkingAutoAdjust ? 'Checking for adjustments...' : 'Check for plan adjustments'}
+              {checkingAutoAdjust ? 'Checking for adjustments...' : 'Review plan adjustments'}
             </Text>
           </Pressable>
         </View>
