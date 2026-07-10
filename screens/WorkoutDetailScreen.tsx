@@ -314,27 +314,6 @@ const WorkoutDetailScreen: React.FC = () => {
       // Calculate workout duration
       const duration = Math.floor((Date.now() - workoutStartTime) / 1000 / 60);
 
-      // Prepare workout data
-      const workoutData = {
-        dayTitle: day.title || 'Workout',
-        weekIdx,
-        dayIdx,
-        exercises: exerciseList.map(ex => ({
-          name: ex.name,
-          id: ex.id,
-          sets: workoutSets[ex.id].map(set => ({
-            weight: set.weight || '0',
-            reps: set.reps || '0',
-            completed: set.completed,
-          })),
-        })),
-        duration,
-        feeling,
-        notes,
-        completedAt: Timestamp.now(),
-        workoutType: 'strength',
-      };
-
       // ---- PR detection (compare against previous logs) ----
       const currentMaxByExercise: Record<string, { maxWeight: number; reps: number }> = {};
       exerciseList.forEach(ex => {
@@ -375,13 +354,65 @@ const WorkoutDetailScreen: React.FC = () => {
       });
 
       const newPRs: string[] = [];
+      const prByExercise = new Map<string, { weight: number; reps: number }>();
       Object.entries(currentMaxByExercise).forEach(([name, data]) => {
         const prevMax = previousMaxByExercise[name] ?? 0;
         if (data.maxWeight > prevMax) {
           const repsText = data.reps ? ` x ${data.reps}` : '';
           newPRs.push(`${name}: ${data.maxWeight} lbs${repsText}`);
+          prByExercise.set(name, { weight: data.maxWeight, reps: data.reps });
         }
       });
+
+      // Prepare workout data after PR detection so exact PR sets are saved.
+      const workoutData = {
+        dayTitle: day.title || 'Workout',
+        weekIdx,
+        dayIdx,
+        exercises: exerciseList.map(ex => {
+          const pr = prByExercise.get(ex.name);
+          let prMarked = false;
+
+          return {
+            name: ex.name,
+            id: ex.id,
+            sets: workoutSets[ex.id].map(set => {
+              const weight = Number(set.weight);
+              const reps = Number(set.reps);
+              const isPR = !!pr &&
+                !prMarked &&
+                set.completed &&
+                Number.isFinite(weight) &&
+                weight === pr.weight;
+
+              if (isPR) {
+                prMarked = true;
+              }
+
+              return {
+                weight: set.weight || '0',
+                reps: set.reps || '0',
+                completed: set.completed,
+                isPR,
+                prType: isPR ? 'weight' : null,
+                prWeight: isPR ? pr.weight : null,
+                prReps: isPR && Number.isFinite(reps) ? reps : null,
+              };
+            }),
+          };
+        }),
+        prs: Array.from(prByExercise.entries()).map(([name, data]) => ({
+          exerciseName: name,
+          weight: data.weight,
+          reps: data.reps,
+          type: 'weight',
+        })),
+        duration,
+        feeling,
+        notes,
+        completedAt: Timestamp.now(),
+        workoutType: 'strength',
+      };
 
       // Save to workout logs (matches WorkoutHistoryScreen collection name)
       const historyRef = doc(collection(db, 'users', uid, 'workoutLogs'));

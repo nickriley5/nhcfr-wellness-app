@@ -18,21 +18,54 @@ import { useNavigation } from '@react-navigation/native';
 
 interface WorkoutLog {
   dayTitle: string;
+  completedAt?: any;
+  prs?: {
+    exerciseName: string;
+    weight: number;
+    reps?: number;
+    type?: string;
+  }[];
   exercises: {
     name: string;
     sets: {
       weight: string;
       reps: string;
+      isPR?: boolean;
     }[];
   }[];
 }
 
+type PRRecord = {
+  name: string;
+  weight: number;
+  reps: number;
+  date: string;
+  workoutTitle: string;
+};
+
+const getLogTime = (id: string, log: WorkoutLog) => {
+  const completedAt = log.completedAt;
+  if (completedAt?.toMillis) {
+    return completedAt.toMillis();
+  }
+  if (completedAt?.seconds) {
+    return completedAt.seconds * 1000;
+  }
+  if (id.length === 13 && !isNaN(Number(id))) {
+    return Number(id);
+  }
+  return 0;
+};
+
+const formatLogDate = (id: string, log: WorkoutLog) => {
+  const time = getLogTime(id, log);
+  return time ? new Date(time).toLocaleDateString() : 'Recent';
+};
+
 const PRTrackerScreen: React.FC = () => {
   const navigation = useNavigation();
   const [loading, setLoading] = useState(true);
-  const [prData, setPrData] = useState<
-    { name: string; weight: number; reps: number; date: string; workoutTitle: string }[]
-  >([]);
+  const [prData, setPrData] = useState<PRRecord[]>([]);
 
   useEffect(() => {
     const fetchPRs = async () => {
@@ -48,56 +81,83 @@ const PRTrackerScreen: React.FC = () => {
           logs[doc.id] = doc.data() as WorkoutLog;
         });
 
-        const exerciseMap: Record<string, { weight: number; reps: number; date: string; workoutTitle: string }> = {};
-
+        const explicitPRs: PRRecord[] = [];
         Object.entries(logs).forEach(([id, log]) => {
-          // Convert document ID to proper date if it looks like a timestamp
-          let logDate = id;
-          try {
-            // Check if id is a timestamp or if log has a completedAt field
-            const logData = log as any;
-            if (logData.completedAt) {
-              // Use completedAt field if available
-              const date = new Date(logData.completedAt);
-              logDate = date.toLocaleDateString();
-            } else if (id.length === 13 && !isNaN(Number(id))) {
-              // If ID looks like a timestamp, convert it
-              const date = new Date(Number(id));
-              logDate = date.toLocaleDateString();
-            } else {
-              // Otherwise just use a generic date format
-              logDate = 'Recent';
-            }
-          } catch (error) {
-            logDate = 'Recent';
-          }
+          const logDate = formatLogDate(id, log);
+          const workoutTitle = log.dayTitle || 'Workout';
 
-          if (!Array.isArray(log.exercises)) {
+          if (Array.isArray(log.prs) && log.prs.length > 0) {
+            log.prs.forEach(pr => {
+              explicitPRs.push({
+                name: pr.exerciseName,
+                weight: Number(pr.weight) || 0,
+                reps: Number(pr.reps) || 0,
+                date: logDate,
+                workoutTitle,
+              });
+            });
             return;
           }
 
-          log.exercises.forEach(ex => {
-            ex.sets.forEach(set => {
+          log.exercises?.forEach(ex => {
+            ex.sets?.forEach(set => {
+              if (!set.isPR) {
+                return;
+              }
+
               const weight = parseFloat(set.weight);
               const reps = parseInt(set.reps, 10);
               if (!isNaN(weight) && !isNaN(reps)) {
-                if (!exerciseMap[ex.name] || weight > exerciseMap[ex.name].weight) {
-                  exerciseMap[ex.name] = {
-                    weight,
-                    reps,
-                    date: logDate,
-                    workoutTitle: log.dayTitle || 'Workout',
-                  };
-                }
+                explicitPRs.push({
+                  name: ex.name,
+                  weight,
+                  reps,
+                  date: logDate,
+                  workoutTitle,
+                });
               }
             });
           });
         });
 
-        const sorted = Object.entries(exerciseMap).map(([name, data]) => ({
-          name,
-          ...data,
-        }));
+        const sorted = explicitPRs.length > 0
+          ? explicitPRs.sort((a, b) => b.weight - a.weight)
+          : Object.entries(logs)
+            .sort((a, b) => getLogTime(a[0], a[1]) - getLogTime(b[0], b[1]))
+            .reduce<{ records: PRRecord[]; previousMax: Record<string, number> }>((acc, [id, log]) => {
+              const logDate = formatLogDate(id, log);
+              const workoutTitle = log.dayTitle || 'Workout';
+
+              log.exercises?.forEach(ex => {
+                let workoutMax = 0;
+                let workoutReps = 0;
+
+                ex.sets?.forEach(set => {
+                  const weight = parseFloat(set.weight);
+                  const reps = parseInt(set.reps, 10);
+                  if (!isNaN(weight) && !isNaN(reps) && weight > workoutMax) {
+                    workoutMax = weight;
+                    workoutReps = reps;
+                  }
+                });
+
+                const previousMax = acc.previousMax[ex.name] || 0;
+                if (workoutMax > previousMax) {
+                  acc.previousMax[ex.name] = workoutMax;
+                  acc.records.push({
+                    name: ex.name,
+                    weight: workoutMax,
+                    reps: workoutReps,
+                    date: logDate,
+                    workoutTitle,
+                  });
+                }
+              });
+
+              return acc;
+            }, { records: [], previousMax: {} })
+            .records
+            .sort((a, b) => b.weight - a.weight);
 
         setPrData(sorted);
       } catch (err: any) {
