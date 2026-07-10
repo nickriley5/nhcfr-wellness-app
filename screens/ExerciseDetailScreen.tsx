@@ -17,7 +17,7 @@ import {
 import LinearGradient from 'react-native-linear-gradient';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import Video from 'react-native-video';
-import { WebView } from 'react-native-webview';
+import YoutubePlayer from 'react-native-youtube-iframe';
 import { doc, getDoc, getFirestore, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { firebaseApp, auth } from '../firebase';
 import { RootStackParamList } from '../App';
@@ -27,6 +27,34 @@ import { exercises } from '../data/exercises';
 
 type ExerciseDetailRouteProp = RouteProp<RootStackParamList, 'ExerciseDetail'>;
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
+
+const getYoutubeVideoId = (url?: string): string | null => {
+  if (!url) {
+    return null;
+  }
+
+  const watchMatch = url.match(/youtube\.com\/watch\?v=([^&]+)/);
+  if (watchMatch) {
+    return watchMatch[1];
+  }
+
+  const shortMatch = url.match(/youtu\.be\/([^?]+)/);
+  if (shortMatch) {
+    return shortMatch[1];
+  }
+
+  const embedMatch = url.match(/youtube\.com\/embed\/([^?]+)/);
+  if (embedMatch) {
+    return embedMatch[1];
+  }
+
+  const shortsMatch = url.match(/youtube\.com\/shorts\/([^?/]+)/);
+  if (shortsMatch) {
+    return shortsMatch[1];
+  }
+
+  return null;
+};
 
 const ExerciseDetailScreen: React.FC = () => {
   const navigation = useNavigation<NavProp>();
@@ -155,40 +183,38 @@ const ExerciseDetailScreen: React.FC = () => {
             {(() => {
               const videoUri = exercise.videoUrl || exercise.videoUri;
               console.log('🎥 ExerciseDetail - Video URI:', videoUri);
-              const isYouTubeUrl = videoUri.includes('youtube.com') || videoUri.includes('youtu.be');
+              const youtubeId = getYoutubeVideoId(videoUri);
+              const isYouTubeUrl = !!youtubeId;
               console.log('🎥 Is YouTube URL:', isYouTubeUrl);
 
-              if (isYouTubeUrl) {
-                // Convert YouTube URL to embed format
-                let videoId = '';
-                if (videoUri.includes('youtube.com/watch?v=')) {
-                  videoId = videoUri.split('v=')[1].split('&')[0];
-                } else if (videoUri.includes('youtu.be/')) {
-                  videoId = videoUri.split('youtu.be/')[1].split('?')[0];
-                }
-                const embedUrl = `https://www.youtube.com/embed/${videoId}?playsinline=1&controls=1`;
-                console.log('🎥 YouTube Video ID:', videoId);
-                console.log('🎥 Embed URL:', embedUrl);
-
+              if (youtubeId) {
+                console.log('🎥 YouTube Video ID:', youtubeId);
                 return (
-                  <WebView
-                    style={styles.video}
-                    source={{ uri: embedUrl }}
-                    allowsInlineMediaPlayback
-                    mediaPlaybackRequiresUserAction={false}
-                  />
-                );
-              } else {
-                return (
-                  <Video
-                    source={{ uri: videoUri }}
-                    style={styles.video}
-                    controls
-                    resizeMode="contain"
-                    paused={false}
+                  <YoutubePlayer
+                    height={220}
+                    videoId={youtubeId}
+                    play={false}
+                    webViewProps={{
+                      cacheEnabled: true,
+                      domStorageEnabled: true,
+                      allowsInlineMediaPlayback: true,
+                    }}
+                    onError={(error: unknown) => {
+                      console.warn('YouTube player error in exercise library:', error);
+                    }}
                   />
                 );
               }
+
+              return (
+                <Video
+                  source={{ uri: videoUri }}
+                  style={styles.video}
+                  controls
+                  resizeMode="contain"
+                  paused={false}
+                />
+              );
             })()}
           </View>
         )}
