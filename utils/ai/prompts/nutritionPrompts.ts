@@ -98,7 +98,8 @@ RESTAURANTS TO USE (must use ONLY these places): ${
 Requirements:
 - Use realistic menu items from the listed restaurants only.
 - Provide exact order details and portion modifications.
-- Include one backup order from the same or another listed restaurant.
+- Include multiple distinct order options when possible, even if only one restaurant is listed.
+- Include one backup order from the same or another listed restaurant inside each option.
 ${eatOutSpecificRules}`;
 
   return `You are a practical performance nutrition coach for firefighters.
@@ -154,7 +155,7 @@ Return ONLY valid JSON with this exact shape:
 }
 
 Rules:
-- Return 2 options.
+- Return 2-3 options. If only one restaurant is listed, return 2-3 distinct orders from that restaurant.
 - If mode is "pantry", "ingredients" and "instructions" must be populated. Keep "orderDetails" empty.
 - If mode is "eat_out", "orderDetails" must be populated. Keep "instructions" concise and practical.
 - If mode is "eat_out", each option MUST reference one of the provided restaurants in "source" and in "orderDetails".

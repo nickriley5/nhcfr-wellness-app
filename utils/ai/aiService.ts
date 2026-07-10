@@ -720,7 +720,7 @@ ${generatedWeeks > 4 ? `🚒 Continue the "weeks" array through week ${generated
 
   try {
     onProgress?.('Generating workouts...', 50);
-    
+
     const response = await sendProgramAIMessage(
       [
         { 
@@ -1151,8 +1151,48 @@ export async function getContextualMealSuggestions(nutritionContext: {
     { temperature: 0.2, maxTokens: 3800 }
   );
 
+  const parseContextualJson = (content: string): any => {
+    const jsonCandidates = (raw: string): string[] => {
+      const cleaned = cleanJsonResponse(raw);
+      const candidates = [cleaned];
+      const objectStart = cleaned.indexOf('{');
+      const objectEnd = cleaned.lastIndexOf('}');
+      const arrayStart = cleaned.indexOf('[');
+      const arrayEnd = cleaned.lastIndexOf(']');
+
+      if (objectStart >= 0 && objectEnd > objectStart) {
+        candidates.push(cleaned.slice(objectStart, objectEnd + 1));
+      }
+      if (arrayStart >= 0 && arrayEnd > arrayStart) {
+        candidates.push(cleaned.slice(arrayStart, arrayEnd + 1));
+      }
+
+      return candidates;
+    };
+
+    try {
+      return parseCleanJsonResponse<any>(content);
+    } catch (error) {
+      for (const candidate of jsonCandidates(content)) {
+        const cleaned = candidate
+          .replace(/[“”]/g, '"')
+          .replace(/[‘’]/g, "'")
+          .replace(/([{,]\s*)([A-Za-z_][A-Za-z0-9_]*)\s*:/g, '$1"$2":')
+          .replace(/,\s*([}\]])/g, '$1');
+
+        try {
+          return JSON.parse(cleaned);
+        } catch {
+          // Keep trying candidates before falling back to model-based repair.
+        }
+      }
+
+      throw error;
+    }
+  };
+
   const parseSuggestions = (content: string): ContextualMealSuggestion[] => {
-    const parsed = parseCleanJsonResponse<any>(content);
+    const parsed = parseContextualJson(content);
     const options = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.options)
       ? parsed.options
       : Array.isArray(parsed?.meals)
@@ -1252,12 +1292,73 @@ Requirements:
     return enrichedOptions;
   };
 
+  const ensureMinimumEatOutOptions = async (
+    options: ContextualMealSuggestion[]
+  ): Promise<ContextualMealSuggestion[]> => {
+    if (nutritionContext.mode !== 'eat_out' || normalizedRestaurants.length === 0 || options.length >= 2) {
+      return options;
+    }
+
+    const topUpPrompt = `You are a practical performance nutrition coach.
+The first AI pass only produced ${options.length} valid eat-out option. Generate additional distinct options.
+
+CONTEXT:
+- Allowed restaurants only: ${(nutritionContext.restaurants || []).join(', ')}
+- Meal type: ${nutritionContext.mealType}
+- Target macros: calories ${nutritionContext.targetCalories}, protein ${nutritionContext.targetProtein}g, carbs ${nutritionContext.targetCarbs}g, fat ${nutritionContext.targetFat}g
+- Existing option names to avoid: ${options.map((option) => option.name).join(', ')}
+
+Return ONLY valid JSON with this exact shape:
+{
+  "mode": "eat_out",
+  "options": []
+}
+
+Rules:
+- Return 1-2 additional options.
+- Use only the allowed restaurant list.
+- Make each option a different order, not a small variation of the existing option.
+- Include realistic estimatedMacros, macroFit, ingredients, orderDetails, optionalAddOns, whyItFits, and fallback.
+- Each option needs at least 3 concrete orderDetails steps.
+- Do not include markdown, prose, or code fences.`;
+
+    try {
+      const topUp = await sendAIMessage(
+        [
+          {
+            role: 'system',
+            content: 'Return only strict JSON. Generate realistic restaurant orders from the allowed list.',
+          },
+          { role: 'user', content: topUpPrompt },
+        ],
+        'gemini',
+        { temperature: 0.25, maxTokens: 2600 }
+      );
+
+      const extraOptions = await enrichIncompleteOptions(validateOptions(parseSuggestions(topUp.content)));
+      const seen = new Set(options.map((option) => `${option.source}|${option.name}`.toLowerCase()));
+      const uniqueExtraOptions = extraOptions.filter((option) => {
+        const key = `${option.source}|${option.name}`.toLowerCase();
+        if (seen.has(key)) {
+          return false;
+        }
+        seen.add(key);
+        return true;
+      });
+
+      return [...options, ...uniqueExtraOptions].slice(0, 3);
+    } catch (topUpError) {
+      console.log('Contextual meal top-up could not add more valid options.', topUpError);
+      return options;
+    }
+  };
+
   try {
     const options = validateOptions(parseSuggestions(response.content));
     const enriched = await enrichIncompleteOptions(options);
-    return enriched;
+    return ensureMinimumEatOutOptions(enriched);
   } catch (parseError) {
-    console.warn('Contextual meal parsing failed, attempting strict JSON repair...', parseError);
+    console.log('Contextual meal response needed JSON cleanup; attempting repair.');
     const repaired = await sendAIMessage(
       [
         {
@@ -1274,8 +1375,9 @@ Requirements:
     try {
       const repairedOptions = validateOptions(parseSuggestions(repaired.content));
       const enrichedRepairedOptions = await enrichIncompleteOptions(repairedOptions);
-      return enrichedRepairedOptions;
+      return ensureMinimumEatOutOptions(enrichedRepairedOptions);
     } catch (repairError) {
+      console.warn('Contextual meal repair failed; retrying with stricter generation.', repairError);
       if (nutritionContext.mode !== 'eat_out' || normalizedRestaurants.length === 0) {
         throw new Error('Failed to parse contextual meal suggestions');
       }
@@ -1307,7 +1409,7 @@ Requirements:
           throw new Error('No valid restaurant-matched options generated');
         }
         const enrichedStrictOptions = await enrichIncompleteOptions(strictOptions);
-        return enrichedStrictOptions;
+        return ensureMinimumEatOutOptions(enrichedStrictOptions);
       } catch (strictParseError) {
         console.warn('Strict retry parse failed, attempting final JSON repair...', strictParseError);
 
@@ -1327,7 +1429,7 @@ Requirements:
         try {
           const repairedStrictOptions = validateOptions(parseSuggestions(strictRetryRepair.content));
           const enrichedRepairedStrictOptions = await enrichIncompleteOptions(repairedStrictOptions);
-          return enrichedRepairedStrictOptions;
+          return ensureMinimumEatOutOptions(enrichedRepairedStrictOptions);
         } catch (finalParseError) {
           console.error('Contextual meal final parse failure after all retries:', finalParseError);
           throw new Error('AI response was incomplete. Please try again.');
@@ -1352,7 +1454,7 @@ export async function chatWithCoach(
 ): Promise<string> {
   try {
     console.log('💬 chatWithCoach called with:', { userMessage, historyLength: conversationHistory.length });
-    
+
     const systemPrompt = `You are a professional fitness and nutrition coach specializing in firefighter wellness. 
 Your name is "Coach AI" and you provide evidence-based, practical advice.
 ${userProfile?.name ? `You're talking to ${userProfile.name}.` : ''}
