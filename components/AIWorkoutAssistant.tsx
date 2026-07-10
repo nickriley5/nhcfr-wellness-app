@@ -29,7 +29,7 @@ const AIWorkoutAssistant: React.FC<Props> = ({ visible, onClose, onApplyRecommen
   const [loading, setLoading] = useState(false);
   const [recommendation, setRecommendation] = useState<WorkoutRecommendation | null>(null);
   const [userContext, setUserContext] = useState<any>(null);
-  
+
   // Workout preferences
   const [duration, setDuration] = useState(30);
   const [focus, setFocus] = useState<string[]>(['Full Body']);
@@ -37,8 +37,12 @@ const AIWorkoutAssistant: React.FC<Props> = ({ visible, onClose, onApplyRecommen
   const [intensity, setIntensity] = useState(5);
 
   const formatExerciseItem = (exercise: any) => {
-    if (!exercise) return 'Exercise';
-    if (typeof exercise === 'string') return exercise;
+    if (!exercise) {
+      return 'Exercise';
+    }
+    if (typeof exercise === 'string') {
+      return exercise;
+    }
     if (typeof exercise === 'object') {
       const name = exercise.name || 'Exercise';
       const reps = exercise.reps || exercise.reps_or_time || exercise.repsOrTime;
@@ -70,7 +74,9 @@ const AIWorkoutAssistant: React.FC<Props> = ({ visible, onClose, onApplyRecommen
 
   const loadUserContext = async () => {
     const uid = auth.currentUser?.uid;
-    if (!uid) return;
+    if (!uid) {
+      return;
+    }
 
     try {
       // Load user profile
@@ -84,7 +90,7 @@ const AIWorkoutAssistant: React.FC<Props> = ({ visible, onClose, onApplyRecommen
         limit(5)
       );
       const workoutsSnap = await getDocs(workoutsQuery);
-      const recentWorkouts = workoutsSnap.docs.map(doc => doc.data().title || 'Workout');
+      const recentWorkouts = workoutsSnap.docs.map(workoutDoc => workoutDoc.data().title || 'Workout');
 
       setUserContext({
         goal: profileData?.goalType || 'Build Muscle',
@@ -113,7 +119,7 @@ const AIWorkoutAssistant: React.FC<Props> = ({ visible, onClose, onApplyRecommen
     try {
       // Import exercise library
       const { exercises } = await import('../data/exercises');
-      
+
       // Filter exercises based on available equipment
       const userEquipment = userContext.equipment.map((e: string) => e.toLowerCase());
       const availableExercises = exercises
@@ -126,10 +132,10 @@ const AIWorkoutAssistant: React.FC<Props> = ({ visible, onClose, onApplyRecommen
           const hasEquipment = isBodyweight ||
                                exerciseEquipment === '' ||
                                userEquipment.some((eq: string) => exerciseEquipment.includes(eq.toLowerCase()));
-          
+
           // Include exercises with video URLs (both YouTube and direct files)
           const hasVideo = ex.videoUrl && ex.videoUrl.trim() !== '';
-          
+
           return hasEquipment && hasVideo;
         })
         .map(ex => ({
@@ -140,10 +146,10 @@ const AIWorkoutAssistant: React.FC<Props> = ({ visible, onClose, onApplyRecommen
           videoUrl: ex.videoUrl, // Include video URL for debugging
         }));
 
-      const youtubeCount = availableExercises.filter(ex => 
+      const youtubeCount = availableExercises.filter(ex =>
         ex.videoUrl?.includes('youtube.com') || ex.videoUrl?.includes('youtu.be')
       ).length;
-      
+
       console.log(`📚 Filtered to ${availableExercises.length} exercises based on equipment:`, userEquipment);
       console.log(`   📺 YouTube videos: ${youtubeCount}, Direct videos: ${availableExercises.length - youtubeCount}`);
       console.log(`📊 Token estimate: ~${availableExercises.length * 4} input tokens for exercise list`);
@@ -219,7 +225,11 @@ const AIWorkoutAssistant: React.FC<Props> = ({ visible, onClose, onApplyRecommen
             </Pressable>
           </View>
 
-          <ScrollView style={styles.content}>
+          <ScrollView
+            style={styles.content}
+            contentContainerStyle={styles.contentContainer}
+            showsVerticalScrollIndicator={false}
+          >
             {!recommendation && (
               <View style={styles.introSection}>
                 <Text style={styles.introTitle}>Quick Workout Setup</Text>
@@ -391,7 +401,7 @@ const AIWorkoutAssistant: React.FC<Props> = ({ visible, onClose, onApplyRecommen
                     <Text style={styles.sectionTitle}>🔥 Warm-Up ({recommendation.warmup.length})</Text>
                     {recommendation.warmup.map((exercise, index) => (
                       <View key={index} style={styles.exerciseItem}>
-                        <View style={[styles.exerciseNumber, { backgroundColor: '#FF9800' }]}>
+                        <View style={[styles.exerciseNumber, styles.warmupExerciseNumber]}>
                           <Text style={styles.exerciseNumberText}>{index + 1}</Text>
                         </View>
                         <Text style={styles.exerciseName}>{formatExerciseItem(exercise)}</Text>
@@ -417,7 +427,7 @@ const AIWorkoutAssistant: React.FC<Props> = ({ visible, onClose, onApplyRecommen
                     <Text style={styles.sectionTitle}>🧘 Cool-Down ({recommendation.cooldown.length})</Text>
                     {recommendation.cooldown.map((exercise, index) => (
                       <View key={index} style={styles.exerciseItem}>
-                        <View style={[styles.exerciseNumber, { backgroundColor: '#2196F3' }]}>
+                        <View style={[styles.exerciseNumber, styles.cooldownExerciseNumber]}>
                           <Text style={styles.exerciseNumberText}>{index + 1}</Text>
                         </View>
                         <Text style={styles.exerciseName}>{formatExerciseItem(exercise)}</Text>
@@ -480,7 +490,11 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   content: {
-    padding: 20,
+    paddingHorizontal: 20,
+  },
+  contentContainer: {
+    paddingTop: 20,
+    paddingBottom: 36,
   },
   introSection: {
     alignItems: 'center',
@@ -546,15 +560,21 @@ const styles = StyleSheet.create({
   },
   durationOptions: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    marginRight: -8,
+    marginBottom: -8,
   },
   durationChip: {
     backgroundColor: '#222',
     paddingVertical: 12,
-    paddingHorizontal: 20,
+    paddingHorizontal: 14,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#444',
+    minWidth: 72,
+    alignItems: 'center',
+    marginRight: 8,
+    marginBottom: 8,
   },
   durationChipActive: {
     backgroundColor: '#2196F3',
@@ -738,6 +758,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
+  },
+  warmupExerciseNumber: {
+    backgroundColor: '#FF9800',
+  },
+  cooldownExerciseNumber: {
+    backgroundColor: '#2196F3',
   },
   exerciseNumberText: {
     color: '#fff',

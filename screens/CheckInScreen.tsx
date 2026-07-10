@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,13 @@ import {
   getFirestore,
   collection,
   addDoc,
+  getDocs,
+  limit,
+  orderBy,
+  query,
   serverTimestamp,
+  updateDoc,
+  where,
 } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
 import { useNavigation } from '@react-navigation/native';
@@ -20,13 +26,9 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
 import Toast from '../components/Toast';
 import DashboardButton from '../components/Common/DashboardButton';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const moodOptions = ['😩', '😕', '😐', '🙂', '😄'];
-const energyOptions = ['😴', '😓', '😐', '💪', '⚡'];
-const sleepQualityOptions = ['😫', '😴', '😐', '😊', '✨'];
-const sorenessOptions = ['😌', '😐', '😬', '😣', '🔥'];
-const stressOptions = ['😌', '😐', '😓', '😰', '🤯'];
-const readinessOptions = ['😩', '😕', '😐', '💪', '🔥'];
+const scaleValues = [1, 2, 3, 4, 5];
 
 const CheckInScreen = () => {
   const [mood, setMood] = useState<number | null>(null);
@@ -42,6 +44,7 @@ const CheckInScreen = () => {
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [toastType, setToastType] = useState<'success' | 'error'>('success');
+  const [todayCheckInId, setTodayCheckInId] = useState<string | null>(null);
 
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -51,6 +54,84 @@ const CheckInScreen = () => {
     setToastType(type);
     setShowToast(true);
   };
+
+  useEffect(() => {
+    const loadTodaysCheckIn = async () => {
+      const auth = getAuth(getApp());
+      const db = getFirestore(getApp());
+      const uid = auth.currentUser?.uid;
+      if (!uid) {
+        return;
+      }
+
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+
+      try {
+        const todayQuery = query(
+          collection(db, 'users', uid, 'checkIns'),
+          where('timestamp', '>=', todayStart),
+          orderBy('timestamp', 'desc'),
+          limit(1)
+        );
+        const snapshot = await getDocs(todayQuery);
+        if (snapshot.empty) {
+          return;
+        }
+
+        const docSnap = snapshot.docs[0];
+        const data = docSnap.data();
+        setTodayCheckInId(docSnap.id);
+        setMood(typeof data.mood === 'number' ? data.mood : null);
+        setEnergy(typeof data.energy === 'number' ? data.energy : null);
+        setSleepQuality(typeof data.sleepQuality === 'number' ? data.sleepQuality : null);
+        setSleepHours(data.sleepHours !== undefined ? String(data.sleepHours) : '');
+        setSoreness(typeof data.soreness === 'number' ? data.soreness : null);
+        setStress(typeof data.stress === 'number' ? data.stress : null);
+        setReadiness(typeof data.readiness === 'number' ? data.readiness : null);
+        setOnShift(Boolean(data.onShift));
+        setCallVolume(typeof data.callVolume === 'number' ? data.callVolume : null);
+        setNotes(typeof data.notes === 'string' ? data.notes : '');
+      } catch (error) {
+        console.error('Error loading today check-in:', error);
+      }
+    };
+
+    loadTodaysCheckIn();
+  }, []);
+
+  const renderScale = (
+    value: number | null,
+    onChange: (score: number) => void,
+    lowLabel: string,
+    highLabel: string
+  ) => (
+    <>
+      <View style={styles.scaleRow}>
+        {scaleValues.map((score) => (
+          <Pressable
+            key={score}
+            style={[
+              styles.scaleButton,
+              value === score && styles.selectedScaleButton,
+            ]}
+            onPress={() => onChange(score)}
+          >
+            <Text style={[
+              styles.scaleButtonText,
+              value === score && styles.selectedScaleButtonText,
+            ]}>
+              {score}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+      <View style={styles.scaleCaptionRow}>
+        <Text style={styles.scaleLabel}>{lowLabel}</Text>
+        <Text style={styles.scaleLabel}>{highLabel}</Text>
+      </View>
+    </>
+  );
 
   const handleSubmit = async () => {
     const auth = getAuth(getApp());
@@ -70,7 +151,7 @@ const CheckInScreen = () => {
     }
 
     try {
-      await addDoc(collection(db, 'users', uid, 'checkIns'), {
+      const checkInPayload = {
         uid,
         mood,
         energy,
@@ -83,7 +164,32 @@ const CheckInScreen = () => {
         callVolume: onShift ? callVolume : null,
         notes,
         timestamp: serverTimestamp(),
-      });
+        updatedAt: serverTimestamp(),
+      };
+
+      if (todayCheckInId) {
+        const todayRef = collection(db, 'users', uid, 'checkIns');
+        const todaySnapshot = await getDocs(query(
+          todayRef,
+          where('timestamp', '>=', (() => {
+            const todayStart = new Date();
+            todayStart.setHours(0, 0, 0, 0);
+            return todayStart;
+          })()),
+          orderBy('timestamp', 'desc'),
+          limit(1)
+        ));
+        const docRef = todaySnapshot.empty ? null : todaySnapshot.docs[0].ref;
+        if (docRef) {
+          await updateDoc(docRef, checkInPayload);
+        } else {
+          await addDoc(todayRef, checkInPayload);
+        }
+      } else {
+        await addDoc(collection(db, 'users', uid, 'checkIns'), checkInPayload);
+      }
+
+      await AsyncStorage.removeItem(`lastAIAnalysis_${uid}`);
 
       // Reset all fields
       setMood(null);
@@ -96,7 +202,7 @@ const CheckInScreen = () => {
       setOnShift(false);
       setCallVolume(null);
       setNotes('');
-      showCustomToast('Check-in submitted!', 'success');
+      showCustomToast(todayCheckInId ? 'Readiness updated.' : 'Readiness check saved.', 'success');
 
       setTimeout(() => {
         if (navigation.canGoBack()) {
@@ -117,26 +223,12 @@ const CheckInScreen = () => {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Daily Check-In</Text>
-      <Text style={styles.subtitle}>Help your AI coach understand your readiness</Text>
+      <Text style={styles.title}>Readiness Check</Text>
+      <Text style={styles.subtitle}>Log recovery, stress, and readiness for today's training adjustment.</Text>
 
       {/* Sleep Quality */}
-      <Text style={styles.sectionTitle}>How did you sleep? 💤</Text>
-      <View style={styles.buttonRow}>
-        {sleepQualityOptions.map((emoji, index) => (
-          <Pressable
-            key={index}
-            style={[
-              styles.emojiButton,
-              sleepQuality === index + 1 && styles.selectedButton,
-            ]}
-            onPress={() => setSleepQuality(index + 1)}
-          >
-            <Text style={styles.emoji}>{emoji}</Text>
-          </Pressable>
-        ))}
-      </View>
-      <Text style={styles.scaleLabel}>Poor → Excellent</Text>
+      <Text style={styles.sectionTitle}>Sleep Quality</Text>
+      {renderScale(sleepQuality, setSleepQuality, 'Poor', 'Excellent')}
 
       {/* Sleep Hours */}
       <Text style={styles.sectionTitle}>Hours of sleep?</Text>
@@ -150,94 +242,24 @@ const CheckInScreen = () => {
       />
 
       {/* Energy Level */}
-      <Text style={styles.sectionTitle}>Energy level today? ⚡</Text>
-      <View style={styles.buttonRow}>
-        {energyOptions.map((emoji, index) => (
-          <Pressable
-            key={index}
-            style={[
-              styles.emojiButton,
-              energy === index + 1 && styles.selectedButton,
-            ]}
-            onPress={() => setEnergy(index + 1)}
-          >
-            <Text style={styles.emoji}>{emoji}</Text>
-          </Pressable>
-        ))}
-      </View>
-      <Text style={styles.scaleLabel}>Exhausted → Energized</Text>
+      <Text style={styles.sectionTitle}>Energy Level</Text>
+      {renderScale(energy, setEnergy, 'Depleted', 'High')}
 
       {/* Soreness */}
-      <Text style={styles.sectionTitle}>Muscle soreness? 💪</Text>
-      <View style={styles.buttonRow}>
-        {sorenessOptions.map((emoji, index) => (
-          <Pressable
-            key={index}
-            style={[
-              styles.emojiButton,
-              soreness === index + 1 && styles.selectedButton,
-            ]}
-            onPress={() => setSoreness(index + 1)}
-          >
-            <Text style={styles.emoji}>{emoji}</Text>
-          </Pressable>
-        ))}
-      </View>
-      <Text style={styles.scaleLabel}>None → Very Sore</Text>
+      <Text style={styles.sectionTitle}>Muscle Soreness</Text>
+      {renderScale(soreness, setSoreness, 'None', 'Severe')}
 
       {/* Stress Level */}
-      <Text style={styles.sectionTitle}>Stress level? 🧠</Text>
-      <View style={styles.buttonRow}>
-        {stressOptions.map((emoji, index) => (
-          <Pressable
-            key={index}
-            style={[
-              styles.emojiButton,
-              stress === index + 1 && styles.selectedButton,
-            ]}
-            onPress={() => setStress(index + 1)}
-          >
-            <Text style={styles.emoji}>{emoji}</Text>
-          </Pressable>
-        ))}
-      </View>
-      <Text style={styles.scaleLabel}>Calm → Overwhelmed</Text>
+      <Text style={styles.sectionTitle}>Stress Level</Text>
+      {renderScale(stress, setStress, 'Low', 'High')}
 
       {/* Readiness to Train */}
-      <Text style={styles.sectionTitle}>Ready to train? 🔥</Text>
-      <View style={styles.buttonRow}>
-        {readinessOptions.map((emoji, index) => (
-          <Pressable
-            key={index}
-            style={[
-              styles.emojiButton,
-              readiness === index + 1 && styles.selectedButton,
-            ]}
-            onPress={() => setReadiness(index + 1)}
-          >
-            <Text style={styles.emoji}>{emoji}</Text>
-          </Pressable>
-        ))}
-      </View>
-      <Text style={styles.scaleLabel}>Not at all → Let's go!</Text>
+      <Text style={styles.sectionTitle}>Training Readiness</Text>
+      {renderScale(readiness, setReadiness, 'Not Ready', 'Fully Ready')}
 
       {/* Mood */}
-      <Text style={styles.sectionTitle}>Overall mood? 😊</Text>
-      <View style={styles.buttonRow}>
-        {moodOptions.map((emoji, index) => (
-          <Pressable
-            key={index}
-            style={[
-              styles.emojiButton,
-              mood === index + 1 && styles.selectedButton,
-            ]}
-            onPress={() => setMood(index + 1)}
-          >
-            <Text style={styles.emoji}>{emoji}</Text>
-          </Pressable>
-        ))}
-      </View>
-      <Text style={styles.scaleLabel}>Terrible → Great</Text>
+      <Text style={styles.sectionTitle}>Overall Mood</Text>
+      {renderScale(mood, setMood, 'Low', 'Strong')}
 
       {/* Firefighter-Specific */}
       <View style={styles.shiftSection}>
@@ -287,7 +309,11 @@ const CheckInScreen = () => {
         style={styles.input}
       />
 
-      <DashboardButton text="Submit Check-In" onPress={handleSubmit} variant="redSolid" />
+      <DashboardButton
+        text={todayCheckInId ? 'Update Readiness' : 'Submit Readiness'}
+        onPress={handleSubmit}
+        variant="redSolid"
+      />
 
       {showToast && (
         <Toast
@@ -331,9 +357,41 @@ const styles = StyleSheet.create({
   scaleLabel: {
     fontSize: 12,
     color: '#888',
-    alignSelf: 'center',
-    marginTop: -8,
+    fontWeight: '600',
+  },
+  scaleRow: {
+    flexDirection: 'row',
+    gap: 10,
+    width: '100%',
     marginBottom: 8,
+  },
+  scaleCaptionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginBottom: 8,
+  },
+  scaleButton: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: 10,
+    backgroundColor: '#1e1e1e',
+    borderWidth: 1,
+    borderColor: '#333',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectedScaleButton: {
+    backgroundColor: '#2a1b1b',
+    borderColor: '#d32f2f',
+  },
+  scaleButtonText: {
+    color: '#d8d8d8',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  selectedScaleButtonText: {
+    color: '#fff',
   },
   buttonRow: {
     flexDirection: 'row',

@@ -11,49 +11,49 @@ interface Props {
 export const DailyCheckInCard: React.FC<Props> = ({ hasCheckedInToday, onPress }) => {
   if (hasCheckedInToday) {
     return (
-      <View style={styles.container}>
+      <Pressable style={styles.container} onPress={onPress}>
         <LinearGradient
-          colors={['#1b5e20', '#2e7d32']}
+          colors={['#1f2a22', '#203a26']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.gradient}
         >
           <View style={styles.content}>
             <View style={styles.iconContainer}>
-              <Ionicons name="checkmark-circle" size={32} color="#4caf50" />
+              <Ionicons name="checkmark-circle-outline" size={30} color="#4caf50" />
             </View>
             <View style={styles.textContainer}>
-              <Text style={styles.title}>Daily Check-In Complete ✓</Text>
-              <Text style={styles.subtitle}>Your AI coach is analyzing your readiness</Text>
+              <Text style={styles.title}>Readiness Check Complete</Text>
+              <Text style={styles.subtitle}>Tap to review or update today's answers</Text>
             </View>
+            <Ionicons name="create-outline" size={22} color="rgba(255,255,255,0.75)" />
           </View>
         </LinearGradient>
-      </View>
+      </Pressable>
     );
   }
 
   return (
     <Pressable style={styles.container} onPress={onPress}>
       <LinearGradient
-        colors={['#d32f2f', '#b71c1c']}
+        colors={['#241617', '#321b1d']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.gradient}
       >
         <View style={styles.content}>
           <View style={styles.iconContainer}>
-            <Ionicons name="fitness" size={32} color="#fff" />
+            <Ionicons name="pulse-outline" size={30} color="#ff6b6b" />
           </View>
           <View style={styles.textContainer}>
-            <Text style={styles.title}>Complete Your Daily Check-In</Text>
+            <Text style={styles.title}>Complete Readiness Check</Text>
             <Text style={styles.subtitle}>
-              Help your coach understand how you're feeling today
+              Log recovery, stress, and training readiness
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={24} color="rgba(255,255,255,0.8)" />
         </View>
-        
-        {/* Pulse animation indicator */}
+
         <View style={styles.indicatorRow}>
           <View style={styles.indicator}>
             <Ionicons name="moon" size={16} color="rgba(255,255,255,0.7)" />
@@ -99,8 +99,10 @@ const styles = StyleSheet.create({
   iconContainer: {
     width: 56,
     height: 56,
-    borderRadius: 28,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 16,
