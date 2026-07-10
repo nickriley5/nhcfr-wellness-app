@@ -274,12 +274,12 @@ const WeightTrackingCard = forwardRef<WeightTrackingCardRef, WeightTrackingCardP
 
   const getProjectedGoalDate = (): string => {
     if (!weightGoal || !weightEntries.length) {
-      return 'Set a goal to see projection';
+      return 'Add logs';
     }
 
     const recentEntries = weightEntries.slice(-4); // Last 4 weeks
     if (recentEntries.length < 2) {
-      return 'Need more data for projection';
+      return 'More data';
     }
 
     // Calculate average weekly change
@@ -291,14 +291,14 @@ const WeightTrackingCard = forwardRef<WeightTrackingCardRef, WeightTrackingCardP
     const weeksToGoal = Math.abs(remainingWeight / weeklyRate);
 
     if (!isFinite(weeksToGoal)) {
-      return 'Adjust your plan';
+      return 'Review plan';
     }
 
     const projectedDate = new Date();
     projectedDate.setDate(projectedDate.getDate() + weeksToGoal * 7);
 
     if (weeksToGoal > 104) { // More than 2 years
-      return 'Goal may need adjustment';
+      return 'Review goal';
     }
 
     return projectedDate.toLocaleDateString('en-US', {
@@ -464,7 +464,7 @@ const WeightTrackingCard = forwardRef<WeightTrackingCardRef, WeightTrackingCardP
 
         {/* Current Weight Display */}
         <View style={styles.currentWeightRow}>
-          <View>
+          <View style={styles.currentWeightBlock}>
             <Text style={styles.currentWeight}>
               {currentWeight ? `${currentWeight.toFixed(1)} lbs` : '-- lbs'}
             </Text>
@@ -479,7 +479,7 @@ const WeightTrackingCard = forwardRef<WeightTrackingCardRef, WeightTrackingCardP
               <Text style={styles.goalText}>
                 Goal: {weightGoal.targetWeight} lbs
               </Text>
-              <Text style={styles.projectionText}>
+              <Text style={styles.projectionText} numberOfLines={1}>
                 ETA: {getProjectedGoalDate()}
               </Text>
             </View>
@@ -690,6 +690,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
+  currentWeightBlock: {
+    flex: 1,
+    paddingRight: 12,
+  },
   currentWeight: {
     fontSize: 24,
     fontWeight: '700',
@@ -701,15 +705,19 @@ const styles = StyleSheet.create({
   },
   goalInfo: {
     alignItems: 'flex-end',
+    flexShrink: 1,
+    maxWidth: '48%',
   },
   goalText: {
     fontSize: 14,
     color: '#aaa',
+    textAlign: 'right',
   },
   projectionText: {
     fontSize: 14,
     color: '#4FC3F7',
     marginTop: 2,
+    textAlign: 'right',
   },
   timeRangeSelector: {
     flexDirection: 'row',
