@@ -464,7 +464,11 @@ const AIMealPlanner: React.FC<Props> = ({ visible, onClose, mealType, date = new
             </Pressable>
 
             {selectedSuggestion ? (
-              <ScrollView>
+              <ScrollView
+                style={styles.detailScroll}
+                contentContainerStyle={styles.detailScrollContent}
+                showsVerticalScrollIndicator={false}
+              >
                 <Text style={styles.detailTitle}>{selectedSuggestion.name}</Text>
                 <Text style={styles.detailSource}>{selectedSuggestion.source}</Text>
 
@@ -799,6 +803,13 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
     maxHeight: '88%',
+    width: '100%',
+  },
+  detailScroll: {
+    flexShrink: 1,
+  },
+  detailScrollContent: {
+    paddingBottom: 24,
   },
   detailCloseButton: {
     alignSelf: 'flex-end',
