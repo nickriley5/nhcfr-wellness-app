@@ -380,6 +380,23 @@ const AIChatScreen = () => {
     return title.length > 32 ? `${title.slice(0, 32)}…` : title;
   };
 
+  const formatMessageForDisplay = (content: string, role: AIMessage['role']) => {
+    if (role !== 'assistant') {
+      return content;
+    }
+
+    return content
+      .replace(/```[\s\S]*?```/g, (block) => block.replace(/```/g, '').trim())
+      .replace(/^#{1,6}\s+/gm, '')
+      .replace(/\*\*(.*?)\*\*/g, '$1')
+      .replace(/__(.*?)__/g, '$1')
+      .replace(/\*(.*?)\*/g, '$1')
+      .replace(/^\s*[-*]\s+/gm, '• ')
+      .replace(/^\s*[-*_]{3,}\s*$/gm, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  };
+
   return (
     <LinearGradient colors={['#0f0f0f', '#1a1a1a']} style={styles.container}>
       <KeyboardAvoidingView
@@ -533,7 +550,7 @@ const AIChatScreen = () => {
                         message.role === 'user' ? styles.userMessageText : styles.aiMessageText,
                       ]}
                     >
-                      {message.content}
+                      {formatMessageForDisplay(message.content, message.role)}
                     </Text>
                     <Text style={styles.messageTime}>
                       {message.timestamp.toLocaleTimeString([], {

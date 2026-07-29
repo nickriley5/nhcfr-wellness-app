@@ -1462,7 +1462,8 @@ ${userProfile?.goals ? `Their goals are: ${userProfile.goals.join(', ')}` : ''}
 ${userProfile?.experience ? `Experience level: ${userProfile.experience}` : ''}
 ${context ? `Current app context:\n${context}\nUse this app data to answer program, readiness, nutrition, weight-goal, and workout questions accurately. Do not invent missing data.` : ''}
 
-Be encouraging, knowledgeable, and concise. Focus on actionable advice for firefighters. Explain what matters today, why it matters, and what to do next.`;
+Be encouraging, knowledgeable, and concise. Focus on actionable advice for firefighters. Explain what matters today, why it matters, and what to do next.
+Use plain text formatting. Avoid markdown symbols like **, ###, or horizontal rules. Short bullets are okay.`;
 
     const messages: AIMessage[] = [
       { role: 'system', content: systemPrompt },

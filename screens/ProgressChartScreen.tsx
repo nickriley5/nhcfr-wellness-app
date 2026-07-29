@@ -68,77 +68,70 @@ const ProgressChartScreen: React.FC = () => {
   const [dataPoints, setDataPoints] = useState<number[]>([]);
   const [labels, setLabels] = useState<string[]>([]);
 
-  // Get readable exercise name for display
   const getReadableExerciseName = (): string => {
-    if (!exerciseName) return 'Unknown Exercise';
+    if (!exerciseName) {
+      return 'Exercise';
+    }
+
     const exercise = resolveExerciseDetails(exerciseName);
     if (exercise && exercise.name) {
       return exercise.name;
     }
-    // Fallback: format the ID if not found
+
     return exerciseName.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
   };
 
   useEffect(() => {
-    console.log('📊 ProgressChart - Component mounted/updated');
-    console.log('📊 ProgressChart - Received exerciseName:', exerciseName);
-    
     const fetchLogs = async () => {
       try {
         const uid = auth.currentUser?.uid;
         if (!uid) {
-          console.log('📊 ProgressChart - No user ID');
           setLoading(false);
           return;
         }
 
         if (!exerciseName) {
-          console.log('📊 ProgressChart - Missing exerciseName param');
           setLoading(false);
           return;
         }
 
-        console.log('📊 ProgressChart - Fetching logs for exercise:', exerciseName);
-        console.log('📊 ProgressChart - Exercise name length:', exerciseName.length);
         const logRef = collection(db, 'users', uid, 'workoutLogs');
         const snapshot = await getDocs(logRef);
-
-        console.log('📊 ProgressChart - Total logs found:', snapshot.docs.length);
 
         const sortedLogs = snapshot.docs
           .map((doc: any) => ({ id: doc.id, ...doc.data() } as WorkoutLog & { id: string }))
           .sort((a: any, b: any) => {
-            const aTime = a.completedAt && typeof a.completedAt.toDate === 'function' 
-              ? a.completedAt.toDate().getTime() 
+            const aTime = a.completedAt && typeof a.completedAt.toDate === 'function'
+              ? a.completedAt.toDate().getTime()
               : 0;
-            const bTime = b.completedAt && typeof b.completedAt.toDate === 'function' 
-              ? b.completedAt.toDate().getTime() 
+            const bTime = b.completedAt && typeof b.completedAt.toDate === 'function'
+              ? b.completedAt.toDate().getTime()
               : 0;
             return aTime - bTime;
           });
-
-        console.log('📊 ProgressChart - Sorted logs:', sortedLogs.length);
 
         const now = new Date();
         let filteredLogs = sortedLogs;
 
         if (dateRange === '7D') {
           filteredLogs = sortedLogs.filter((log: any) => {
-            if (!log.completedAt || typeof log.completedAt.toDate !== 'function') return false;
+            if (!log.completedAt || typeof log.completedAt.toDate !== 'function') {
+              return false;
+            }
             const logDate = log.completedAt.toDate();
             const diff = (now.getTime() - logDate.getTime()) / (1000 * 60 * 60 * 24);
             return diff <= 7;
           });
         } else if (dateRange === '30D') {
           filteredLogs = sortedLogs.filter((log: any) => {
-            if (!log.completedAt || typeof log.completedAt.toDate !== 'function') return false;
+            if (!log.completedAt || typeof log.completedAt.toDate !== 'function') {
+              return false;
+            }
             const logDate = log.completedAt.toDate();
             const diff = (now.getTime() - logDate.getTime()) / (1000 * 60 * 60 * 24);
             return diff <= 30;
           });
         }
-
-        console.log('📊 ProgressChart - Filtered logs:', filteredLogs.length);
 
         const entries: number[] = [];
         const entryLabels: string[] = [];
@@ -172,7 +165,6 @@ const ProgressChartScreen: React.FC = () => {
             ) {
               entries.push(value);
 
-              // Format date label
               const date = log.completedAt.toDate();
               const label = `${date.getMonth() + 1}/${date.getDate()}`;
               entryLabels.push(label);
@@ -180,13 +172,10 @@ const ProgressChartScreen: React.FC = () => {
           }
         });
 
-        console.log('📊 ProgressChart - Data points:', entries);
-        console.log('📊 ProgressChart - Labels:', entryLabels);
-
         setDataPoints(entries);
         setLabels(entryLabels);
       } catch (err) {
-        console.error('❌ ProgressChart error:', err);
+        console.error('ProgressChart error:', err);
       } finally {
         setLoading(false);
       }
@@ -195,37 +184,30 @@ const ProgressChartScreen: React.FC = () => {
     fetchLogs();
   }, [chartType, dateRange, exerciseName]);
 
-  console.log('📊 ProgressChart - Rendering. Loading:', loading, 'DataPoints:', dataPoints.length);
-
   if (loading) {
-    console.log('📊 ProgressChart - Showing loading spinner');
     return (
       <SafeAreaView style={styles.safeArea}>
         <StatusBar barStyle="light-content" backgroundColor="#0f0f0f" />
         <LinearGradient colors={['#0f0f0f', '#1c1c1c']} style={styles.container}>
-          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <View style={styles.loadingState}>
             <ActivityIndicator size="large" color="#d32f2f" />
-            <Text style={{ color: '#fff', marginTop: 10 }}>Loading chart data...</Text>
+            <Text style={styles.loadingText}>Loading chart data...</Text>
           </View>
         </LinearGradient>
       </SafeAreaView>
     );
   }
 
-  console.log('📊 ProgressChart - Rendering main content');
-  console.log('📊 ProgressChart - Exercise name for title:', getReadableExerciseName());
-
   const chartValues = dataPoints
     .map((point) => (Number.isFinite(point) ? point : 0))
     .filter((point, index) => index < labels.length);
-  
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="light-content" backgroundColor="#0f0f0f" />
       <View style={styles.container}>
         <ScrollView contentContainerStyle={styles.content}>
         <Pressable style={styles.backButton} onPress={() => {
-          console.log('📊 Back button pressed');
           navigation.goBack();
         }}>
           <Ionicons name="arrow-back" size={20} color="#fff" />
@@ -233,11 +215,6 @@ const ProgressChartScreen: React.FC = () => {
         </Pressable>
 
         <Text style={styles.title}>{getReadableExerciseName()} Progress</Text>
-        
-        {/* Debug text to confirm rendering */}
-        <Text style={{ color: '#fff', fontSize: 12, marginBottom: 10 }}>
-          Data points: {dataPoints.length} | Chart type: {chartType}
-        </Text>
 
         <View style={styles.toggleGroup}>
           {(['weight', 'reps', 'volume'] as const).map(key => (
@@ -287,11 +264,11 @@ const ProgressChartScreen: React.FC = () => {
           </View>
         ) : (
           <LineChart
-            data={{ 
+            data={{
               labels: labels.slice(0, chartValues.length),
-              datasets: [{ 
+              datasets: [{
                 data: chartValues.map((d: number) => (d === 0 ? 0.1 : d)),
-              }] 
+              }],
             }}
             width={screenWidth}
             height={220}
@@ -341,6 +318,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#0f0f0f',
   },
   content: { padding: 20, alignItems: 'center' },
+  loadingState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    color: '#fff',
+    marginTop: 10,
+  },
   title: {
     fontSize: 20,
     fontWeight: '700',

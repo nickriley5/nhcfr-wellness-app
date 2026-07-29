@@ -15,6 +15,12 @@ react {
 
 def enableProguardInReleaseBuilds = false
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
+def uploadKeystorePropertiesFile = rootProject.file("upload-keystore.properties")
+def uploadKeystoreProperties = new Properties()
+
+if (uploadKeystorePropertiesFile.exists()) {
+    uploadKeystoreProperties.load(new FileInputStream(uploadKeystorePropertiesFile))
+}
 
 android {
     namespace "com.firefighterwellnessapp"
@@ -40,6 +46,16 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        release {
+            if (!uploadKeystorePropertiesFile.exists()) {
+                throw new GradleException("Missing android/upload-keystore.properties. Generate an upload key before building release.")
+            }
+
+            storeFile file(uploadKeystoreProperties['storeFile'])
+            storePassword uploadKeystoreProperties['storePassword']
+            keyAlias uploadKeystoreProperties['keyAlias']
+            keyPassword uploadKeystoreProperties['keyPassword']
+        }
     }
 
     buildTypes {
@@ -47,7 +63,7 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
-            signingConfig signingConfigs.debug
+            signingConfig signingConfigs.release
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
@@ -72,4 +88,3 @@ dependencies {
 }
 
 apply from: "../../node_modules/react-native-vector-icons/fonts.gradle"
-
