@@ -742,15 +742,22 @@ const getCurrentPlannerMealType = (): 'breakfast' | 'lunch' | 'dinner' | 'snack'
     return (
       <LinearGradient colors={['#0f0f0f', '#1a1a1a']} style={styles.container}>
         <View style={styles.emptyStateContainer}>
-          <Text style={styles.emptyStateTitle}>No Meal Plan Yet</Text>
-          <Text style={styles.emptyStateText}>
-            Create your personalized meal plan to start tracking your nutrition and reach your goals
-          </Text>
+          <View style={styles.emptyStateCard}>
+            <View style={styles.emptyStateIconWrap}>
+              <Ionicons name="restaurant-outline" size={34} color="#ff3c38" />
+            </View>
+            <Text style={styles.emptyStateTitle}>No Meal Plan Yet</Text>
+            <Text style={styles.emptyStateText}>
+              Create your personalized meal plan to start tracking your nutrition and reach your goals.
+            </Text>
+          </View>
           <Pressable
             style={styles.createPlanButton}
             onPress={() => navigation.navigate('GoalSettings')}
           >
+            <Ionicons name="add-circle-outline" size={22} color="#fff" />
             <Text style={styles.createPlanButtonText}>Create Meal Plan</Text>
+            <Ionicons name="arrow-forward" size={20} color="#fff" />
           </Pressable>
         </View>
       </LinearGradient>
@@ -1010,40 +1017,66 @@ const styles = StyleSheet.create({
   // ✅ Empty State (No Meal Plan)
   emptyStateContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 32,
+    justifyContent: 'space-between',
+    paddingHorizontal: 24,
+    paddingTop: 120,
+    paddingBottom: 132,
   },
-  emptyStateIcon: {
-    fontSize: 80,
-    marginBottom: 24,
+  emptyStateCard: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(31, 31, 31, 0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: 18,
+    paddingHorizontal: 24,
+    paddingVertical: 28,
+  },
+  emptyStateIconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(255, 60, 56, 0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 60, 56, 0.32)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 18,
   },
   emptyStateTitle: {
-    fontSize: 28,
+    fontSize: 24,
+    lineHeight: 30,
     fontWeight: '700',
     color: '#fff',
-    marginBottom: 12,
+    marginBottom: 10,
     textAlign: 'center',
   },
   emptyStateText: {
     fontSize: 16,
-    color: '#999',
+    color: '#aaa',
     textAlign: 'center',
     lineHeight: 24,
-    marginBottom: 32,
   },
   createPlanButton: {
     backgroundColor: '#d32f2f',
-    paddingVertical: 16,
-    paddingHorizontal: 32,
+    minHeight: 58,
+    paddingHorizontal: 22,
     borderRadius: 12,
-    minWidth: 200,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    shadowColor: '#d32f2f',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.28,
+    shadowRadius: 10,
+    elevation: 8,
   },
   createPlanButtonText: {
     color: '#fff',
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
+    flex: 1,
+    textAlign: 'center',
   },
 
   // ✅ Empty Meals State

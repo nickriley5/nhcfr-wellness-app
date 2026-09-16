@@ -7,6 +7,7 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
@@ -25,6 +26,7 @@ import ActivityLevelSelector from '../components/GoalSettings/ActivityLevelSelec
 import PreferencesSection from '../components/GoalSettings/PreferencesSection';
 import AppButton from '../components/Common/AppButton';
 import PageHelpButton from '../components/Common/PageHelpButton';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 
 /**
  * Props for GoalSettingsScreen
@@ -38,11 +40,25 @@ interface GoalSettingsProps {
 
 const GoalSettingsScreen: React.FC<GoalSettingsProps> = ({
   onGenerated,
-  onClose: _onClose,
+  onClose,
 }) => {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const uid = auth.currentUser?.uid;
+
+  const handleCancel = () => {
+    if (onClose) {
+      onClose();
+      return;
+    }
+
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+      return;
+    }
+
+    navigation.navigate('MainTabs', { screen: 'MealPlan' });
+  };
 
   // ✅ State for all fields
   const [weight, setWeight] = useState(0);
@@ -338,6 +354,38 @@ const GoalSettingsScreen: React.FC<GoalSettingsProps> = ({
           style={styles.keyboardAvoiding}
         >
           <ScrollView contentContainerStyle={styles.scroll}>
+            <View style={styles.headerRow}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Cancel meal plan setup"
+                hitSlop={10}
+                onPress={handleCancel}
+                style={styles.cancelButton}
+              >
+                <Ionicons name="chevron-back" size={22} color="#fff" />
+                <Text style={styles.cancelText}>Cancel</Text>
+              </Pressable>
+              <PageHelpButton
+                pageKey="goal-settings"
+                title="Goal Setup Tips"
+                intro="This page builds the nutrition target. Accurate inputs make the meal plan more useful."
+                placement="inline"
+                tips={[
+                  {
+                    title: 'Pick the real goal',
+                    body: 'Fat loss, maintenance, or muscle gain changes the calorie target and the way the workout program is tailored.',
+                  },
+                  {
+                    title: 'Rate controls aggressiveness',
+                    body: 'A slower weekly rate is easier to recover from. A faster rate may require bigger food changes and can affect performance.',
+                  },
+                  {
+                    title: 'Activity level matters',
+                    body: 'Choose the level that matches your normal week, including shift work and training. This drives calorie estimates.',
+                  },
+                ]}
+              />
+            </View>
             <Text style={styles.heading}>Set Your Goal</Text>
 
             <GoalTypeSelector
@@ -509,25 +557,6 @@ const GoalSettingsScreen: React.FC<GoalSettingsProps> = ({
             />
           </ScrollView>
         </KeyboardAvoidingView>
-        <PageHelpButton
-          pageKey="goal-settings"
-          title="Goal Setup Tips"
-          intro="This page builds the nutrition target. Accurate inputs make the meal plan more useful."
-          tips={[
-            {
-              title: 'Pick the real goal',
-              body: 'Fat loss, maintenance, or muscle gain changes the calorie target and the way the workout program is tailored.',
-            },
-            {
-              title: 'Rate controls aggressiveness',
-              body: 'A slower weekly rate is easier to recover from. A faster rate may require bigger food changes and can affect performance.',
-            },
-            {
-              title: 'Activity level matters',
-              body: 'Choose the level that matches your normal week, including shift work and training. This drives calorie estimates.',
-            },
-          ]}
-        />
       </LinearGradient>
     </SafeAreaView>
   );
@@ -538,9 +567,29 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   keyboardAvoiding: { flex: 1 },
   scroll: {
-    paddingTop: 16,
+    paddingTop: 8,
     paddingBottom: 48,
     paddingHorizontal: 16,
+  },
+  headerRow: {
+    minHeight: 48,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  cancelButton: {
+    minHeight: 44,
+    paddingRight: 14,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  cancelText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+    marginLeft: 2,
   },
   heading: {
     fontSize: 22,

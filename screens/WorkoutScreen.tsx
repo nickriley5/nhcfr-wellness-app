@@ -806,11 +806,12 @@ const WorkoutScreen: React.FC = () => {
     setSelectedDayIdx(Math.max(0, remaining));
   }, [state, days]);
 
-  const renderWorkoutHelp = () => (
+  const renderWorkoutHelp = (placement: 'floating' | 'inline' = 'floating') => (
     <PageHelpButton
       pageKey="workout"
       title="Workout Tips"
       intro="Use this page to start a planned program, generate a new one, or grab a quick session."
+      placement={placement}
       top={70}
       tips={[
         {
@@ -1280,8 +1281,18 @@ const WorkoutScreen: React.FC = () => {
         <ScrollView contentContainerStyle={styles.emptyStateContainer}>
           {/* HERO SECTION */}
           <View style={styles.emptyHero}>
-            <Text style={styles.emptyHeroTitle}>🎯 Ready to Train?</Text>
-            <Text style={styles.emptyHeroSubtitle}>Choose how you want to work out</Text>
+            <View style={styles.emptyHeroTitleRow}>
+              <View style={styles.emptyHeroHelpSpacer} />
+              <Text style={styles.emptyHeroTitle} allowFontScaling={false}>
+                🎯 Ready to Train?
+              </Text>
+              <View style={styles.emptyHeroHelpSlot}>
+                {renderWorkoutHelp('inline')}
+              </View>
+            </View>
+            <Text style={styles.emptyHeroSubtitle} allowFontScaling={false}>
+              Choose how you want to work out
+            </Text>
           </View>
 
           {/* CUSTOM TRAINING PROGRAM CARD */}
@@ -1293,15 +1304,33 @@ const WorkoutScreen: React.FC = () => {
               colors={['rgba(255, 60, 56, 0.15)', 'rgba(255, 107, 53, 0.15)']}
               style={styles.emptyCardGradient}
             >
-              <View style={styles.emptyCardIcon}>
-                <Ionicons name="sparkles" size={32} color="#FF3C38" />
+              <View style={styles.emptyCardBody}>
+                <View style={styles.emptyCardIcon}>
+                  <Ionicons name="sparkles" size={32} color="#FF3C38" />
+                </View>
+                <Text
+                  style={styles.emptyCardTitle}
+                  numberOfLines={2}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.82}
+                  allowFontScaling={false}
+                >
+                  Custom Training Program
+                </Text>
+                <Text style={styles.emptyCardDescription} numberOfLines={3} allowFontScaling={false}>
+                  Create a personalized multi-week program tailored to your goals and equipment
+                </Text>
               </View>
-              <Text style={styles.emptyCardTitle}>Custom Training Program</Text>
-              <Text style={styles.emptyCardDescription}>
-                Create a personalized multi-week program tailored to your goals and equipment
-              </Text>
               <View style={styles.emptyCardButton}>
-                <Text style={styles.emptyCardButtonText}>Generate Program</Text>
+                <Text
+                  style={styles.emptyCardButtonText}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.85}
+                  allowFontScaling={false}
+                >
+                  Generate Program
+                </Text>
                 <Ionicons name="arrow-forward" size={18} color="#fff" />
               </View>
             </LinearGradient>
@@ -1316,15 +1345,33 @@ const WorkoutScreen: React.FC = () => {
               colors={['rgba(33, 150, 243, 0.15)', 'rgba(0, 188, 212, 0.15)']}
               style={styles.emptyCardGradient}
             >
-              <View style={styles.emptyCardIcon}>
-                <Ionicons name="flash" size={32} color="#2196F3" />
+              <View style={styles.emptyCardBody}>
+                <View style={styles.emptyCardIcon}>
+                  <Ionicons name="flash" size={32} color="#2196F3" />
+                </View>
+                <Text
+                  style={styles.emptyCardTitle}
+                  numberOfLines={2}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.82}
+                  allowFontScaling={false}
+                >
+                  Quick Workout
+                </Text>
+                <Text style={styles.emptyCardDescription} numberOfLines={3} allowFontScaling={false}>
+                  Get a single badass workout session right now - choose focus, time, and style
+                </Text>
               </View>
-              <Text style={styles.emptyCardTitle}>Quick Workout</Text>
-              <Text style={styles.emptyCardDescription}>
-                Get a single badass workout session right now - choose focus, time, and style
-              </Text>
               <View style={styles.emptyCardButton}>
-                <Text style={styles.emptyCardButtonText}>Get Quick Workout</Text>
+                <Text
+                  style={styles.emptyCardButtonText}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.85}
+                  allowFontScaling={false}
+                >
+                  Get Quick Workout
+                </Text>
                 <Ionicons name="arrow-forward" size={18} color="#fff" />
               </View>
             </LinearGradient>
@@ -1406,8 +1453,6 @@ const WorkoutScreen: React.FC = () => {
             </View>
           )}
         </ScrollView>
-
-        {renderWorkoutHelp()}
 
         {/* AI ASSISTANT MODAL */}
         <AIWorkoutAssistant
@@ -1647,18 +1692,36 @@ const styles = StyleSheet.create({
 
   // EMPTY STATE
   emptyStateContainer: {
-    padding: 20,
-    paddingBottom: 40,
+    paddingHorizontal: 20,
+    paddingTop: 28,
+    paddingBottom: 120,
   },
   emptyHero: {
     alignItems: 'center',
-    marginVertical: 40,
+    marginBottom: 28,
+  },
+  emptyHeroTitleRow: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  emptyHeroHelpSpacer: {
+    width: 54,
+    flexShrink: 0,
+  },
+  emptyHeroHelpSlot: {
+    width: 54,
+    alignItems: 'center',
+    flexShrink: 0,
   },
   emptyHeroTitle: {
+    flex: 1,
+    minWidth: 0,
     fontSize: 32,
     fontWeight: '700',
     color: '#fff',
-    marginBottom: 8,
     textAlign: 'center',
   },
   emptyHeroSubtitle: {
@@ -1667,44 +1730,60 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   emptyCard: {
-    marginBottom: 20,
-    borderRadius: 16,
+    marginBottom: 22,
+    borderRadius: 18,
+    width: '100%',
+    alignSelf: 'stretch',
     overflow: 'hidden',
   },
   emptyCardGradient: {
-    padding: 24,
-    borderRadius: 16,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.1)',
+    overflow: 'hidden',
+  },
+  emptyCardBody: {
+    minHeight: 204,
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 22,
+    justifyContent: 'flex-end',
   },
   emptyCardIcon: {
-    marginBottom: 16,
+    marginBottom: 40,
   },
   emptyCardTitle: {
     fontSize: 22,
+    lineHeight: 28,
     fontWeight: '700',
     color: '#fff',
     marginBottom: 8,
+    flexShrink: 1,
   },
   emptyCardDescription: {
     fontSize: 15,
     color: '#ccc',
     lineHeight: 22,
-    marginBottom: 20,
+    flexShrink: 1,
   },
   emptyCardButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 8,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.08)',
+    paddingVertical: 0,
+    paddingHorizontal: 24,
+    minHeight: 58,
+    gap: 10,
   },
   emptyCardButtonText: {
     fontSize: 16,
     fontWeight: '600',
     color: '#fff',
+    flex: 1,
+    minWidth: 0,
   },
   recentActivityCard: {
     backgroundColor: '#2a2a2a',

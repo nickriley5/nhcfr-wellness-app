@@ -191,7 +191,7 @@ const AppNavigator = () => {
   }
 
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <Stack.Navigator screenOptions={{ headerShown: false, freezeOnBlur: false }}>
       {user ? (
   <>
     <Stack.Screen name="AppDrawer" component={DrawerNavigation} />

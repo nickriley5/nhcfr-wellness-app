@@ -55,8 +55,10 @@ const TabNavigator: React.FC = () => {
   return (
     <View style={styles.flex1}>
       <Tab.Navigator
+        detachInactiveScreens={false}
         screenOptions={({ route }) => ({
           headerShown: false,
+          freezeOnBlur: false,
           tabBarStyle: {
             backgroundColor: '#1e1e1e',
             borderTopWidth: 0,
@@ -246,9 +248,11 @@ const MainTabsHeader = ({ onOpenMenu }: { onOpenMenu: () => void }) => {
 const DrawerNavigation: React.FC = () => (
   <Drawer.Navigator
     initialRouteName="MainTabs"
+    detachInactiveScreens={false}
     drawerContent={renderCustomDrawerContent}
     screenOptions={{
       headerShown: true,
+      freezeOnBlur: false,
       headerStyle: { backgroundColor: '#1e1e1e' },
       headerTintColor: '#fff',
       drawerStyle: { backgroundColor: '#1c1c1c' },

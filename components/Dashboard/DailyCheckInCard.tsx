@@ -16,24 +16,24 @@ export const DailyCheckInCard: React.FC<Props> = ({ hasCheckedInToday, onPress }
           colors={['#1f2a22', '#203a26']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={styles.gradient}
+          style={[styles.gradient, styles.completeGradient]}
         >
-          <View style={styles.content}>
-            <View style={styles.iconContainer}>
+          <View style={[styles.content, styles.completeContent]}>
+            <View style={[styles.iconContainer, styles.completeIconContainer]}>
               <Ionicons name="checkmark-circle-outline" size={30} color="#4caf50" />
             </View>
-            <View style={styles.textContainer}>
+            <View style={[styles.textContainer, styles.completeTextContainer]}>
               <Text
-                style={styles.title}
+                style={[styles.title, styles.completeTitle, styles.completeText]}
                 numberOfLines={1}
                 adjustsFontSizeToFit
-                minimumFontScale={0.75}
+                minimumFontScale={0.7}
                 allowFontScaling={false}
               >
                 Readiness Check Complete
               </Text>
               <Text
-                style={styles.subtitle}
+                style={[styles.subtitle, styles.completeText]}
                 numberOfLines={1}
                 adjustsFontSizeToFit
                 minimumFontScale={0.75}
@@ -88,19 +88,27 @@ export const DailyCheckInCard: React.FC<Props> = ({ hasCheckedInToday, onPress }
         <View style={styles.indicatorRow}>
           <View style={styles.indicator}>
             <Ionicons name="moon" size={16} color="rgba(255,255,255,0.7)" />
-            <Text style={styles.indicatorText}>Sleep</Text>
+            <Text style={styles.indicatorText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+              Sleep
+            </Text>
           </View>
           <View style={styles.indicator}>
             <Ionicons name="battery-charging" size={16} color="rgba(255,255,255,0.7)" />
-            <Text style={styles.indicatorText}>Energy</Text>
+            <Text style={styles.indicatorText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+              Energy
+            </Text>
           </View>
           <View style={styles.indicator}>
             <Ionicons name="body" size={16} color="rgba(255,255,255,0.7)" />
-            <Text style={styles.indicatorText}>Soreness</Text>
+            <Text style={styles.indicatorText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+              Soreness
+            </Text>
           </View>
           <View style={styles.indicator}>
             <Ionicons name="flame" size={16} color="rgba(255,255,255,0.7)" />
-            <Text style={styles.indicatorText}>Readiness</Text>
+            <Text style={styles.indicatorText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+              Readiness
+            </Text>
           </View>
         </View>
       </LinearGradient>
@@ -125,15 +133,44 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   gradient: {
-    height: 82,
+    minHeight: 118,
     borderRadius: 16,
     overflow: 'hidden',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  completeGradient: {
+    minHeight: 0,
+    height: 96,
+    justifyContent: 'center',
+    paddingTop: 0,
+    paddingBottom: 0,
+  },
+  completeContent: {
+    minHeight: 48,
+    justifyContent: 'center',
+  },
+  completeIconContainer: {
+    position: 'absolute',
+    left: 16,
+    marginRight: 0,
+  },
+  completeTextContainer: {
+    alignItems: 'center',
+    flex: 0,
+    width: '100%',
+    paddingHorizontal: 66,
+  },
+  completeTitle: {
+    fontSize: 15,
+  },
+  completeText: {
+    alignSelf: 'stretch',
+    textAlign: 'center',
   },
   content: {
-    ...StyleSheet.absoluteFillObject,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
   },
   iconContainer: {
     width: 44,
@@ -150,7 +187,6 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     justifyContent: 'center',
-    alignSelf: 'stretch',
   },
   title: {
     fontSize: 16,
@@ -175,18 +211,23 @@ const styles = StyleSheet.create({
   indicatorRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 16,
-    paddingTop: 16,
+    alignItems: 'flex-start',
+    marginTop: 12,
+    paddingTop: 10,
     borderTopWidth: 1,
     borderTopColor: 'rgba(255, 255, 255, 0.2)',
+    gap: 6,
   },
   indicator: {
     alignItems: 'center',
+    flex: 1,
+    minWidth: 0,
     gap: 4,
   },
   indicatorText: {
     fontSize: 11,
     color: 'rgba(255, 255, 255, 0.7)',
     fontWeight: '600',
+    textAlign: 'center',
   },
 });
