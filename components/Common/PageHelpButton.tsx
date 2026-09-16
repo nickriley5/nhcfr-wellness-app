@@ -31,7 +31,7 @@ const PageHelpButton = ({
   title,
   intro,
   tips,
-  top = 14,
+  top = 70,
   right = 16,
   placement = 'floating',
 }: PageHelpButtonProps) => {
@@ -113,7 +113,13 @@ const PageHelpButton = ({
 
   return (
     <>
-      <View pointerEvents="box-none" style={anchorStyle}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Help for ${title}`}
+        onPress={openHelp}
+        hitSlop={12}
+        style={anchorStyle}
+      >
         {shouldPulse && (
           <Animated.View
             pointerEvents="none"
@@ -126,15 +132,10 @@ const PageHelpButton = ({
             ]}
           />
         )}
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Help for ${title}`}
-          onPress={openHelp}
-          style={[styles.button, shouldPulse && styles.buttonActive]}
-        >
+        <View style={[styles.button, shouldPulse && styles.buttonActive]}>
           <Ionicons name="help-circle-outline" size={24} color="#fff" />
-        </Pressable>
-      </View>
+        </View>
+      </Pressable>
 
       <Modal
         visible={visible}
@@ -184,14 +185,16 @@ const PageHelpButton = ({
 const styles = StyleSheet.create({
   anchor: {
     position: 'absolute',
-    zIndex: 50,
-    elevation: 50,
+    zIndex: 9999,
+    elevation: 9999,
+    width: 54,
+    height: 54,
     alignItems: 'center',
     justifyContent: 'center',
   },
   inlineAnchor: {
-    width: 42,
-    height: 42,
+    width: 54,
+    height: 54,
     alignItems: 'center',
     justifyContent: 'center',
   },

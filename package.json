@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "android": "react-native run-android",
+    "postinstall": "node scripts/patch-expo-modules-core.js",
     "ios": "react-native run-ios",
     "lint": "eslint ./screens/**/*.tsx ./utils/**/*.ts ./components/**/*.tsx ./types/**/*.ts ./scripts/**/*.ts",
     "secrets:scan": "bash scripts/scan-secrets.sh --all",

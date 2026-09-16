@@ -1,8 +1,12 @@
-// firebase.ts - Temporarily using Web Firebase SDK only
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { getAuth, initializeAuth, type Auth, type Persistence } from 'firebase/auth';
 import { getFirestore, setLogLevel } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const { getReactNativePersistence } = require('@firebase/auth') as {
+  getReactNativePersistence: (storage: typeof AsyncStorage) => Persistence;
+};
 
 const firebaseConfig = {
   apiKey: 'AIzaSyDXUvgMMJp7drZFcNQIYpro7oJh3AC24N0',
@@ -17,8 +21,19 @@ console.log('🔥 Initializing Firebase...');
 const app = initializeApp(firebaseConfig);
 console.log('✅ Firebase app initialized');
 
-const auth = getAuth(app);
-console.log('✅ Firebase Auth initialized');
+let auth: Auth;
+try {
+  auth = initializeAuth(app, {
+    persistence: getReactNativePersistence(AsyncStorage),
+  });
+  console.log('✅ Firebase Auth initialized with React Native persistence');
+} catch (error: any) {
+  if (error?.code !== 'auth/already-initialized') {
+    throw error;
+  }
+  auth = getAuth(app);
+  console.log('✅ Firebase Auth already initialized');
+}
 
 const db = getFirestore(app);
 console.log('✅ Firestore initialized');

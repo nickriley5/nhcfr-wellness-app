@@ -90,9 +90,11 @@ export default function RegisterScreen({ navigation }: any) {
                 value={email}
                 onChangeText={setEmail}
                 autoCapitalize="none"
+                autoCorrect={false}
                 keyboardType="email-address"
-                textContentType="emailAddress"
-                autoComplete="email"
+                textContentType="username"
+                autoComplete="username"
+                importantForAutofill="yes"
               />
 
               <View style={styles.passwordContainer}>
@@ -105,6 +107,7 @@ export default function RegisterScreen({ navigation }: any) {
                   secureTextEntry={!showPassword}
                   textContentType="newPassword"
                   autoComplete="password-new"
+                  importantForAutofill="yes"
                   passwordRules="required: lower; required: upper; required: digit; max-consecutive: 2; minlength: 6;"
                 />
                 <Pressable

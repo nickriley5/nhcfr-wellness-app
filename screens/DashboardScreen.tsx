@@ -618,17 +618,43 @@ export default function DashboardScreen() {
             <Text style={dashboardStyles.header}>Today</Text>
             <Text style={dashboardStyles.subheader}>{dashboardDateLabel}</Text>
           </View>
-          <Pressable
-            style={dashboardStyles.headerScheduleButton}
-            onPress={() => setShowEnvironmentCalendar(true)}
-            accessibilityRole="button"
-            accessibilityLabel="Set weekly schedule"
-          >
-            <Ionicons name="calendar-outline" size={18} color="#fff" />
-            <Text style={dashboardStyles.headerScheduleButtonText}>
-              Set Weekly Schedule
-            </Text>
-          </Pressable>
+          <View style={dashboardStyles.headerActions}>
+            <Pressable
+              style={dashboardStyles.headerScheduleButton}
+              onPress={() => setShowEnvironmentCalendar(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Set weekly schedule"
+            >
+              <Ionicons name="calendar-outline" size={18} color="#fff" />
+              <Text style={dashboardStyles.headerScheduleButtonText}>
+                Set Weekly Schedule
+              </Text>
+            </Pressable>
+            <PageHelpButton
+              pageKey="dashboard"
+              title="Dashboard Tips"
+              intro="This is your shift-start overview. Check it first, then move into training or food logging."
+              placement="inline"
+              tips={[
+                {
+                  title: 'Start with readiness',
+                  body: 'Complete the readiness check once per day. If you redo it, the coach can update the recommendation for today.',
+                },
+                {
+                  title: 'Set the weekly schedule',
+                  body: 'Use Set Weekly Schedule to mark training days, rest days, and cardio days. The cards use that schedule to show the right actions.',
+                },
+                {
+                  title: 'Use the cards as shortcuts',
+                  body: 'Training, cardio, nutrition, and weight cards are buttons. Tap the card action that matches what you want to do now.',
+                },
+                {
+                  title: 'Weight ETA needs logs',
+                  body: 'The weight card can estimate a goal date after it has a target and enough weigh-ins to see a trend.',
+                },
+              ]}
+            />
+          </View>
         </View>
 
         <ProfileCompletionBanner
@@ -655,14 +681,29 @@ export default function DashboardScreen() {
             style={dashboardStyles.aiCoachGradient}
           >
             <View style={dashboardStyles.aiCoachContent}>
-              <Ionicons name="chatbubbles" size={32} color="#fff" />
+              <View style={dashboardStyles.aiCoachIcon}>
+                <Ionicons name="chatbubbles" size={32} color="#fff" />
+              </View>
               <View style={dashboardStyles.aiCoachText}>
-                <Text style={dashboardStyles.aiCoachTitle}>AI Fitness Coach</Text>
-                <Text style={dashboardStyles.aiCoachSubtitle}>
-                  Get personalized workout & nutrition advice
+                <Text
+                  style={dashboardStyles.aiCoachTitle}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.8}
+                  allowFontScaling={false}
+                >
+                  AI Fitness Coach
+                </Text>
+                <Text
+                  style={dashboardStyles.aiCoachSubtitle}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.72}
+                  allowFontScaling={false}
+                >
+                  Workout and nutrition advice
                 </Text>
               </View>
-              <Ionicons name="chevron-forward" size={24} color="#fff" />
             </View>
           </LinearGradient>
         </Pressable>
@@ -781,31 +822,6 @@ export default function DashboardScreen() {
           </ScrollView>
         </View>
       </ScrollView>
-
-      <PageHelpButton
-        pageKey="dashboard"
-        title="Dashboard Tips"
-        intro="This is your shift-start overview. Check it first, then move into training or food logging."
-        top={72}
-        tips={[
-          {
-            title: 'Start with readiness',
-            body: 'Complete the readiness check once per day. If you redo it, the coach can update the recommendation for today.',
-          },
-          {
-            title: 'Set the weekly schedule',
-            body: 'Use Set Weekly Schedule to mark training days, rest days, and cardio days. The cards use that schedule to show the right actions.',
-          },
-          {
-            title: 'Use the cards as shortcuts',
-            body: 'Training, cardio, nutrition, and weight cards are buttons. Tap the card action that matches what you want to do now.',
-          },
-          {
-            title: 'Weight ETA needs logs',
-            body: 'The weight card can estimate a goal date after it has a target and enough weigh-ins to see a trend.',
-          },
-        ]}
-      />
 
       {/* ✅ CONDITIONALLY RENDER MODALS - only mount when visible to prevent view recycling crashes */}
       {showMealLoggingModal && (

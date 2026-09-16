@@ -61,7 +61,7 @@ useEffect(() => {
 
     setLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      await signInWithEmailAndPassword(auth, email.trim(), password);
       Toast.show({
         type: 'success',
         text1: 'Welcome! 🎉',
@@ -125,8 +125,11 @@ useEffect(() => {
               onChangeText={setEmail}
               keyboardType="email-address"
               autoCapitalize="none"
-              textContentType="emailAddress"
-              autoComplete="email"
+              autoCorrect={false}
+              textContentType="username"
+              autoComplete="username"
+              importantForAutofill="yes"
+              returnKeyType="next"
             />
 
             <View style={styles.passwordContainer}>
@@ -139,6 +142,9 @@ useEffect(() => {
                 secureTextEntry={!showPassword}
                 textContentType="password"
                 autoComplete="password"
+                importantForAutofill="yes"
+                returnKeyType="done"
+                onSubmitEditing={handleLogin}
                 passwordRules="required: lower; required: upper; required: digit; max-consecutive: 2; minlength: 8;"
               />
               <Pressable

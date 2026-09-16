@@ -1,7 +1,7 @@
 import React from 'react';
 import { NavigationContainer, NavigatorScreenParams } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, Text, TextInput } from 'react-native';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from './firebase';
 import type { ProgramDay } from './types/Exercise';
@@ -35,6 +35,24 @@ import AIChatScreen from './screens/AIChatScreen';
 
 // Auth context
 import { AuthProvider, useAuth } from './providers/AuthProvider';
+
+const configureStableTextSizing = () => {
+  const textDefaults = (Text as any).defaultProps ?? {};
+  const textInputDefaults = (TextInput as any).defaultProps ?? {};
+
+  (Text as any).defaultProps = {
+    ...textDefaults,
+    allowFontScaling: false,
+    maxFontSizeMultiplier: 1,
+  };
+  (TextInput as any).defaultProps = {
+    ...textInputDefaults,
+    allowFontScaling: false,
+    maxFontSizeMultiplier: 1,
+  };
+};
+
+configureStableTextSizing();
 
 // ----- Navigation Types -----
 // Tab navigator (inside MainTabs)
@@ -157,6 +175,8 @@ const AppNavigator = () => {
         } catch {
           setProfileComplete(false);
         }
+      } else {
+        setProfileComplete(null);
       }
     };
     fetchProfileStatus();

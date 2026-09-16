@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { Dimensions, View, Text, StyleSheet, Pressable } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
@@ -23,10 +23,25 @@ export const DailyCheckInCard: React.FC<Props> = ({ hasCheckedInToday, onPress }
               <Ionicons name="checkmark-circle-outline" size={30} color="#4caf50" />
             </View>
             <View style={styles.textContainer}>
-              <Text style={styles.title}>Readiness Check Complete</Text>
-              <Text style={styles.subtitle}>Tap to review or update today's answers</Text>
+              <Text
+                style={styles.title}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.75}
+                allowFontScaling={false}
+              >
+                Readiness Check Complete
+              </Text>
+              <Text
+                style={styles.subtitle}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.75}
+                allowFontScaling={false}
+              >
+                Tap to review or update
+              </Text>
             </View>
-            <Ionicons name="create-outline" size={22} color="rgba(255,255,255,0.75)" />
           </View>
         </LinearGradient>
       </Pressable>
@@ -46,12 +61,28 @@ export const DailyCheckInCard: React.FC<Props> = ({ hasCheckedInToday, onPress }
             <Ionicons name="pulse-outline" size={30} color="#ff6b6b" />
           </View>
           <View style={styles.textContainer}>
-            <Text style={styles.title}>Complete Readiness Check</Text>
-            <Text style={styles.subtitle}>
+            <Text
+              style={styles.title}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.75}
+              allowFontScaling={false}
+            >
+              Complete Readiness Check
+            </Text>
+            <Text
+              style={styles.subtitle}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.75}
+              allowFontScaling={false}
+            >
               Log recovery, stress, and training readiness
             </Text>
           </View>
-          <Ionicons name="chevron-forward" size={24} color="rgba(255,255,255,0.8)" />
+          <View style={styles.trailingIcon}>
+            <Ionicons name="chevron-forward" size={24} color="rgba(255,255,255,0.8)" />
+          </View>
         </View>
 
         <View style={styles.indicatorRow}>
@@ -77,9 +108,13 @@ export const DailyCheckInCard: React.FC<Props> = ({ hasCheckedInToday, onPress }
   );
 };
 
+const { width: screenWidth } = Dimensions.get('window');
+const CARD_WIDTH = Math.min(screenWidth - 64, 520);
+
 const styles = StyleSheet.create({
   container: {
-    marginHorizontal: 16,
+    width: CARD_WIDTH,
+    alignSelf: 'center',
     marginBottom: 16,
     borderRadius: 16,
     overflow: 'hidden',
@@ -90,36 +125,52 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   gradient: {
-    padding: 20,
+    height: 82,
+    borderRadius: 16,
+    overflow: 'hidden',
   },
   content: {
+    ...StyleSheet.absoluteFillObject,
     flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: 16,
   },
   iconContainer: {
-    width: 56,
-    height: 56,
+    width: 44,
+    height: 44,
     borderRadius: 12,
     backgroundColor: 'rgba(255, 255, 255, 0.08)',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.12)',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 16,
+    marginRight: 12,
   },
   textContainer: {
     flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
+    alignSelf: 'stretch',
   },
   title: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
     color: '#fff',
-    marginBottom: 4,
+    marginBottom: 2,
+    lineHeight: 20,
   },
   subtitle: {
-    fontSize: 14,
+    fontSize: 12,
     color: 'rgba(255, 255, 255, 0.85)',
-    lineHeight: 20,
+    lineHeight: 16,
+    flexShrink: 1,
+  },
+  trailingIcon: {
+    width: 24,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    marginLeft: 10,
+    flexShrink: 0,
   },
   indicatorRow: {
     flexDirection: 'row',

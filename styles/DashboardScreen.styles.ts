@@ -2,6 +2,7 @@ import { StyleSheet, Dimensions } from 'react-native';
 
 const { width: screenWidth } = Dimensions.get('window');
 export const SECTION_WIDTH = screenWidth - 32; // Account for padding
+const DASHBOARD_BUTTON_WIDTH = Math.min(screenWidth - 64, 520);
 
 export const dashboardStyles = StyleSheet.create({
   screen: {
@@ -17,18 +18,19 @@ export const dashboardStyles = StyleSheet.create({
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 16,
     paddingHorizontal: 16,
     paddingTop: 4,
+    gap: 12,
   },
   headerContent: {
     flex: 1,
-    paddingRight: 16,
+    minWidth: 0,
   },
   headerScheduleButton: {
     width: 132,
-    height: 44,
+    minHeight: 44,
     backgroundColor: '#d32f2f',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.12)',
@@ -37,6 +39,8 @@ export const dashboardStyles = StyleSheet.create({
     justifyContent: 'center',
     flexDirection: 'row',
     paddingHorizontal: 10,
+    paddingVertical: 6,
+    flexShrink: 0,
   },
   headerScheduleButtonText: {
     color: '#fff',
@@ -45,6 +49,12 @@ export const dashboardStyles = StyleSheet.create({
     marginLeft: 6,
     textAlign: 'center',
     flexShrink: 1,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexShrink: 0,
   },
   header: {
     fontSize: 30,
@@ -109,9 +119,10 @@ export const dashboardStyles = StyleSheet.create({
     backgroundColor: '#1a1a1a',
     borderRadius: 16,
     padding: 20,
-    width: SECTION_WIDTH * 0.85,
+    width: Math.min(SECTION_WIDTH * 0.85, screenWidth - 48),
     borderWidth: 1,
     borderColor: '#333',
+    overflow: 'hidden',
   },
 
   // Button Styles
@@ -280,15 +291,18 @@ export const dashboardStyles = StyleSheet.create({
   // Workout Styles
   workoutTitle: {
     fontSize: 18,
+    lineHeight: 24,
     fontWeight: '700',
     color: '#fff',
     marginBottom: 8,
+    flexShrink: 1,
   },
   workoutMeta: {
     fontSize: 14,
     color: '#888',
     marginBottom: 16,
     lineHeight: 20,
+    flexShrink: 1,
   },
   summaryStats: {
     flexDirection: 'row',
@@ -976,8 +990,9 @@ export const dashboardStyles = StyleSheet.create({
 
   // AI Coach Card Styles
   aiCoachCard: {
-    marginHorizontal: 16,
-    marginBottom: 24,
+    width: DASHBOARD_BUTTON_WIDTH,
+    alignSelf: 'center',
+    marginBottom: 18,
     borderRadius: 16,
     overflow: 'hidden',
     elevation: 8,
@@ -987,27 +1002,54 @@ export const dashboardStyles = StyleSheet.create({
     shadowRadius: 8,
   },
   aiCoachGradient: {
-    padding: 20,
+    height: 82,
     borderRadius: 16,
+    overflow: 'hidden',
   },
   aiCoachContent: {
-    flexDirection: 'row',
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
     alignItems: 'center',
-    gap: 16,
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
+  aiCoachIcon: {
+    position: 'absolute',
+    left: 16,
+    top: 0,
+    bottom: 0,
+    width: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
   aiCoachText: {
-    flex: 1,
+    position: 'absolute',
+    top: 0,
+    right: 16,
+    bottom: 0,
+    left: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   aiCoachTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
     color: '#fff',
-    marginBottom: 4,
+    marginBottom: 2,
+    lineHeight: 20,
+    textAlign: 'center',
   },
   aiCoachSubtitle: {
-    fontSize: 14,
+    fontSize: 12,
     color: 'rgba(255, 255, 255, 0.9)',
     fontWeight: '500',
+    lineHeight: 16,
+    textAlign: 'center',
+    width: '100%',
   },
 
   // Light Workout Modal Styles

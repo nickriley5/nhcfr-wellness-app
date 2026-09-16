@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>FirefighterWellnessApp</string>
+	<string>Firefighter Wellness</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIconName</key>
@@ -34,11 +34,11 @@
 		<true/>
 	</dict>
 	<key>NSCameraUsageDescription</key>
-	<string>This app needs access to camera to analyze your meals</string>
+	<string>Firefighter Wellness uses the camera to capture meal photos for nutrition analysis.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string></string>
+	<string>Firefighter Wellness uses your location only when a feature you choose needs nearby or location-based information.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>This app needs access to photo library to select meal photos</string>
+	<string>Firefighter Wellness uses your photo library when you choose an existing meal photo for nutrition analysis.</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>AntDesign.ttf</string>
