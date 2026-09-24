@@ -128,7 +128,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginBottom: 16,
     borderRadius: 16,
-    overflow: 'hidden',
+    backgroundColor: '#1b5e20',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
@@ -138,6 +138,8 @@ const styles = StyleSheet.create({
   gradient: {
     padding: 20,
     position: 'relative',
+    borderRadius: 16,
+    overflow: 'hidden',
   },
   dismissButton: {
     position: 'absolute',

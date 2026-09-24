@@ -8,7 +8,6 @@ export const getEnv = (): EnvMap => {
   }
 
   let configEnv: EnvMap = {};
-  let localEnv: EnvMap = {};
 
   try {
     // Avoid importing react-native-config directly to prevent crashes
@@ -26,23 +25,9 @@ export const getEnv = (): EnvMap => {
     configEnv = {};
   }
 
-  try {
-    // Local-only secrets file (gitignored) to keep dev builds working
-    // when native env loading isn't available.
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const mod = require('./localSecrets');
-    const cfg = mod?.default ?? mod;
-    if (cfg && typeof cfg === 'object') {
-      localEnv = cfg as EnvMap;
-    }
-  } catch {
-    localEnv = {};
-  }
-
   const processEnv = typeof process !== 'undefined' ? (process.env as EnvMap) : {};
 
   cachedEnv = {
-    ...localEnv,
     ...processEnv,
     ...configEnv,
   };

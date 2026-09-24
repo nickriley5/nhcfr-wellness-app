@@ -40,6 +40,14 @@ target 'FirefighterWellnessApp' do
     
     # Fix for gRPC build issues
     installer.pods_project.targets.each do |target|
+      if target.name == 'react-native-config'
+        target.build_configurations.each do |config|
+          if config.name == 'Release'
+            config.build_settings['ENVFILE'] = '.env.release'
+          end
+        end
+      end
+
       if target.name == 'gRPC-Core'
         target.build_configurations.each do |config|
           config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= ['$(inherited)']

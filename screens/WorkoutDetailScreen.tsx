@@ -15,7 +15,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { auth, db } from '../firebase';
-import { doc, setDoc, Timestamp, collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
+import { doc, setDoc, writeBatch, Timestamp, collection, getDoc, getDocs, query, orderBy, limit } from 'firebase/firestore';
 import Toast from 'react-native-toast-message';
 import Video from 'react-native-video';
 import YoutubePlayer from 'react-native-youtube-iframe';
@@ -47,7 +47,7 @@ const WorkoutDetailScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute<WorkoutDetailRoute>();
   
-  const { day, weekIdx, dayIdx } = route.params || {};
+  const { day, weekIdx, dayIdx, sourceType, workoutId, weekNumber } = route.params || {};
   
   const [exerciseList, setExerciseList] = useState<ExerciseData[]>([]);
   const [workoutSets, setWorkoutSets] = useState<Record<string, SetData[]>>({});
@@ -63,6 +63,7 @@ const WorkoutDetailScreen: React.FC = () => {
   const [showPR, setShowPR] = useState(false);
   const [prMsgs, setPrMsgs] = useState<string[]>([]);
   const [videoLoading, setVideoLoading] = useState<Record<string, boolean>>({});
+  const [isCompleting, setIsCompleting] = useState(false);
   
   const restIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const videoLoadStartRef = useRef<Record<string, number>>({});
@@ -300,6 +301,9 @@ const WorkoutDetailScreen: React.FC = () => {
   };
 
   const handleCompleteWorkout = async () => {
+    if (isCompleting) {return;}
+    setIsCompleting(true);
+
     try {
       const uid = auth.currentUser?.uid;
       if (!uid) {
@@ -308,6 +312,7 @@ const WorkoutDetailScreen: React.FC = () => {
           text1: 'Not logged in',
           text2: 'Please sign in to save workout',
         });
+        setIsCompleting(false);
         return;
       }
 
@@ -414,9 +419,46 @@ const WorkoutDetailScreen: React.FC = () => {
         workoutType: 'strength',
       };
 
-      // Save to workout logs (matches WorkoutHistoryScreen collection name)
+      // Save the workout and advance AI-program progress together.
       const historyRef = doc(collection(db, 'users', uid, 'workoutLogs'));
-      await setDoc(historyRef, workoutData);
+      if (sourceType === 'aiProgram' && workoutId) {
+        const programRef = doc(db, 'users', uid, 'aiPrograms', workoutId);
+        const programSnap = await getDoc(programRef);
+        if (!programSnap.exists()) {
+          throw new Error('Active training program was not found.');
+        }
+
+        const program = programSnap.data();
+        const completedWeekNumber = weekNumber || weekIdx + 1;
+        const completedDayNumber = dayIdx + 1;
+        const completedWeek = Array.isArray(program.weeks)
+          ? program.weeks.find((week: any) => week.weekNumber === completedWeekNumber)
+          : null;
+        const daysInWeek = Math.max(1, completedWeek?.days?.length || 1);
+        const nextDay = completedDayNumber < daysInWeek ? completedDayNumber + 1 : 1;
+        const nextWeek = completedDayNumber < daysInWeek
+          ? completedWeekNumber
+          : completedWeekNumber + 1;
+        const progressRef = doc(db, 'users', uid, 'aiPrograms', workoutId, 'progress', 'current');
+        const batch = writeBatch(db);
+        batch.set(historyRef, workoutData);
+        batch.update(programRef, {
+          currentWeek: nextWeek,
+          currentDay: nextDay,
+          updatedAt: Timestamp.now(),
+        });
+        batch.set(progressRef, {
+          currentWeek: nextWeek,
+          currentDay: nextDay,
+          lastCompletedWeek: completedWeekNumber,
+          lastCompletedDay: completedDayNumber,
+          lastWorkoutLogId: historyRef.id,
+          updatedAt: Timestamp.now(),
+        }, { merge: true });
+        await batch.commit();
+      } else {
+        await setDoc(historyRef, workoutData);
+      }
       
       console.log('✅ Workout saved to workoutLogs collection:', workoutData.dayTitle);
 
@@ -438,6 +480,7 @@ const WorkoutDetailScreen: React.FC = () => {
       }
     } catch (error) {
       console.error('Error saving workout:', error);
+      setIsCompleting(false);
       Toast.show({
         type: 'error',
         text1: 'Failed to save',
@@ -718,9 +761,15 @@ const WorkoutDetailScreen: React.FC = () => {
         </View>
 
         {/* COMPLETE BUTTON */}
-        <Pressable style={styles.completeButton} onPress={handleCompleteWorkout}>
+        <Pressable
+          disabled={isCompleting}
+          style={[styles.completeButton, isCompleting && styles.completeButtonDisabled]}
+          onPress={handleCompleteWorkout}
+        >
           <Ionicons name="checkmark-circle" size={24} color="#fff" />
-          <Text style={styles.completeButtonText}>Complete Workout</Text>
+          <Text style={styles.completeButtonText}>
+            {isCompleting ? 'Saving Workout...' : 'Complete Workout'}
+          </Text>
         </Pressable>
       </ScrollView>
 
@@ -1008,6 +1057,9 @@ const styles = StyleSheet.create({
     padding: 18,
     borderRadius: 12,
     marginTop: 8,
+  },
+  completeButtonDisabled: {
+    opacity: 0.6,
   },
   completeButtonText: {
     fontSize: 18,

@@ -40,6 +40,7 @@ local.properties
 #
 node_modules/
 npm-debug.log
+firebase-debug.log
 yarn-error.log
 
 # fastlane
@@ -83,3 +84,5 @@ serviceAccountKey.json
 .env.local
 android/upload-keystore.properties
 utils/localSecrets.ts
+functions/lib/
+functions/.env

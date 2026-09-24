@@ -202,7 +202,7 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 21,
-    backgroundColor: 'rgba(20, 26, 34, 0.92)',
+    backgroundColor: '#141a22',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.16)',
     alignItems: 'center',

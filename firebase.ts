@@ -2,6 +2,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, initializeAuth, type Auth, type Persistence } from 'firebase/auth';
 import { getFirestore, setLogLevel } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
+import { getFunctions } from 'firebase/functions';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { getReactNativePersistence } = require('@firebase/auth') as {
@@ -43,7 +44,10 @@ console.log('🔥 Project ID:', firebaseConfig.projectId);
 const storage = getStorage(app);
 console.log('✅ Firebase Storage initialized');
 
+const functions = getFunctions(app, 'us-central1');
+console.log('✅ Firebase Functions initialized');
+
 // ✅ Suppress Firestore debug/info/warning logs globally (after initialization)
 setLogLevel('error');
 
-export { app as firebaseApp, auth, db, storage };
+export { app as firebaseApp, auth, db, storage, functions };

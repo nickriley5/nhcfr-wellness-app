@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import {
+  Asset,
   CameraOptions,
   ImageLibraryOptions,
   ImagePickerResponse,
@@ -22,8 +23,9 @@ import {
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
-import { auth, db } from '../firebase';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { auth, db, storage } from '../firebase';
+import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import Toast from '../components/Toast';
 import DashboardButton from '../components/Common/DashboardButton';
 import BodyFatCalculatorModal from '../components/Modals/BodyFatCalculatorModal';
@@ -61,6 +63,7 @@ const ProfileScreen = () => {
   const [showToast, setShowToast] = useState(false);
   const [bodyFatPct, setBodyFatPct] = useState<string>('');
   const [bfModalVisible, setBfModalVisible] = useState(false);
+  const [savingPhoto, setSavingPhoto] = useState(false);
 
   const fetchProfile = async () => {
     try {
@@ -124,14 +127,47 @@ const ProfileScreen = () => {
     }
   };
 
-  const saveProfilePicture = async (photoUri?: string) => {
+  const saveProfilePicture = async (asset?: Asset) => {
     const uid = auth.currentUser?.uid;
-    if (!uid || !photoUri) {
+    if (!uid || !asset?.uri || savingPhoto) {
       return;
     }
 
-    await updateDoc(doc(db, 'users', uid), { profilePicture: photoUri });
-    setProfile((prev) => (prev ? { ...prev, profilePicture: photoUri } : null));
+    setSavingPhoto(true);
+
+    try {
+      const response = await fetch(asset.uri);
+      if (!response.ok) {
+        throw new Error(`Could not read selected image (${response.status})`);
+      }
+
+      const imageBlob = await response.blob();
+      const extension = asset.fileName?.split('.').pop()?.toLowerCase() || 'jpg';
+      const storageRef = ref(storage, `users/${uid}/profile/profile-picture.${extension}`);
+
+      await uploadBytes(storageRef, imageBlob, {
+        contentType: asset.type || 'image/jpeg',
+        customMetadata: { ownerId: uid },
+      });
+
+      const downloadUrl = await getDownloadURL(storageRef);
+      await setDoc(doc(db, 'users', uid), {
+        profilePicture: downloadUrl,
+        profilePicturePath: storageRef.fullPath,
+        profilePictureUpdatedAt: serverTimestamp(),
+      }, { merge: true });
+
+      setProfile((prev) => ({ ...(prev || {}), profilePicture: downloadUrl }));
+      Alert.alert('Photo Saved', 'Your profile picture has been saved.');
+    } catch (error) {
+      console.error('Profile photo upload failed:', error);
+      Alert.alert(
+        'Photo Not Saved',
+        'We could not upload your profile picture. Check your connection and try again.'
+      );
+    } finally {
+      setSavingPhoto(false);
+    }
   };
 
   const handleImagePickerResponse = async (
@@ -146,7 +182,7 @@ const ProfileScreen = () => {
       return;
     }
 
-    await saveProfilePicture(response.assets?.[0]?.uri);
+    await saveProfilePicture(response.assets?.[0]);
   };
 
   const openCamera = async () => {
@@ -202,12 +238,24 @@ const ProfileScreen = () => {
       </Pressable>
 
       <View style={styles.profileSection}>
-        <Pressable onPress={updateProfilePicture} style={styles.profileImageContainer}>
-          <Image
-            source={{ uri: profile?.profilePicture || 'https://via.placeholder.com/100' }}
-            style={styles.profileImage}
-          />
-          <Text style={styles.changePhoto}>Change Photo</Text>
+        <Pressable
+          disabled={savingPhoto}
+          onPress={updateProfilePicture}
+          style={styles.profileImageContainer}
+        >
+          {profile?.profilePicture ? (
+            <Image source={{ uri: profile.profilePicture }} style={styles.profileImage} />
+          ) : (
+            <View style={[styles.profileImage, styles.profileImageFallback]}>
+              <Ionicons name="person" size={38} color="#8a8f98" />
+            </View>
+          )}
+          {savingPhoto && (
+            <View style={styles.photoSavingOverlay}>
+              <ActivityIndicator color="#fff" />
+            </View>
+          )}
+          <Text style={styles.changePhoto}>{savingPhoto ? 'Saving Photo...' : 'Change Photo'}</Text>
         </Pressable>
 
         <Text style={styles.name}>Hello, {firstName} 👋</Text>
@@ -309,6 +357,21 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     borderWidth: 1.5,
     borderColor: '#444',
+  },
+  profileImageFallback: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#25282d',
+  },
+  photoSavingOverlay: {
+    position: 'absolute',
+    top: 0,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
   },
   changePhoto: { color: '#4fc3f7', fontSize: 12, marginBottom: 12 },
   name: { fontSize: 20, fontWeight: '700', color: '#fff', marginBottom: 4 },

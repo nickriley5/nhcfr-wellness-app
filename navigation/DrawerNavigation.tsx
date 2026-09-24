@@ -192,11 +192,17 @@ export function CustomDrawerContent(props: DrawerContentComponentProps) {
     <View style={styles.drawerRoot}>
       <DrawerContentScrollView {...props} contentContainerStyle={styles.drawerContainer}>
         <View style={styles.profileSection}>
-          <Image
-            source={{ uri: profilePicture || 'https://via.placeholder.com/100' }}
-            style={styles.profileImage}
-            key={profilePicture || 'placeholder'} // Force re-render when URL changes
-          />
+          {profilePicture ? (
+            <Image
+              source={{ uri: profilePicture }}
+              style={styles.profileImage}
+              key={profilePicture}
+            />
+          ) : (
+            <View style={[styles.profileImage, styles.profileImageFallback]}>
+              <Feather name="user" size={38} color="#8a8f98" />
+            </View>
+          )}
           <Text style={styles.profileName}>{`${getGreeting()}, ${userName}!`}</Text>
         </View>
         <DrawerItem
@@ -283,6 +289,7 @@ const styles = StyleSheet.create({
   drawerContainer: { flex: 1, backgroundColor: '#1c1c1c' },
   profileSection: { alignItems: 'center', marginBottom: 24, paddingTop: 48 },
   profileImage: { width: 80, height: 80, borderRadius: 40, marginBottom: 12, borderWidth: 1.5, borderColor: '#444' },
+  profileImageFallback: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#25282d' },
   profileName: { color: '#fff', fontSize: 16, fontWeight: '600' },
   logoutSection: {
     borderTopWidth: 1,

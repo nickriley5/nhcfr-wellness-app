@@ -3,11 +3,9 @@
  * Supports: OpenAI, Anthropic Claude, Google Gemini
  */
 
-import axios from 'axios';
 import { NutritionAnalysisResult, parseNutritionResult } from './nutritionSchema';
-import { AIProvider, sendProviderMessage } from './providers';
+import { AIProvider, analyzeImageWithProvider, sendProviderMessage } from './providers';
 import { cleanJsonResponse, parseCleanJsonResponse } from './jsonUtils';
-import { AI_CONFIG } from './config';
 import { enforceRateLimit } from './rateLimiter';
 import type { AIMessage, AIResponse } from './types';
 import {
@@ -24,11 +22,6 @@ import {
 } from './prompts/nutritionPrompts';
 export type { NutritionAnalysisResult } from './nutritionSchema';
 export type { AIMessage, AIResponse } from './types';
-
-const isAxiosLikeError = (error: unknown): error is { response?: { status?: number; data?: unknown }; message?: string } =>
-  typeof error === 'object' &&
-  error !== null &&
-  'response' in error;
 
 // ============= TYPES =============
 export interface WorkoutRecommendation {
@@ -239,7 +232,7 @@ export async function sendAIMessage(
   await enforceRateLimit();
   
   console.log(`🤖 Sending message to ${provider}...`);
-  return sendProviderMessage(provider, messages, AI_CONFIG, options);
+  return sendProviderMessage(provider, messages, options);
 }
 
 // ============= SPECIALIZED AI FUNCTIONS =============
@@ -1906,72 +1899,8 @@ export async function analyzeMealFromImage(
   const prompt = buildAnalyzeMealImagePrompt(additionalContext);
 
   try {
-    const apiKey = AI_CONFIG.gemini.apiKey;
-    // Try a small set of vision-capable models for compatibility across Gemini updates.
-    const modelCandidates = [
-      AI_CONFIG.gemini.model,
-      'gemini-2.0-flash',
-      'gemini-1.5-flash',
-      'gemini-1.5-flash-latest',
-    ];
-
-    const requestBody = {
-      contents: [
-        {
-          parts: [
-            { text: prompt },
-            {
-              inline_data: {
-                mime_type: mimeType,
-                data: imageBase64,
-              },
-            },
-          ],
-        },
-      ],
-      generationConfig: {
-        temperature: 0.3,
-        maxOutputTokens: 4000,
-      },
-    };
-    let response: any = null;
-    let lastErrorMessage = 'Unknown error';
-
-    for (const model of modelCandidates) {
-      try {
-        response = await axios.post(
-          `${AI_CONFIG.gemini.baseURL}/models/${model}:generateContent?key=${apiKey}`,
-          requestBody,
-          {
-            headers: { 'Content-Type': 'application/json' },
-            timeout: 30000,
-          }
-        );
-        console.log(`✅ Gemini vision model used: ${model}`);
-        break;
-      } catch (modelError: unknown) {
-        if (isAxiosLikeError(modelError)) {
-          const status = modelError.response?.status;
-          const apiMessage = (modelError.response?.data as any)?.error?.message || modelError.message || 'Request failed';
-          lastErrorMessage = `Model ${model} failed (${status ?? 'no-status'}): ${apiMessage}`;
-
-          // Retry on 404 model-not-found with the next candidate
-          if (status === 404) {
-            console.warn(`⚠️ Vision model unavailable: ${model}. Trying fallback...`);
-            continue;
-          }
-        } else if (modelError instanceof Error) {
-          lastErrorMessage = modelError.message;
-        }
-        throw modelError;
-      }
-    }
-
-    if (!response) {
-      throw new Error(`No compatible Gemini vision model available. ${lastErrorMessage}`);
-    }
-
-    const content = (response.data as any)?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const response = await analyzeImageWithProvider(imageBase64, mimeType, prompt);
+    const content = response.content;
     const parsed = parseCleanJsonResponse(content) as unknown;
     const result = parseNutritionResult(parsed);
     result.source = 'gemini-vision';
@@ -1998,13 +1927,6 @@ export async function analyzeMealFromImage(
 
     return result;
   } catch (error: unknown) {
-    if (isAxiosLikeError(error)) {
-      const status = error.response?.status;
-      const apiMessage = (error.response?.data as any)?.error?.message || error.message || 'Request failed';
-      console.error(`❌ Image analysis failed (${status ?? 'no-status'}): ${apiMessage}`);
-      throw new Error(`Failed to analyze meal image: ${apiMessage}`);
-    }
-
     const message = error instanceof Error ? error.message : 'Unknown error';
     console.error(`❌ Image analysis failed: ${message}`);
     throw new Error(`Failed to analyze meal image: ${message}`);

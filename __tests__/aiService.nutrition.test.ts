@@ -1,3 +1,8 @@
+jest.mock('../utils/ai/providers', () => ({
+  sendProviderMessage: jest.fn(),
+  analyzeImageWithProvider: jest.fn(),
+}));
+
 import { __testables } from '../utils/ai/aiService';
 
 describe('aiService nutrition parsing', () => {

@@ -3,6 +3,7 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView, Alert } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { useNavigation } from '@react-navigation/native';
+import { doc, serverTimestamp, writeBatch } from 'firebase/firestore';
 
 import {
   calculateBMR,
@@ -11,6 +12,7 @@ import {
 } from '../utils/macroCalculator';
 
 import { useAuth } from '../providers/AuthProvider';
+import { db } from '../firebase';
 import type { RootStackParamList } from '../App';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
@@ -18,7 +20,7 @@ type Nav = NativeStackNavigationProp<RootStackParamList, 'MacroCalculator'>;
 
 const MacroCalculatorScreen: React.FC = () => {
   const navigation = useNavigation<Nav>();
-  const { userProfile } = useAuth();
+  const { user, userProfile } = useAuth();
 
   const [activity, setActivity] = useState(1.4); // default: light
   const [goalType, setGoalType] = useState<'Lose' | 'Maintain' | 'Gain'>('Maintain');
@@ -30,6 +32,7 @@ const MacroCalculatorScreen: React.FC = () => {
     carbs: 40,
     fat: 30,
   });
+  const [saving, setSaving] = useState(false);
 
   const overrideWarning = useMemo(() => {
     return (
@@ -131,6 +134,97 @@ const MacroCalculatorScreen: React.FC = () => {
 
   const tdee = calculateTDEE(bmr, activity);
   const macros = calculateMacros(tdee, goalType, rateMode === 'lbs' ? rate : 0, macroSplit);
+
+  const handleSaveAndGenerate = async () => {
+    if (saving) {return;}
+
+    if (dietStyle === 'Custom' && customMacros.protein + customMacros.carbs + customMacros.fat !== 100) {
+      Alert.alert('Check Macro Ratios', 'Protein, carbohydrates, and fat must total 100%.');
+      return;
+    }
+
+    const uid = user?.uid;
+    if (!uid) {
+      Alert.alert('Sign In Required', 'Please sign in before saving a nutrition plan.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const goalTypeForPlan: 'maintain' | 'fatloss' | 'muscle' =
+        goalType === 'Lose' ? 'fatloss' : goalType === 'Gain' ? 'muscle' : 'maintain';
+      const dietMethodForPlan: 'standard' | 'zone' = dietStyle === 'Zone' ? 'zone' : 'standard';
+      const calorieTarget = Math.round(macros.calories);
+      const proteinGrams = Math.round(macros.protein);
+      const carbGrams = Math.round(macros.carbs);
+      const fatGrams = Math.round(macros.fat);
+      const normalizedZoneBlocks = {
+        protein: zoneBlocks?.protein || 0,
+        carbs: zoneBlocks?.carbs || 0,
+        fats: zoneBlocks?.fat || 0,
+      };
+      const profileData = userProfile as typeof userProfile & {
+        dietaryPreference?: string;
+        dietaryRestrictions?: string[];
+      };
+      const mealPlanData = {
+        calorieTarget,
+        proteinGrams,
+        carbGrams,
+        fatGrams,
+        zoneBlocks: normalizedZoneBlocks,
+        dietMethod: dietMethodForPlan,
+        macroStyle: dietStyle.toLowerCase(),
+        goalType: goalTypeForPlan,
+        name: userProfile.fullName || userProfile.name || 'Firefighter',
+        dietaryPreference: profileData.dietaryPreference || 'none',
+        dietaryRestrictions: profileData.dietaryRestrictions || [],
+        updatedAt: serverTimestamp(),
+      };
+      const macroPlanData = {
+        calories: calorieTarget,
+        protein: proteinGrams,
+        carbs: carbGrams,
+        fat: fatGrams,
+        activityFactor: activity,
+        weeklyRate: goalType === 'Maintain' ? 0 : rate,
+        rateMode,
+        ...mealPlanData,
+      };
+
+      const batch = writeBatch(db);
+      batch.set(doc(db, 'users', uid, 'mealPlan', 'active'), mealPlanData, { merge: true });
+      batch.set(doc(db, 'users', uid, 'macroPlan', 'active'), macroPlanData, { merge: true });
+      batch.set(doc(db, 'users', uid), {
+        calorieTarget,
+        proteinGrams,
+        carbGrams,
+        fatGrams,
+        goalType: goalTypeForPlan,
+        activityFactor: activity,
+        dietMethod: dietMethodForPlan,
+        macroStyle: dietStyle.toLowerCase(),
+        nutritionUpdatedAt: serverTimestamp(),
+      }, { merge: true });
+      await batch.commit();
+
+      navigation.navigate('MacroPlanOverview', {
+        calorieTarget,
+        proteinGrams,
+        carbGrams,
+        fatGrams,
+        zoneBlocks: normalizedZoneBlocks,
+        dietMethod: dietMethodForPlan,
+        goalType: goalTypeForPlan,
+        name: mealPlanData.name,
+      });
+    } catch (error) {
+      console.error('Failed to save macro plan:', error);
+      Alert.alert('Plan Not Saved', 'We could not save your nutrition plan. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -266,10 +360,12 @@ const MacroCalculatorScreen: React.FC = () => {
         )}
       </View>
 
-      <Pressable style={styles.saveBtn} onPress={() => {
-        Alert.alert('Coming Soon', 'Saving to Firestore not implemented yet.');
-      }}>
-        <Text style={styles.saveTxt}>Save & Generate Plan</Text>
+      <Pressable
+        disabled={saving}
+        style={[styles.saveBtn, saving && styles.saveBtnDisabled]}
+        onPress={handleSaveAndGenerate}
+      >
+        <Text style={styles.saveTxt}>{saving ? 'Saving Plan...' : 'Save & Generate Plan'}</Text>
       </Pressable>
     </ScrollView>
     </View>
@@ -298,6 +394,7 @@ const styles = StyleSheet.create({
   zoneBlockContainer: { marginTop: 12 },
 
   saveBtn : { marginTop: 32, backgroundColor: '#d32f2f', padding: 14, borderRadius: 8 },
+  saveBtnDisabled: { opacity: 0.6 },
   saveTxt : { color: '#fff', textAlign: 'center', fontWeight: '600' },
 
   backBtn : { padding: 10, borderWidth: 1, borderColor: '#888', borderRadius: 6 },

@@ -16,7 +16,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList, TabParamList } from '../App';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { auth, db } from '../firebase';
-import { doc, getDoc, setDoc, Timestamp, collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
+import { doc, getDoc, setDoc, writeBatch, Timestamp, collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
 import type { ProgramDay } from '../types/Exercise';
 import Toast from 'react-native-toast-message';
 // import { regenerateActiveProgram } from '../utils/programService';
@@ -25,7 +25,8 @@ import { resolveExercise } from '../utils/exerciseMatching';
 import AIWorkoutAssistant from '../components/AIWorkoutAssistant';
 import PeriodizedProgramModal from '../components/Modals/PeriodizedProgramModal';
 import PageHelpButton from '../components/Common/PageHelpButton';
-import type { PeriodizedProgram } from '../utils/ai/aiService';
+import { generatePeriodizedProgram, type PeriodizedProgram } from '../utils/ai/aiService';
+import { getCuratedExerciseList } from '../utils/exerciseMatching';
 
 
 interface StoredState {
@@ -104,6 +105,7 @@ const WorkoutScreen: React.FC = () => {
   const [activeAiProgram, setActiveAiProgram] = useState<PeriodizedProgram | null>(null);
   const [currentWeekNum, setCurrentWeekNum] = useState(1);
   const [currentDayNum, setCurrentDayNum] = useState(1);
+  const [isExtendingProgram, setIsExtendingProgram] = useState(false);
   
   // Recent activity state
   const [recentWorkout, setRecentWorkout] = useState<any>(null);
@@ -619,11 +621,145 @@ const WorkoutScreen: React.FC = () => {
     }
   }, []);
 
+  const generateNextProgramBlock = useCallback(async () => {
+    if (!activeAiProgram?.id || isExtendingProgram) {return;}
+
+    const uid = auth.currentUser?.uid;
+    if (!uid) {
+      Toast.show({ type: 'error', text1: 'Sign in required' });
+      return;
+    }
+
+    const generatedWeekCount = activeAiProgram.weeks.length;
+    const remainingWeeks = Math.max(0, activeAiProgram.totalWeeks - generatedWeekCount);
+    const weeksToAppend = remainingWeeks > 0 ? Math.min(2, remainingWeeks) : 2;
+    const targetTotalWeeks = Math.max(activeAiProgram.totalWeeks, generatedWeekCount + weeksToAppend);
+
+    setIsExtendingProgram(true);
+    Toast.show({
+      type: 'info',
+      text1: 'Building Next Block',
+      text2: `Generating ${weeksToAppend} new week${weeksToAppend === 1 ? '' : 's'}...`,
+      visibilityTime: 2500,
+    });
+
+    try {
+      const equipment = Array.isArray(userProfile?.equipment) && userProfile.equipment.length > 0
+        ? userProfile.equipment
+        : ['bodyweight', 'dumbbells'];
+      const curatedExercises = getCuratedExerciseList(equipment).map(exercise => ({
+        id: exercise.id,
+        name: exercise.name,
+        equipment: exercise.equipment || '',
+        focusArea: exercise.focusArea || '',
+      }));
+      const goal = Array.isArray(userProfile?.goals) && userProfile.goals.length > 0
+        ? userProfile.goals[0]
+        : activeAiProgram.programName;
+      const daysPerWeek = Math.max(1, activeAiProgram.weeks[0]?.days.length || 4);
+      const generatedBlock = await generatePeriodizedProgram({
+        goal,
+        experience: userProfile?.experienceLevel || userProfile?.experience || 'intermediate',
+        equipment,
+        totalWeeks: 4,
+        daysPerWeek,
+        periodizationModel: activeAiProgram.periodizationModel,
+        availableExercises: curatedExercises,
+        includeCardio: !!activeAiProgram.cardioSchedule,
+        allowTwoADays: false,
+      });
+
+      const nextWeeks = generatedBlock.weeks.slice(0, weeksToAppend).map((week, index) => ({
+        ...week,
+        weekNumber: generatedWeekCount + index + 1,
+        phase: `Continuation ${generatedWeekCount + index + 1}`,
+        isDeload: generatedWeekCount + index + 1 === targetTotalWeeks,
+      }));
+      if (nextWeeks.length !== weeksToAppend) {
+        throw new Error('Program generator returned an incomplete continuation block.');
+      }
+
+      const nextCardioWeeks = generatedBlock.cardioSchedule?.weeks
+        .slice(0, weeksToAppend)
+        .map((week, index) => ({ ...week, weekNumber: generatedWeekCount + index + 1 })) || [];
+      const updatedWeeks = [...activeAiProgram.weeks, ...nextWeeks];
+      const updatedPhases = [
+        ...activeAiProgram.phases,
+        {
+          phaseName: 'Continuation',
+          weekRange: `${generatedWeekCount + 1}-${generatedWeekCount + weeksToAppend}`,
+          focus: nextWeeks.map(week => week.phase).join(', '),
+          description: 'Progressive follow-on block based on the active program schedule.',
+        },
+      ];
+      const programRef = doc(db, 'users', uid, 'aiPrograms', activeAiProgram.id);
+      const progressRef = doc(db, 'users', uid, 'aiPrograms', activeAiProgram.id, 'progress', 'current');
+
+      const batch = writeBatch(db);
+      batch.update(programRef, {
+        weeks: updatedWeeks,
+        phases: updatedPhases,
+        totalWeeks: targetTotalWeeks,
+        ...(activeAiProgram.cardioSchedule
+          ? {
+              cardioSchedule: {
+                ...activeAiProgram.cardioSchedule,
+                weeks: [...activeAiProgram.cardioSchedule.weeks, ...nextCardioWeeks],
+              },
+            }
+          : {}),
+        currentWeek: generatedWeekCount + 1,
+        currentDay: 1,
+        updatedAt: Timestamp.now(),
+      });
+      batch.set(progressRef, {
+        currentWeek: generatedWeekCount + 1,
+        currentDay: 1,
+        updatedAt: Timestamp.now(),
+      }, { merge: true });
+      await batch.commit();
+
+      setCurrentWeekNum(generatedWeekCount + 1);
+      setCurrentDayNum(1);
+      setActiveAiProgram({
+        ...activeAiProgram,
+        weeks: updatedWeeks,
+        phases: updatedPhases,
+        totalWeeks: targetTotalWeeks,
+        currentWeek: generatedWeekCount + 1,
+        currentDay: 1,
+        ...(activeAiProgram.cardioSchedule
+          ? {
+              cardioSchedule: {
+                ...activeAiProgram.cardioSchedule,
+                weeks: [...activeAiProgram.cardioSchedule.weeks, ...nextCardioWeeks],
+              },
+            }
+          : {}),
+      });
+      Toast.show({
+        type: 'success',
+        text1: 'Next Block Ready',
+        text2: `Weeks ${generatedWeekCount + 1}-${generatedWeekCount + weeksToAppend} were added.`,
+      });
+      await fetchAiPrograms();
+    } catch (error) {
+      console.error('Failed to extend training program:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Generation Failed',
+        text2: 'Your existing program was not changed. Please try again.',
+      });
+    } finally {
+      setIsExtendingProgram(false);
+    }
+  }, [activeAiProgram, fetchAiPrograms, isExtendingProgram, userProfile]);
+
   // Check if program is completed and prompt for next action
   const checkProgramCompletion = useCallback(async () => {
-    if (!activeAiProgram || !activeAiProgram.id) return;
+    if (!activeAiProgram || !activeAiProgram.id || isExtendingProgram) return;
     
-    const currentWeek = activeAiProgram.currentWeek || currentWeekNum;
+    const currentWeek = currentWeekNum;
     const totalGeneratedWeeks = activeAiProgram.weeks.length;
     const totalPlannedWeeks = activeAiProgram.totalWeeks;
     
@@ -639,6 +775,10 @@ const WorkoutScreen: React.FC = () => {
           '🎉 Program Completed!',
           `Congratulations! You've completed ${activeAiProgram.programName}. What would you like to do next?`,
           [
+            {
+              text: 'Add 2 More Weeks',
+              onPress: generateNextProgramBlock,
+            },
             {
               text: 'Archive & Build New Program',
               onPress: async () => {
@@ -671,21 +811,14 @@ const WorkoutScreen: React.FC = () => {
           [
             {
               text: 'Generate Next 2 Weeks',
-              onPress: () => {
-                Toast.show({
-                  type: 'info',
-                  text1: 'Coming Soon',
-                  text2: 'Next block generation feature in development',
-                });
-                // TODO: Implement next block generation
-              },
+              onPress: generateNextProgramBlock,
             },
             { text: 'Not Yet', style: 'cancel' },
           ]
         );
       }
     }
-  }, [activeAiProgram, currentWeekNum, fetchAiPrograms]);
+  }, [activeAiProgram, currentWeekNum, fetchAiPrograms, generateNextProgramBlock, isExtendingProgram]);
 
   // Check completion on week/day change
   useEffect(() => {
@@ -738,7 +871,7 @@ const WorkoutScreen: React.FC = () => {
     const loadProfile = async () => {
       const uid = auth.currentUser?.uid;
       if (!uid) return;
-      const snap = await getDoc(doc(db, 'users', uid, 'profile', 'data'));
+      const snap = await getDoc(doc(db, 'users', uid));
       if (snap.exists()) setUserProfile(snap.data());
     };
     loadProfile();
@@ -943,6 +1076,7 @@ const WorkoutScreen: React.FC = () => {
                         weekIdx: currentWeekNum - 1,
                         dayIdx: currentDayNum - 1,
                         sourceType: 'aiProgram',
+                        workoutId: activeAiProgram.id,
                         weekNumber: currentWeekNum,
                       });
                     } catch (error) {
