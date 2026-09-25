@@ -3,7 +3,7 @@
  * Utilities for fetching workout history and generating coaching advice
  */
 
-import { auth, db } from '../firebase';
+import { auth, db } from '../firebaseCore';
 import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
 import { getWorkoutAdjustments } from './ai/aiService';
 

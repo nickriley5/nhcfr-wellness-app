@@ -23,7 +23,7 @@ import {
 import { getApp } from 'firebase/app';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../App';
+import type { RootStackParamList } from '../App';
 import Toast from '../components/Toast';
 import DashboardButton from '../components/Common/DashboardButton';
 import AsyncStorage from '@react-native-async-storage/async-storage';

@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { doc, updateDoc } from 'firebase/firestore';
-import { auth, db } from '../firebase';
+import { auth, db } from '../firebaseCore';
 
 interface MealGoalsModalProps {
   visible: boolean;

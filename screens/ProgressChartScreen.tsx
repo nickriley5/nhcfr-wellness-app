@@ -12,11 +12,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { LineChart } from 'react-native-chart-kit';
 import { Dimensions } from 'react-native';
-import { auth, db } from '../firebase';
+import { auth, db } from '../firebaseCore';
 import { collection, getDocs, Timestamp } from 'firebase/firestore';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import LinearGradient from 'react-native-linear-gradient';
-import { RootStackParamList } from '../App';
+import type { RootStackParamList } from '../App';
 import { resolveExerciseDetails } from '../utils/exerciseUtils';
 import PageHelpButton from '../components/Common/PageHelpButton';
 

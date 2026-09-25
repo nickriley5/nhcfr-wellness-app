@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { db } from '../firebase';
+import { db } from '../firebaseCore';
 import { format } from 'date-fns';
 import { collection, onSnapshot, addDoc } from 'firebase/firestore';
 

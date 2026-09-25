@@ -5,7 +5,7 @@ import { CompositeNavigationProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { dashboardStyles } from '../../styles/DashboardScreen.styles';
-import { TabParamList, RootStackParamList } from '../../App';
+import type { TabParamList, RootStackParamList } from '../../App';
 import { TomorrowPreviewModal } from '../Modals/TomorrowPreviewModal';
 
 type DashboardNavigationProp = CompositeNavigationProp<

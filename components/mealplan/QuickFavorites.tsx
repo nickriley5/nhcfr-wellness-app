@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import Toast from 'react-native-toast-message';
-import { auth, db } from '../../firebase';
+import { auth, db } from '../../firebaseCore';
 import { collection, addDoc, query, orderBy, limit, getDocs } from 'firebase/firestore';
 import { format } from 'date-fns';
 import { MealContext } from './MealLoggingModal';

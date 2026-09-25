@@ -2,13 +2,13 @@ import React, { useState } from 'react';
 import { View, Text, Pressable, StyleSheet, ScrollView, Alert } from 'react-native';
 import { CommonActions, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../App';
+import type { RootStackParamList } from '../App';
 import { PROGRAM_TEMPLATES } from '../utils/ProgramTemplates';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { resolveExerciseDetails } from '../utils/exerciseUtils';
 
-import { auth, db } from '../firebase';
+import { auth, db } from '../firebaseCore';
 import { doc, setDoc, Timestamp } from 'firebase/firestore';
 import Toast from 'react-native-toast-message';
 

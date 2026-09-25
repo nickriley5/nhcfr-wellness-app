@@ -14,7 +14,7 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import Toast from 'react-native-toast-message';
 import { describeMeal, MealMacroResult } from '../../utils/nutritionService';
 import { analyzeMeal } from '../../utils/ai/aiService';
-import { auth, db } from '../../firebase';
+import { auth, db } from '../../firebaseCore';
 import { collection, addDoc } from 'firebase/firestore';
 import { format } from 'date-fns';
 import * as FileSystem from 'expo-file-system/legacy';

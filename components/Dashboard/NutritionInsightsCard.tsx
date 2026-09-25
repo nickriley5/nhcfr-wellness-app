@@ -8,7 +8,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { auth } from '../../firebase';
+import { auth } from '../../firebaseCore';
 import {
   analyzeWeightProgress,
   adjustMacroPlansIfNeeded,

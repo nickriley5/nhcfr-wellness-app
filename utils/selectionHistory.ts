@@ -1,4 +1,4 @@
-import { db } from '../firebase';
+import { db } from '../firebaseCore';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 export async function loadHistory(uid: string): Promise<string[]> {

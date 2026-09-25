@@ -10,7 +10,7 @@ import {
   Alert,
 } from 'react-native';
 import { doc, updateDoc, setDoc } from 'firebase/firestore';
-import { auth, db } from '../firebase';
+import { auth, db } from '../firebaseCore';
 import {
   PerformanceGoals,
   ProgramDay,

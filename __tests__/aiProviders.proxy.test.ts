@@ -1,6 +1,6 @@
 const mockCallable = jest.fn();
 
-jest.mock('../firebase', () => ({ functions: {} }));
+jest.mock('../utils/ai/functionsClient', () => ({ getAIFunctions: () => ({}) }));
 jest.mock('firebase/functions', () => ({
   httpsCallable: () => (payload: unknown) => mockCallable(payload),
 }));

@@ -1,6 +1,6 @@
 // hooks/useDashboardState.ts
 import { useState, useEffect } from 'react';
-import { auth, db } from '../firebase';
+import { auth, db } from '../firebaseCore';
 import { doc, getDoc, collection, query, where, limit, getDocs, orderBy, setDoc, updateDoc } from 'firebase/firestore';
 import { resolveExercise } from '../utils/exerciseMatching';
 

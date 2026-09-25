@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { getWorkoutRecommendation, WorkoutRecommendation } from '../utils/ai/aiService';
-import { auth, db } from '../firebase';
+import { auth, db } from '../firebaseCore';
 import { doc, getDoc, collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
 import Toast from 'react-native-toast-message';
 

@@ -3,7 +3,7 @@ import { NavigationContainer, NavigatorScreenParams } from '@react-navigation/na
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { View, ActivityIndicator, StyleSheet, Text, TextInput } from 'react-native';
 import { doc, getDoc } from 'firebase/firestore';
-import { db } from './firebase';
+import { db } from './firebaseCore';
 import type { ProgramDay } from './types/Exercise';
 import Toast from 'react-native-toast-message';
 

@@ -2,7 +2,7 @@ import React from 'react';
 import { Text, Pressable, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../App'; // update path if needed
+import type { RootStackParamList } from '../App'; // update path if needed
 
 type Props = {
   calories: number;

@@ -1,6 +1,6 @@
 // scripts/setCoreFields.ts
 import { collection, getDocs, writeBatch, doc} from 'firebase/firestore';
-import { db } from '../firebase'; // ✅ use your existing db instance
+import { db } from '../firebaseCore'; // ✅ use your existing db instance
 
 // Set these to what you want as the default baseline
 const DEFAULTS = {

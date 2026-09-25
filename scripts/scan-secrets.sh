@@ -26,6 +26,7 @@ BLOCKED_FILES=(
 
 ALLOWLIST_KEYS_IN=(
   "firebase.ts"
+  "firebaseCore.ts"
   "android/app/google-services.json"
   "ios/FirefighterWellnessApp/GoogleService-Info.plist"
 )

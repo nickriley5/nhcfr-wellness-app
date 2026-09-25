@@ -3,8 +3,8 @@ import { View, Text, StyleSheet, Pressable, Modal, ScrollView, Alert } from 'rea
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../App';
-import { auth, db } from '../firebase';
+import type { RootStackParamList } from '../App';
+import { auth, db } from '../firebaseCore';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import WheelPicker from 'react-native-wheely';
 

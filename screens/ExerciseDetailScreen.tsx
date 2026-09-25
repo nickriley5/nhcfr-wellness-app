@@ -19,8 +19,8 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import Video from 'react-native-video';
 import YoutubePlayer from 'react-native-youtube-iframe';
 import { doc, getDoc, getFirestore, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
-import { firebaseApp, auth } from '../firebase';
-import { RootStackParamList } from '../App';
+import { firebaseApp, auth } from '../firebaseCore';
+import type { RootStackParamList } from '../App';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { exercises } from '../data/exercises';
 

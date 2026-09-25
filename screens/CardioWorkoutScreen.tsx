@@ -11,12 +11,12 @@ import {
 import LinearGradient from 'react-native-linear-gradient';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../App';
+import type { RootStackParamList } from '../App';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import Sound from 'react-native-sound';
 import Video from 'react-native-video';
 import YoutubePlayer from 'react-native-youtube-iframe';
-import { auth, db } from '../firebase';
+import { auth, db } from '../firebaseCore';
 import { doc, setDoc, Timestamp, collection, getDocs, getDoc, query, where, updateDoc } from 'firebase/firestore';
 import Toast from 'react-native-toast-message';
 import {

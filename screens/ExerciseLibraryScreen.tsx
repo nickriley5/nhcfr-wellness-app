@@ -16,19 +16,16 @@ import LinearGradient from 'react-native-linear-gradient';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../App';
+import type { RootStackParamList } from '../App';
 import {
-  getFirestore,
   collection,
   getDocs,
   doc,
   setDoc,
   getDoc,
 } from 'firebase/firestore';
-import { firebaseApp, auth } from '../firebase';
+import { auth, db } from '../firebaseCore';
 import { exercises as localExercises } from '../data/exercises';
-
-const db = getFirestore(firebaseApp);
 
 const categoryIcons: Record<string, string> = {
   'Upper Body': 'barbell-outline',

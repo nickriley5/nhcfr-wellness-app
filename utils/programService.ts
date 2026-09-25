@@ -1,6 +1,6 @@
 // utils/programService.ts
 import { serverTimestamp, doc, setDoc } from 'firebase/firestore';
-import { db, auth } from '../firebase';
+import { db, auth } from '../firebaseCore';
 import { getFullExerciseLibrary } from './exerciseLibrary';
 import { buildProgramFromGoals } from './buildProgramFromGoals'; // or ./generateDailyWorkout if that's the file you use
 import type { PerformanceGoals, ProgramDay } from './buildProgramFromGoals';

@@ -5,7 +5,7 @@ import { NavigationProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { dashboardStyles } from '../../styles/DashboardScreen.styles';
-import { auth, db } from '../../firebase';
+import { auth, db } from '../../firebaseCore';
 import { doc, deleteDoc } from 'firebase/firestore';
 import Toast from 'react-native-toast-message';
 import { ProgramDay } from '../../types/Exercise';

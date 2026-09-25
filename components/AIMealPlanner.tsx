@@ -15,7 +15,7 @@ import {
   ContextualMealSuggestion,
   getContextualMealSuggestions,
 } from '../utils/ai/aiService';
-import { auth, db } from '../firebase';
+import { auth, db } from '../firebaseCore';
 import { doc, getDoc, collection, addDoc } from 'firebase/firestore';
 import { format } from 'date-fns';
 import Toast from 'react-native-toast-message';

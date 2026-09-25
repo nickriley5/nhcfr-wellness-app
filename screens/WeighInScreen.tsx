@@ -13,7 +13,7 @@ import {
 import LinearGradient from 'react-native-linear-gradient';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
-import { auth, db } from '../firebase';
+import { auth, db } from '../firebaseCore';
 import {
   collection,
   addDoc,

@@ -17,7 +17,7 @@ import {
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { generatePeriodizedProgram, PeriodizedProgram } from '../../utils/ai/aiService';
 import { getCuratedExerciseList } from '../../utils/exerciseMatching';
-import { auth, db } from '../../firebase';
+import { auth, db } from '../../firebaseCore';
 import { collection, addDoc, getDocs, updateDoc } from 'firebase/firestore';
 import Toast from 'react-native-toast-message';
 

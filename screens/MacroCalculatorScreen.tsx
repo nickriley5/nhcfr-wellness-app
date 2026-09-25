@@ -12,7 +12,7 @@ import {
 } from '../utils/macroCalculator';
 
 import { useAuth } from '../providers/AuthProvider';
-import { db } from '../firebase';
+import { db } from '../firebaseCore';
 import type { RootStackParamList } from '../App';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 

@@ -1,5 +1,5 @@
 import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db } from '../firebaseCore';
 import { getFullExerciseLibrary } from './exerciseLibrary';
 import { buildProgramFromGoals, PerformanceGoals } from './buildProgramFromGoals';
 import { Exercise } from '../types/Exercise';

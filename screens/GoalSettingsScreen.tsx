@@ -12,12 +12,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
 import Slider from '@react-native-community/slider';
-import { auth, db } from '../firebase';
+import { auth, db } from '../firebaseCore';
 import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
 import { format, addDays } from 'date-fns';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../App';
+import type { RootStackParamList } from '../App';
 
 import GoalTypeSelector from '../components/GoalSettings/GoalTypeSelector';
 import WeightInputSection from '../components/GoalSettings/WeightInputSection';

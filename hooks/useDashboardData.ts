@@ -1,6 +1,6 @@
 // hooks/useDashboardData.ts
 import { useEffect, useState } from 'react';
-import { auth, db } from '../firebase';
+import { auth, db } from '../firebaseCore';
 import {
   collection,
   doc,

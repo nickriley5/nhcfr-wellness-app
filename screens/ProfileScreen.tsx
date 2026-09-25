@@ -22,8 +22,8 @@ import {
 } from 'react-native-image-picker';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../App';
-import { auth, db, storage } from '../firebase';
+import type { RootStackParamList } from '../App';
+import { auth, db, storage } from '../firebaseCore';
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import Toast from '../components/Toast';

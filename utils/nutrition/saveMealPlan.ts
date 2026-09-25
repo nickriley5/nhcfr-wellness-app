@@ -1,5 +1,5 @@
 import { setDoc, doc } from 'firebase/firestore';
-import { db } from '../../firebase';
+import { db } from '../../firebaseCore';
 
 export const saveMealPlanToFirestore = async ({
   uid,

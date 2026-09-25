@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Text, TextInput, StyleSheet, ScrollView, Pressable, Alert } from 'react-native';
-import { db, auth } from '../firebase';
+import { db, auth } from '../firebaseCore';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 
 const fitnessLevels = [

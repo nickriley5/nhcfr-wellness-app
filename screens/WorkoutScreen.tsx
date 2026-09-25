@@ -13,9 +13,9 @@ import {
 import LinearGradient from 'react-native-linear-gradient';
 import { useNavigation, useFocusEffect, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList, TabParamList } from '../App';
+import type { RootStackParamList, TabParamList } from '../App';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { auth, db } from '../firebase';
+import { auth, db } from '../firebaseCore';
 import { doc, getDoc, setDoc, writeBatch, Timestamp, collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
 import type { ProgramDay } from '../types/Exercise';
 import Toast from 'react-native-toast-message';

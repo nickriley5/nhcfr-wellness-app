@@ -1,5 +1,5 @@
 import { httpsCallable } from 'firebase/functions';
-import { functions } from '../../firebase';
+import { getAIFunctions } from './functionsClient';
 
 export type AIProvider = 'openai' | 'anthropic' | 'gemini';
 
@@ -33,18 +33,18 @@ interface ImageAnalysisRequest {
   prompt: string;
 }
 
-const callAIProxy = httpsCallable<
-  | { kind: 'message'; provider: AIProvider; messages: ProviderMessage[]; options?: ProviderOptions }
-  | ({ kind: 'image' } & ImageAnalysisRequest),
-  AIProxyResponse
->(functions, 'aiProxy', { timeout: 120000 });
+const getAIProxy = () => httpsCallable<
+    | { kind: 'message'; provider: AIProvider; messages: ProviderMessage[]; options?: ProviderOptions }
+    | ({ kind: 'image' } & ImageAnalysisRequest),
+    AIProxyResponse
+  >(getAIFunctions(), 'aiProxy', { timeout: 120000 });
 
 export async function sendProviderMessage(
   provider: AIProvider,
   messages: ProviderMessage[],
   options?: ProviderOptions
 ): Promise<ProviderResponse> {
-  const result = await callAIProxy({ kind: 'message', provider, messages, options });
+  const result = await getAIProxy()({ kind: 'message', provider, messages, options });
   return result.data;
 }
 
@@ -53,6 +53,6 @@ export async function analyzeImageWithProvider(
   mimeType: string,
   prompt: string
 ): Promise<ProviderResponse> {
-  const result = await callAIProxy({ kind: 'image', imageBase64, mimeType, prompt });
+  const result = await getAIProxy()({ kind: 'image', imageBase64, mimeType, prompt });
   return result.data;
 }

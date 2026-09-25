@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, Pressable } from 'react-native';
-import { auth, db } from '../../firebase';
+import { auth, db } from '../../firebaseCore';
 import { collection, query, orderBy, limit, getDocs, where, Timestamp } from 'firebase/firestore';
 import { dashboardStyles } from '../../styles/DashboardScreen.styles';
 import WeightTrackingCard, { WeightTrackingCardRef } from './WeightTrackingCard';

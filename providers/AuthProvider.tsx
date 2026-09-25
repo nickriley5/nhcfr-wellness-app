@@ -7,7 +7,7 @@ import React, {
   ReactNode,
 } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { auth, db } from '../firebase';
+import { auth, db } from '../firebaseCore';
 import { doc, getDoc } from 'firebase/firestore';
 
 /* ------------------------------------------------------------------ */
@@ -60,7 +60,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   useEffect(() => {
     console.log('🔥 AuthProvider - Setting up auth state listener...');
-    
+
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       console.log('🔥 Auth state changed. User:', firebaseUser?.uid || 'null');
       setUser(firebaseUser);

@@ -15,7 +15,7 @@ import LinearGradient from 'react-native-linear-gradient';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { auth, db } from '../firebase';
+import { auth, db } from '../firebaseCore';
 import { doc, getDoc, collection, onSnapshot, updateDoc, deleteDoc } from 'firebase/firestore';
 import { format } from 'date-fns';
 import Toast from 'react-native-toast-message';
@@ -28,7 +28,7 @@ import {
 } from 'react-native-image-picker';
 
 import DashboardButton from '../components/Common/DashboardButton';
-import { RootStackParamList } from '../App';
+import type { RootStackParamList } from '../App';
 import MacroCard from '../components/mealplan/MacroCard';
 import MealCard from '../components/mealplan/MealCard';
 import LogFoodButton from '../components/mealplan/LogFoodButton';

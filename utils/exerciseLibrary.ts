@@ -1,5 +1,5 @@
 import { collection, getDocs } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db } from '../firebaseCore';
 import type { Exercise } from '../types/Exercise';
 import { inferPatternsFromTags, inferEquipmentFromCategory } from './backfillExerciseFields';
 

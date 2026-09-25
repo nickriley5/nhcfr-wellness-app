@@ -11,8 +11,8 @@ import {
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../App';
-import { auth, db } from '../firebase';
+import type { RootStackParamList } from '../App';
+import { auth, db } from '../firebaseCore';
 import { doc, deleteDoc } from 'firebase/firestore';
 import PageHelpButton from '../components/Common/PageHelpButton';
 

@@ -9,8 +9,8 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../App';
-import { auth, db } from '../firebase';
+import type { RootStackParamList } from '../App';
+import { auth, db } from '../firebaseCore';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import Toast from '../components/Toast';
 import DashboardButton from '../components/Common/DashboardButton';

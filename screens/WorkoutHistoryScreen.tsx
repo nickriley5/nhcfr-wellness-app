@@ -12,7 +12,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { auth, db } from '../firebase';
+import { auth, db } from '../firebaseCore';
 import {
   collection,
   getDocs,
@@ -23,7 +23,7 @@ import {
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import LinearGradient from 'react-native-linear-gradient';
 import { useNavigation, NavigationProp, useFocusEffect } from '@react-navigation/native';
-import { RootStackParamList } from '../App';
+import type { RootStackParamList } from '../App';
 import { resolveExerciseDetails } from '../utils/exerciseUtils';
 
 interface WorkoutLog {

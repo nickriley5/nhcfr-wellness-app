@@ -6,7 +6,7 @@ import {
 } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { TabParamList, RootStackParamList } from '../../App';
+import type { TabParamList, RootStackParamList } from '../../App';
 
 const QuickViews = () => {
   const navigation = useNavigation<

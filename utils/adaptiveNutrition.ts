@@ -1,4 +1,4 @@
-import { db } from '../firebase';
+import { db } from '../firebaseCore';
 import {
   collection,
   query,

@@ -31,7 +31,7 @@ import {
 import Toast from 'react-native-toast-message';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { TabParamList, RootStackParamList } from '../App';
+import type { TabParamList, RootStackParamList } from '../App';
 import ProfileCompletionBanner from '../components/Profile/ProfileCompletionBanner';
 import { WeightTrackingTile } from '../components/Dashboard/WeightTrackingTile';
 // import TodaysReadinessCard from '../components/Dashboard/TodaysReadinessCard'; // COMMENTED OUT FOR PHASE 2

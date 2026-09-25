@@ -1,5 +1,5 @@
 // utils/performanceMonitor.ts
-import { db } from '../firebase';
+import { db } from '../firebaseCore';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 
 export const checkAndAdjustRestDays = async (uid: string) => {

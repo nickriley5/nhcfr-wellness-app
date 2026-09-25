@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { LineChart } from 'react-native-chart-kit';
-import { auth, db } from '../../firebase';
+import { auth, db } from '../../firebaseCore';
 import {
   collection,
   query,

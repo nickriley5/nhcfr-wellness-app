@@ -3,6 +3,7 @@
  */
 
 import {AppRegistry, LogBox} from 'react-native';
+import './firebaseCore';
 import App from './App';
 import {name as appName} from './app.json';
 

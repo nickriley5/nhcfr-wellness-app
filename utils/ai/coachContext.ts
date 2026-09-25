@@ -9,7 +9,7 @@ import {
   query,
   where,
 } from 'firebase/firestore';
-import { db } from '../../firebase';
+import { db } from '../../firebaseCore';
 
 type MacroTotals = {
   calories: number;

@@ -10,8 +10,8 @@ import {
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../../App';
-import { auth } from '../../firebase';
+import type { RootStackParamList } from '../../App';
+import { auth } from '../../firebaseCore';
 import {
   applyMacroAdjustment,
   declineMacroAdjustment,
