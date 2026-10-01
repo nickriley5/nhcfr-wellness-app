@@ -7,7 +7,7 @@ initializeApp();
 
 const geminiApiKey = defineSecret('GEMINI_API_KEY');
 const db = getFirestore();
-const MODEL = 'gemini-2.0-flash';
+const MODEL = 'gemini-3.8-flash';
 const MAX_TEXT_CHARS = 120_000;
 const MAX_IMAGE_BASE64_CHARS = 8_000_000;
 const WINDOW_MS = 60_000;
