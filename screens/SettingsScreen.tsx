@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   ScrollView,
   Linking,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
@@ -14,10 +15,16 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../App';
 import { auth, db } from '../firebaseCore';
 import { doc, deleteDoc } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
+import { getAIFunctions } from '../utils/ai/functionsClient';
 import PageHelpButton from '../components/Common/PageHelpButton';
+
+const PRIVACY_POLICY_URL = 'https://nickriley5.github.io/nhcfr-wellness-app/privacy-policy.html';
+const ACCOUNT_DELETION_URL = 'https://nickriley5.github.io/nhcfr-wellness-app/account-deletion.html';
 
 const SettingsScreen = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const [deletingAccount, setDeletingAccount] = useState(false);
 
   const goToDashboard = () => {
     navigation.navigate('AppDrawer', {
@@ -28,6 +35,58 @@ const SettingsScreen = () => {
 
   const handleContactSupport = () => {
     Linking.openURL('mailto:support@firefighterwellnessapp.com');
+  };
+
+  const openExternalPage = async (url: string) => {
+    try {
+      await Linking.openURL(url);
+    } catch {
+      Alert.alert('Unable to Open Link', 'Please try again or contact support.');
+    }
+  };
+
+  const deleteAccount = async () => {
+    setDeletingAccount(true);
+    try {
+      const requestDeletion = httpsCallable<void, { deleted: boolean }>(
+        getAIFunctions(),
+        'deleteAccount'
+      );
+      await requestDeletion();
+      Alert.alert('Account Deleted', 'Your account and associated app data have been deleted.');
+    } catch (error: any) {
+      const requiresLogin = error?.code === 'functions/failed-precondition';
+      Alert.alert(
+        requiresLogin ? 'Please Sign In Again' : 'Deletion Failed',
+        error?.message || 'We could not delete your account. Please contact support.'
+      );
+    } finally {
+      setDeletingAccount(false);
+    }
+  };
+
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      'Delete Account?',
+      'This permanently deletes your profile, photos, workouts, meal plans, logs, and account. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Continue',
+          style: 'destructive',
+          onPress: () => {
+            Alert.alert(
+              'Final Confirmation',
+              'Permanently delete your account and all associated data?',
+              [
+                { text: 'Keep Account', style: 'cancel' },
+                { text: 'Delete Forever', style: 'destructive', onPress: deleteAccount },
+              ]
+            );
+          },
+        },
+      ]
+    );
   };
 
   const handleResetWorkoutPlan = () => {
@@ -171,6 +230,27 @@ const SettingsScreen = () => {
       {/* SUPPORT */}
       <Section title="Support & Feedback">
         <SettingsButton icon="mail" label="Contact Support" onPress={handleContactSupport} />
+        <SettingsButton
+          icon="shield-checkmark"
+          label="Privacy Policy"
+          onPress={() => openExternalPage(PRIVACY_POLICY_URL)}
+        />
+        <SettingsButton
+          icon="information-circle"
+          label="Account Deletion Information"
+          onPress={() => openExternalPage(ACCOUNT_DELETION_URL)}
+        />
+      </Section>
+
+      <Section title="Account">
+        <SettingsButton
+          icon="trash"
+          label={deletingAccount ? 'Deleting Account…' : 'Delete Account'}
+          onPress={handleDeleteAccount}
+          disabled={deletingAccount}
+          destructive
+          loading={deletingAccount}
+        />
       </Section>
 
       {/* APP INFO */}
@@ -213,19 +293,32 @@ const SettingsButton = ({
   label,
   onPress,
   disabled = false,
+  destructive = false,
+  loading = false,
 }: {
   icon: string;
   label: string;
   onPress?: () => void;
   disabled?: boolean;
+  destructive?: boolean;
+  loading?: boolean;
 }) => (
   <Pressable
     style={[styles.button, disabled && styles.buttonDisabled]}
     onPress={onPress}
     disabled={disabled}
   >
-    <Ionicons name={icon} size={20} color="#4fc3f7" style={styles.icon} />
-    <Text style={styles.buttonText}>{label}</Text>
+    {loading ? (
+      <ActivityIndicator color="#ff6b6b" style={styles.icon} />
+    ) : (
+      <Ionicons
+        name={icon}
+        size={20}
+        color={destructive ? '#ff6b6b' : '#4fc3f7'}
+        style={styles.icon}
+      />
+    )}
+    <Text style={[styles.buttonText, destructive && styles.destructiveText]}>{label}</Text>
   </Pressable>
 );
 
@@ -281,6 +374,9 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.5,
+  },
+  destructiveText: {
+    color: '#ff6b6b',
   },
   icon: {
     marginRight: 10,

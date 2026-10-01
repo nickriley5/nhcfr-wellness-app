@@ -174,20 +174,15 @@ useEffect(() => {
                 <Text style={styles.buttonText}>Login</Text>
               )}
             </Pressable>
-              <Text>
             <Text style={styles.registerText}>
-  Don’t have an account?{' '}</Text>
-  <Text style={styles.registerText}>
-  Don’t have an account?{' '}
-  <Text
-    style={styles.link}
-    onPress={() => navigation.navigate('Register')}
-  >
-    Register
-  </Text>
-</Text>
-
-</Text>
+              Don’t have an account?{' '}
+              <Text
+                style={styles.link}
+                onPress={() => navigation.navigate('Register')}
+              >
+                Register
+              </Text>
+            </Text>
 
           </View>
         </ScrollView>

@@ -1,5 +1,7 @@
 import { initializeApp } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
+import { getStorage } from 'firebase-admin/storage';
 import { defineSecret } from 'firebase-functions/params';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 
@@ -7,6 +9,8 @@ initializeApp();
 
 const geminiApiKey = defineSecret('GEMINI_API_KEY');
 const db = getFirestore();
+const auth = getAuth();
+const storage = getStorage();
 const MODEL = 'gemini-3.8-flash';
 const MAX_TEXT_CHARS = 120_000;
 const MAX_IMAGE_BASE64_CHARS = 8_000_000;
@@ -162,5 +166,43 @@ export const aiProxy = onCall(
     }
 
     throw new HttpsError('invalid-argument', 'Unknown AI request type.');
+  }
+);
+
+export const deleteAccount = onCall(
+  {
+    region: 'us-central1',
+    timeoutSeconds: 120,
+    memory: '256MiB',
+    maxInstances: 10,
+  },
+  async request => {
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Sign in before deleting your account.');
+    }
+
+    const authenticatedAt = Number(request.auth.token.auth_time || 0) * 1000;
+    if (!authenticatedAt || Date.now() - authenticatedAt > 10 * 60 * 1000) {
+      throw new HttpsError(
+        'failed-precondition',
+        'For your security, sign out and sign in again before deleting your account.'
+      );
+    }
+
+    const uid = request.auth.uid;
+
+    try {
+      await db.recursiveDelete(db.doc(`users/${uid}`));
+      await db.doc(`aiRateLimits/${uid}`).delete();
+      await storage.bucket().deleteFiles({ prefix: `users/${uid}/` });
+      await auth.deleteUser(uid);
+      return { deleted: true };
+    } catch (error) {
+      console.error('Account deletion failed', { uid, error });
+      throw new HttpsError(
+        'internal',
+        'We could not finish deleting your account. Contact support for assistance.'
+      );
+    }
   }
 );

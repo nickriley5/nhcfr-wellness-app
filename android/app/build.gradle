@@ -85,10 +85,6 @@ dependencies {
         implementation jscFlavor
     }
 
-    // Firebase (managed through @react-native-firebase)
-    implementation platform('com.google.firebase:firebase-bom:33.11.0')
-    implementation 'com.google.firebase:firebase-analytics'
-
     // Kotlin (already included by React Native, but safe to reference)
     implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlinVersion"
 }

@@ -7,7 +7,7 @@
   },
   "scripts": {
     "build": "tsc",
-    "deploy": "npm run build && firebase deploy --only functions:aiProxy"
+    "deploy": "npm run build && firebase deploy --only functions:aiProxy,functions:deleteAccount"
   },
   "dependencies": {
     "firebase-admin": "^13.4.0",
