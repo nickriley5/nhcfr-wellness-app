@@ -1,4 +1,14 @@
 {
+  "hosting": {
+    "public": "docs",
+    "cleanUrls": true,
+    "trailingSlash": false,
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ]
+  },
   "functions": {
     "source": "functions",
     "runtime": "nodejs22"

@@ -19,8 +19,8 @@ import { httpsCallable } from 'firebase/functions';
 import { getAIFunctions } from '../utils/ai/functionsClient';
 import PageHelpButton from '../components/Common/PageHelpButton';
 
-const PRIVACY_POLICY_URL = 'https://nickriley5.github.io/nhcfr-wellness-app/privacy-policy.html';
-const ACCOUNT_DELETION_URL = 'https://nickriley5.github.io/nhcfr-wellness-app/account-deletion.html';
+const PRIVACY_POLICY_URL = 'https://firefighter-wellness-app.web.app/privacy-policy';
+const ACCOUNT_DELETION_URL = 'https://firefighter-wellness-app.web.app/account-deletion';
 
 const SettingsScreen = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
