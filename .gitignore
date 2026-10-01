@@ -41,6 +41,7 @@ local.properties
 node_modules/
 npm-debug.log
 firebase-debug.log
+.firebase/
 yarn-error.log
 
 # fastlane
